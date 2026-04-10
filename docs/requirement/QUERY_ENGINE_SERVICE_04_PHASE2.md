@@ -84,7 +84,65 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** DBC-006 (Connection Pool), AUTH-004 (user context for limits), AUTH-012 (tenant scope)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Execute SQL synchronously (for small result sets ≤ SYNC_QUERY_MAX_ROWS=10,000). Validate database_id access (created_by or expose_in_sqllab). Apply effective row limit: min(request_limit, roleQueryLimit(roles)) where role limits are Admin=unlimited, Alpha=100k, Gamma=10k.</li><li>RLS injection (QE-002): before execution inject applicable RLS WHERE clauses. Store original sql, RLS-modified executed_sql separately in query table for audit.</li><li>Record to query table: client_id (UUID for deduplication), database_id, user_id, status, start_time, start_running_time, end_time, rows, error_message, results_key. Cache result in Redis (TTL from dataset.cache_timeout). Return { data, columns, query, from_cache }.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate DB access → apply row limit → RLS inject → cache check (QE-003).</li><li>Cache HIT: return from_cache:true immediately.</li><li>Cache MISS: GORM.Create(query{status:running}) → pool.Get(dbID) → db.QueryContext(30s) → scan rows.</li><li>Store result in Redis → GORM.Update(query{status:success,rows,results_key}) → return.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>effectiveLimit:=min(req.Limit,roleLimit(uc.Roles)) // Admin=10M,Alpha=100k,Gamma=10k</li><li>executedSQL:=QE002.InjectRLS(ctx,sql,datasourceID,uc.Roles)</li><li>cacheKey:=sha256(normSQL+dbID+schema+rlsHash)</li><li>if hit: return fromCache=true</li><li>ctx30s,cancel:=context.WithTimeout(30*time.Second)</li><li>rows,err:=db.QueryContext(ctx30s,executedSQL)</li><li>scan → msgpack.Marshal → rdb.Set(cacheKey,result,datasetTTL)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST { database_id:1, sql:"SELECT * FROM orders LIMIT 100" } → 200 { data:[...], columns:[...], query:{executed_sql,from_cache:false}, from_cache:false }.</li><li>Cache hit on repeat call → from_cache:true, latency &lt;20ms.</li><li>Row limit exceeded → data truncated + warning in response.</li><li>Query timeout (30s) → 408.</li><li>RLS active: executed_sql differs from sql (injected WHERE clause).</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - No DB access.</li><li>408 - Query timeout.</li><li>400 - Invalid SQL.</li><li>500 - Execution error.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (SQL Lab Run Button) and /explore (chart preview)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>- SQL Lab "Run" (fires QE-001 for sync queries) -</li><li>Button ("Run", Play icon) - in SQL Lab toolbar, triggers QE-001</li><li>Badge (status: "Running..." Loader2 / "Done" / "Failed") - in tab header</li><li>DataTable - results display (TanStack Table with virtual scroll)</li><li>Alert (destructive) - error display with error_message from response</li><li>Badge (from_cache, duration_ms, rows_count) - query metadata row below table</li><li>- Explore "Run" (chart preview) -</li><li>Button ("Run Chart") in Explore toolbar</li><li>Apache ECharts canvas - renders chart from response.data</li><li>Skeleton (chart-shaped) - while query in flight</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useMutation({ mutationFn: api.executeQuery, onSuccess: (r)=&gt;{ setQueryResult(r); setQueryStatus("success") }, onError: (e)=&gt;setQueryStatus("error") })</li><li>queryStatus: "idle" | "running" | "success" | "error"</li><li>queryResult: { data, columns, query, from_cache }</li><li>from_cache Badge: green "Cached (3ms)" | gray "Live (234ms)" based on from_cache + duration_ms</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>SQL Lab: Run Button → Loader2 in tab badge → results appear in Results DataTable.</li><li>DataTable: sticky column headers, virtual scroll for 10k rows, sort on column header click.</li><li>from_cache Banner: subtle green bar "Results from cache - 3ms" on cached hits.</li><li>Error: red Alert with error_message. If SQL error: show the problematic SQL snippet.</li><li>Row limit warning: amber Alert "Results limited to {N} rows. Export for full data."</li><li>Explore: chart re-renders automatically with new data. Skeleton during fetch.</li></ul><p><strong>♿ Accessibility</strong></p><ul><li>Run Button: aria-label="Execute SQL query". aria-busy=true during execution.</li><li>Results table: aria-label="Query results, {N} rows".</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: (req)=&gt;fetch("/api/v1/query/execute",{method:"POST",body:JSON.stringify(req)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Execute SQL synchronously (for small result sets ≤ SYNC_QUERY_MAX_ROWS=10,000). Validate database_id access (created_by or expose_in_sqllab). Apply effective row limit: min(request_limit, roleQueryLimit(roles)) where role limits are Admin=unlimited, Alpha=100k, Gamma=10k.
+- RLS injection (QE-002): before execution inject applicable RLS WHERE clauses. Store original sql, RLS-modified executed_sql separately in query table for audit.
+- Record to query table: client_id (UUID for deduplication), database_id, user_id, status, start_time, start_running_time, end_time, rows, error_message, results_key. Cache result in Redis (TTL from dataset.cache_timeout). Return { data, columns, query, from_cache }.
+**🔄 Request Flow**
+1. Validate DB access → apply row limit → RLS inject → cache check (QE-003).
+2. Cache HIT: return from_cache:true immediately.
+3. Cache MISS: GORM.Create(query{status:running}) → pool.Get(dbID) → db.QueryContext(30s) → scan rows.
+4. Store result in Redis → GORM.Update(query{status:success,rows,results_key}) → return.
+**⚙️ Go Implementation**
+1. effectiveLimit:=min(req.Limit,roleLimit(uc.Roles)) // Admin=10M,Alpha=100k,Gamma=10k
+2. executedSQL:=QE002.InjectRLS(ctx,sql,datasourceID,uc.Roles)
+3. cacheKey:=sha256(normSQL+dbID+schema+rlsHash)
+4. if hit: return fromCache=true
+5. ctx30s,cancel:=context.WithTimeout(30*time.Second)
+6. rows,err:=db.QueryContext(ctx30s,executedSQL)
+7. scan → msgpack.Marshal → rdb.Set(cacheKey,result,datasetTTL) | **✅ Acceptance Criteria**
+- POST { database_id:1, sql:"SELECT * FROM orders LIMIT 100" } → 200 { data:[...], columns:[...], query:{executed_sql,from_cache:false}, from_cache:false }.
+- Cache hit on repeat call → from_cache:true, latency <20ms.
+- Row limit exceeded → data truncated + warning in response.
+- Query timeout (30s) → 408.
+- RLS active: executed_sql differs from sql (injected WHERE clause).
+**⚠️ Error Responses**
+- 403 - No DB access.
+- 408 - Query timeout.
+- 400 - Invalid SQL.
+- 500 - Execution error. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (SQL Lab Run Button) and /explore (chart preview)
+**🧩 shadcn/ui Components**
+- - SQL Lab "Run" (fires QE-001 for sync queries) -
+- Button ("Run", Play icon) - in SQL Lab toolbar, triggers QE-001
+- Badge (status: "Running..." Loader2 / "Done" / "Failed") - in tab header
+- DataTable - results display (TanStack Table with virtual scroll)
+- Alert (destructive) - error display with error_message from response
+- Badge (from_cache, duration_ms, rows_count) - query metadata row below table
+- - Explore "Run" (chart preview) -
+- Button ("Run Chart") in Explore toolbar
+- Apache ECharts canvas - renders chart from response.data
+- Skeleton (chart-shaped) - while query in flight
+**📦 State & TanStack Query**
+- useMutation({ mutationFn: api.executeQuery, onSuccess: (r)=>{ setQueryResult(r); setQueryStatus("success") }, onError: (e)=>setQueryStatus("error") })
+- queryStatus: "idle" &#124; "running" &#124; "success" &#124; "error"
+- queryResult: { data, columns, query, from_cache }
+- from_cache Badge: green "Cached (3ms)" &#124; gray "Live (234ms)" based on from_cache + duration_ms
+**✨ UX Behaviors**
+- SQL Lab: Run Button → Loader2 in tab badge → results appear in Results DataTable.
+- DataTable: sticky column headers, virtual scroll for 10k rows, sort on column header click.
+- from_cache Banner: subtle green bar "Results from cache - 3ms" on cached hits.
+- Error: red Alert with error_message. If SQL error: show the problematic SQL snippet.
+- Row limit warning: amber Alert "Results limited to {N} rows. Export for full data."
+- Explore: chart re-renders automatically with new data. Skeleton during fetch.
+**♿ Accessibility**
+- Run Button: aria-label="Execute SQL query". aria-busy=true during execution.
+- Results table: aria-label="Query results, {N} rows".
+**🌐 API Calls**
+1. useMutation({ mutationFn: (req)=>fetch("/api/v1/query/execute",{method:"POST",body:JSON.stringify(req)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **QE-002** - **Row Level Security (RLS) Injection**
 
@@ -94,7 +152,48 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** AUTH-011 (role resolution from JWT), DS-010 (RLS assigned to dataset), RLS-001 (filters exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Before any SQL execution, inject applicable RLS WHERE clauses. Resolution: (1) fetch RLS filters WHERE role_id IN user_roles AND table_id = datasetID. (2) Regular type: AND each clause. (3) Base type: REPLACE existing WHERE. (4) Template rendering: {{current_user_id}} and {{current_username}} replaced with actual values. Cache result in Redis at rls:{roles_hash}:{datasetID} TTL 5min. Admin bypass (return original SQL unchanged).</li><li>SQL AST injection using sqlparser: parse SQL, locate WHERE node, inject as additional AND conditions - never string concat.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Admin role → return original SQL unchanged.</li><li>cacheKey = "rls:"+hashRoles(roles)+":"+datasetID.</li><li>redis.Get → if miss: DB join query → redis.SAdd(TTL 5min).</li><li>For Regular: stmt.AddWhere(parsed_clause).</li><li>For Base: stmt.ReplaceWhere(parsed_clause).</li><li>return sqlparser.String(stmt).</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>if isAdmin(roles): return sql,nil</li><li>rendered:=renderTemplate(clause,uc) // replace {{current_user_id}} etc</li><li>expr,_:=sqlparser.ParseExpr(rendered)</li><li>switch filter.FilterType { case "Regular": addWhereAnd(stmt,expr); case "Base": replaceWhere(stmt,expr) }</li><li>return sqlparser.String(stmt),nil</li></ol><p><strong>🔒 Security</strong></p><ul><li>Template rendering uses fmt.Sprintf with typed values (int for user_id) - never raw string concat.</li><li>sqlparser AST injection prevents WHERE bypass via UNION/subquery tricks.</li></ul></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Gamma user + RLS "org_id={{current_user_id}}" → executed_sql has "AND (org_id = 42)".</li><li>Admin → SQL unchanged.</li><li>Base filter replaces WHERE entirely.</li><li>Cache hit &lt;1ms (Redis only).</li><li>Reuse attack: {{current_user_id}} rendered as actual int - not injectable.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>Internal - errors propagate to calling service (QE-001 etc.).</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Transparent to frontend - surfaced only via executed_sql in query response</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No direct UI component</li><li>Info icon (Info Lucide) next to executed_sql in SQL Lab Query tab - hover Tooltip "RLS filters applied"</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>queryResult.query.executed_sql shown in Query tab of SQL Lab</li><li>if executed_sql !== sql: show Badge "RLS Active" in query metadata row</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>SQL Lab Query tab: shows executed_sql (may differ from user's sql if RLS active).</li><li>Badge "RLS Active" (orange, ShieldAlert icon) in query metadata row if executed_sql differs from sql.</li><li>Tooltip: "Row-level security filters were applied to this query."</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>N/A - internal backend function, no direct frontend call</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Before any SQL execution, inject applicable RLS WHERE clauses. Resolution: (1) fetch RLS filters WHERE role_id IN user_roles AND table_id = datasetID. (2) Regular type: AND each clause. (3) Base type: REPLACE existing WHERE. (4) Template rendering: {{current_user_id}} and {{current_username}} replaced with actual values. Cache result in Redis at rls:{roles_hash}:{datasetID} TTL 5min. Admin bypass (return original SQL unchanged).
+- SQL AST injection using sqlparser: parse SQL, locate WHERE node, inject as additional AND conditions - never string concat.
+**🔄 Request Flow**
+1. Admin role → return original SQL unchanged.
+2. cacheKey = "rls:"+hashRoles(roles)+":"+datasetID.
+3. redis.Get → if miss: DB join query → redis.SAdd(TTL 5min).
+4. For Regular: stmt.AddWhere(parsed_clause).
+5. For Base: stmt.ReplaceWhere(parsed_clause).
+6. return sqlparser.String(stmt).
+**⚙️ Go Implementation**
+1. if isAdmin(roles): return sql,nil
+2. rendered:=renderTemplate(clause,uc) // replace {{current_user_id}} etc
+3. expr,_:=sqlparser.ParseExpr(rendered)
+4. switch filter.FilterType { case "Regular": addWhereAnd(stmt,expr); case "Base": replaceWhere(stmt,expr) }
+5. return sqlparser.String(stmt),nil
+**🔒 Security**
+- Template rendering uses fmt.Sprintf with typed values (int for user_id) - never raw string concat.
+- sqlparser AST injection prevents WHERE bypass via UNION/subquery tricks. | **✅ Acceptance Criteria**
+- Gamma user + RLS "org_id={{current_user_id}}" → executed_sql has "AND (org_id = 42)".
+- Admin → SQL unchanged.
+- Base filter replaces WHERE entirely.
+- Cache hit <1ms (Redis only).
+- Reuse attack: {{current_user_id}} rendered as actual int - not injectable.
+**⚠️ Error Responses**
+- Internal - errors propagate to calling service (QE-001 etc.). | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Transparent to frontend - surfaced only via executed_sql in query response
+**🧩 shadcn/ui Components**
+- No direct UI component
+- Info icon (Info Lucide) next to executed_sql in SQL Lab Query tab - hover Tooltip "RLS filters applied"
+**📦 State & TanStack Query**
+- queryResult.query.executed_sql shown in Query tab of SQL Lab
+- if executed_sql !== sql: show Badge "RLS Active" in query metadata row
+**✨ UX Behaviors**
+- SQL Lab Query tab: shows executed_sql (may differ from user's sql if RLS active).
+- Badge "RLS Active" (orange, ShieldAlert icon) in query metadata row if executed_sql differs from sql.
+- Tooltip: "Row-level security filters were applied to this query."
+**🌐 API Calls**
+1. N/A - internal backend function, no direct frontend call |
+| --- | --- | --- |
+
 
 **QE-003** - **Query Result Caching**
 
@@ -104,7 +203,45 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** DS-009 (cache_timeout from dataset), AUTH-004 (roles affect cache key), QE-001 (caching during execution)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>SHA-256 cache key from: normalize_sql(strip comments, lowercase keywords) + database_id + schema + hash(sorted_rls_clauses). Store result as MessagePack in Redis with TTL from dataset.cache_timeout (0=global default=86400s, -1=no cache). Results &gt;10MB not cached. Return from_cache:true flag with original query start/end timestamps.</li><li>Cache invalidation: dataset sync (DS-003), RLS update (RLS-003), manual flush (DS-009), TTL expiry.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>normSQL := normalize(sql)</li><li>cacheKey := sha256(normSQL+dbID+schema+rlsHash)</li><li>if ttl==-1: skip cache</li><li>redis.Get("qcache:"+cacheKey) → if found: return fromCache:true</li><li>MISS: execute → if size&lt;10MB: redis.Set(result,ttl)</li><li>Store results_key in query record</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>normalizeSQL: strings.ToLower + regexp strip comments + normalize whitespace</li><li>cacheKey:=hex.EncodeToString(sha256.Sum256([]byte(normSQL+strconv.Itoa(dbID)+schema+rlsHash))[:])</li><li>val,err:=rdb.Get(ctx,"qcache:"+cacheKey).Bytes() → if err==nil: unmarshal → fromCache:true</li><li>if len(resultBytes)&lt;10*1024*1024: rdb.Set("qcache:"+cacheKey,resultBytes,ttl)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Same query twice → second call from_cache:true, DB not queried.</li><li>Different RLS → different cache key, separate cache entries.</li><li>&gt;10MB result → cache skipped.</li><li>cache_timeout=-1 → never cached.</li><li>Cache hit latency &lt;20ms p95.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>Cache errors non-fatal - fall through to DB execution.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Visible in all query result UIs (SQL Lab + Explore + Dashboard)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Badge (green "Cached {N}ms" or gray "Live {N}ms") - in SQL Lab results toolbar</li><li>Tooltip on Badge - "Results served from cache. Force refresh to get latest data."</li><li>Badge ("Cache Disabled") - shown when from_cache:false and dataset.cache_timeout=-1</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>queryResult.from_cache: bool - from API response</li><li>queryResult.query.start_time + end_time → compute duration_ms for Badge</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Green "Cached (3ms)" Badge when from_cache:true - makes cache transparent and trustworthy.</li><li>Tooltip: "Cached at {timestamp}. TTL: {dataset.cache_timeout}s." with RefreshCw Button link.</li><li>Force Refresh Button: clears cache + re-runs (calls QE-001 with force_refresh:true).</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>Part of QE-001 response - from_cache:bool in query metadata</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- SHA-256 cache key from: normalize_sql(strip comments, lowercase keywords) + database_id + schema + hash(sorted_rls_clauses). Store result as MessagePack in Redis with TTL from dataset.cache_timeout (0=global default=86400s, -1=no cache). Results >10MB not cached. Return from_cache:true flag with original query start/end timestamps.
+- Cache invalidation: dataset sync (DS-003), RLS update (RLS-003), manual flush (DS-009), TTL expiry.
+**🔄 Request Flow**
+1. normSQL := normalize(sql)
+2. cacheKey := sha256(normSQL+dbID+schema+rlsHash)
+3. if ttl==-1: skip cache
+4. redis.Get("qcache:"+cacheKey) → if found: return fromCache:true
+5. MISS: execute → if size<10MB: redis.Set(result,ttl)
+6. Store results_key in query record
+**⚙️ Go Implementation**
+1. normalizeSQL: strings.ToLower + regexp strip comments + normalize whitespace
+2. cacheKey:=hex.EncodeToString(sha256.Sum256([]byte(normSQL+strconv.Itoa(dbID)+schema+rlsHash))[:])
+3. val,err:=rdb.Get(ctx,"qcache:"+cacheKey).Bytes() → if err==nil: unmarshal → fromCache:true
+4. if len(resultBytes)<10*1024*1024: rdb.Set("qcache:"+cacheKey,resultBytes,ttl) | **✅ Acceptance Criteria**
+- Same query twice → second call from_cache:true, DB not queried.
+- Different RLS → different cache key, separate cache entries.
+- >10MB result → cache skipped.
+- cache_timeout=-1 → never cached.
+- Cache hit latency <20ms p95.
+**⚠️ Error Responses**
+- Cache errors non-fatal - fall through to DB execution. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Visible in all query result UIs (SQL Lab + Explore + Dashboard)
+**🧩 shadcn/ui Components**
+- Badge (green "Cached {N}ms" or gray "Live {N}ms") - in SQL Lab results toolbar
+- Tooltip on Badge - "Results served from cache. Force refresh to get latest data."
+- Badge ("Cache Disabled") - shown when from_cache:false and dataset.cache_timeout=-1
+**📦 State & TanStack Query**
+- queryResult.from_cache: bool - from API response
+- queryResult.query.start_time + end_time → compute duration_ms for Badge
+**✨ UX Behaviors**
+- Green "Cached (3ms)" Badge when from_cache:true - makes cache transparent and trustworthy.
+- Tooltip: "Cached at {timestamp}. TTL: {dataset.cache_timeout}s." with RefreshCw Button link.
+- Force Refresh Button: clears cache + re-runs (calls QE-001 with force_refresh:true).
+**🌐 API Calls**
+1. Part of QE-001 response - from_cache:bool in query metadata |
+| --- | --- | --- |
+
 
 **QE-004** - **Asynchronous Query Execution**
 
@@ -114,7 +251,50 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** QE-001 (shared execution logic), AUTH-004, Asynq workers running
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Submit query to Asynq queue, return 202 + query_id immediately. Three priority queues: critical (Admin → reports/alerts), default (Alpha → charts, SQL Lab), low (Gamma → background). Payload includes full UserContext (for RLS in worker). Status transitions: pending → running → success|failed|timed_out|stopped. Retry ×3 with exponential backoff (5s,25s,125s). Worker publishes Redis pub/sub events for WebSocket delivery (QE-005).</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GORM.Create(query{status:pending}) → get query_id.</li><li>asynq.Enqueue("query:execute",payload,Queue(resolveQueue(roles)),MaxRetry(3)).</li><li>Return 202 { query_id, status:"pending", queue }.</li><li>Worker: execute → cache → GORM.Update(status) → rdb.Publish("query:status:"+id,event).</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Create(&amp;query{ClientID:clientID,Status:"pending"})</li><li>asynq.NewTask("query:execute",mustMarshal(payload))</li><li>asynqClient.Enqueue(task,asynq.Queue(resolveQueue(roles)),asynq.MaxRetry(3))</li><li>Worker: executeQueryHandler(ctx,task) → execute → publish status event</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST → 202 { query_id:"q-abc", status:"pending", queue:"default" }.</li><li>GET /status → { status:"running"|"success"|"failed" }.</li><li>Admin → critical queue.</li><li>Failed ×3 retries → dead letter, status=failed.</li><li>20 concurrent default workers → 20 parallel DB queries.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>202 - Always on submit (async).</li><li>500 - Queue push failure.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (async queries from SQL Lab Run button when query is expected to be slow)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Button ("Run Async") - in SQL Lab toolbar (shown for queries estimated &gt;5s)</li><li>Badge ("Queued" → "Running..." → "Done" / "Failed") - live status in tab</li><li>Progress (indeterminate) - shown while status is "running"</li><li>Toast - "Query submitted. Results will appear when complete."</li><li>Button ("Cancel Query", StopCircle icon) - triggers QE-006</li><li>Badge (queue name: "Priority" / "Default" / "Background") - Admin visibility</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useMutation({ mutationFn: api.submitQuery, onSuccess: (r)=&gt;{ setQueryId(r.query_id); setStatus("pending"); subscribeWS(r.query_id) } })</li><li>useQuery({ queryKey:["query-status",queryId], refetchInterval:2000, enabled:status==="pending"||status==="running" }) - polling fallback if WS fails</li><li>WebSocket: see QE-005 for WS state</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>SQL Lab detects slow queries: if previous similar query took &gt;5s → auto-submit async.</li><li>Async indicator: Progress bar below editor + "Query running in background..." Badge.</li><li>Tab stays interactive while async query runs.</li><li>On completion: results appear in Results panel + success Toast.</li><li>Browser notification (if permission granted): "Query complete" system notification.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: (req)=&gt;fetch("/api/v1/query/submit",{method:"POST",body:JSON.stringify({...req,async:true})}).then(r=&gt;r.json()) })</li><li>useQuery({ queryKey:["query-status",id], queryFn: ()=&gt;fetch("/api/v1/query/"+id+"/status").then(r=&gt;r.json()), refetchInterval:2000 })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Submit query to Asynq queue, return 202 + query_id immediately. Three priority queues: critical (Admin → reports/alerts), default (Alpha → charts, SQL Lab), low (Gamma → background). Payload includes full UserContext (for RLS in worker). Status transitions: pending → running → success&#124;failed&#124;timed_out&#124;stopped. Retry ×3 with exponential backoff (5s,25s,125s). Worker publishes Redis pub/sub events for WebSocket delivery (QE-005).
+**🔄 Request Flow**
+1. GORM.Create(query{status:pending}) → get query_id.
+2. asynq.Enqueue("query:execute",payload,Queue(resolveQueue(roles)),MaxRetry(3)).
+3. Return 202 { query_id, status:"pending", queue }.
+4. Worker: execute → cache → GORM.Update(status) → rdb.Publish("query:status:"+id,event).
+**⚙️ Go Implementation**
+1. GORM.Create(&query{ClientID:clientID,Status:"pending"})
+2. asynq.NewTask("query:execute",mustMarshal(payload))
+3. asynqClient.Enqueue(task,asynq.Queue(resolveQueue(roles)),asynq.MaxRetry(3))
+4. Worker: executeQueryHandler(ctx,task) → execute → publish status event | **✅ Acceptance Criteria**
+- POST → 202 { query_id:"q-abc", status:"pending", queue:"default" }.
+- GET /status → { status:"running"&#124;"success"&#124;"failed" }.
+- Admin → critical queue.
+- Failed ×3 retries → dead letter, status=failed.
+- 20 concurrent default workers → 20 parallel DB queries.
+**⚠️ Error Responses**
+- 202 - Always on submit (async).
+- 500 - Queue push failure. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (async queries from SQL Lab Run button when query is expected to be slow)
+**🧩 shadcn/ui Components**
+- Button ("Run Async") - in SQL Lab toolbar (shown for queries estimated >5s)
+- Badge ("Queued" → "Running..." → "Done" / "Failed") - live status in tab
+- Progress (indeterminate) - shown while status is "running"
+- Toast - "Query submitted. Results will appear when complete."
+- Button ("Cancel Query", StopCircle icon) - triggers QE-006
+- Badge (queue name: "Priority" / "Default" / "Background") - Admin visibility
+**📦 State & TanStack Query**
+- useMutation({ mutationFn: api.submitQuery, onSuccess: (r)=>{ setQueryId(r.query_id); setStatus("pending"); subscribeWS(r.query_id) } })
+- useQuery({ queryKey:["query-status",queryId], refetchInterval:2000, enabled:status==="pending"&#124;&#124;status==="running" }) - polling fallback if WS fails
+- WebSocket: see QE-005 for WS state
+**✨ UX Behaviors**
+- SQL Lab detects slow queries: if previous similar query took >5s → auto-submit async.
+- Async indicator: Progress bar below editor + "Query running in background..." Badge.
+- Tab stays interactive while async query runs.
+- On completion: results appear in Results panel + success Toast.
+- Browser notification (if permission granted): "Query complete" system notification.
+**🌐 API Calls**
+1. useMutation({ mutationFn: (req)=>fetch("/api/v1/query/submit",{method:"POST",body:JSON.stringify({...req,async:true})}).then(r=>r.json()) })
+2. useQuery({ queryKey:["query-status",id], queryFn: ()=>fetch("/api/v1/query/"+id+"/status").then(r=>r.json()), refetchInterval:2000 }) |
+| --- | --- | --- |
+
 
 **QE-005** - **WebSocket Result Streaming**
 
@@ -124,7 +304,54 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** QE-004 (async query must be submitted), AUTH-004 (token in WS handshake)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>WebSocket endpoint: client subscribes to query status events. Worker publishes via Redis pub/sub channel "query:status:{query_id}". Server forwards events to all subscribed WS connections. Heartbeat ping every 30s. On "done" event: send result inline if ≤1MB, else send { type:"result_ready", download_url }. Multiple browser tabs can subscribe to same query_id.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>WS upgrade → validate JWT → verify query ownership.</li><li>rdb.Subscribe("query:status:"+queryID).</li><li>goroutine: forward Redis messages to WS connection.</li><li>Heartbeat ticker 30s.</li><li>On disconnect: rdb.Unsubscribe + conn.Close.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>upgrader:=websocket.Upgrader{CheckOrigin:originWhitelist}</li><li>conn,_:=upgrader.Upgrade(c.Writer,c.Request,nil)</li><li>redisSub:=rdb.Subscribe(ctx,"query:status:"+queryID)</li><li>go func(){ for msg:=range redisSub.Channel(){ conn.WriteMessage(TextMessage,msg.Payload) } }()</li><li>ticker:=time.NewTicker(30s); conn.WriteMessage(PingMessage,...)</li><li>defer redisSub.Close(); conn.Close()</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>WS connect → receives status events as query progresses.</li><li>Invalid token → 401 (before upgrade).</li><li>&gt;1MB result → { type:"result_ready", download_url }.</li><li>Heartbeat every 30s.</li><li>Disconnect → goroutine cleaned up (no leak).</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>101 - Upgrade OK.</li><li>401 - Invalid token.</li><li>403 - Not query owner.</li><li>1001 - WS close on heartbeat timeout.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (transparent - WebSocket managed in background)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No visible component - WS is a background connection</li><li>Badge ("Connected" / "Reconnecting...") - subtle WS status indicator in SQL Lab footer</li><li>Toast - "Connection lost. Reconnecting..." on WS disconnect</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>Zustand wsStore: { connections: Map&lt;queryId, WebSocket&gt;, subscribe, unsubscribe }</li><li>wsStore.subscribe(queryId): creates new WebSocket → ws.onmessage → update queryResult in sqlLabStore</li><li>ws.onclose: attempt reconnect ×3 with exponential backoff → fall back to polling (QE-004)</li><li>ws.onmessage: parse event type → "progress": update Badge → "done": setQueryResult → "error": setQueryError</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>WS connect on async query submit: transparent, no UI action needed.</li><li>Progress event: Badge "Running (42%)..." with percentage if server sends progress.</li><li>"Done" event with inline data ≤1MB: instantly show results in DataTable.</li><li>"result_ready" event &gt;1MB: show Button "Download Results" → triggers SQL-008 flow.</li><li>WS disconnect: Toast "Connection dropped. Reconnecting..." + auto-reconnect silently.</li><li>Reconnect fails: fall back to polling (useQuery refetchInterval:2000) - seamless degradation.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>new WebSocket("wss://"+location.host+"/ws/query/"+queryId+"?token="+accessToken)</li><li>ws.onmessage = (e)=&gt;{ const event=JSON.parse(e.data); dispatch(event) }</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- WebSocket endpoint: client subscribes to query status events. Worker publishes via Redis pub/sub channel "query:status:{query_id}". Server forwards events to all subscribed WS connections. Heartbeat ping every 30s. On "done" event: send result inline if ≤1MB, else send { type:"result_ready", download_url }. Multiple browser tabs can subscribe to same query_id.
+**🔄 Request Flow**
+1. WS upgrade → validate JWT → verify query ownership.
+2. rdb.Subscribe("query:status:"+queryID).
+3. goroutine: forward Redis messages to WS connection.
+4. Heartbeat ticker 30s.
+5. On disconnect: rdb.Unsubscribe + conn.Close.
+**⚙️ Go Implementation**
+1. upgrader:=websocket.Upgrader{CheckOrigin:originWhitelist}
+2. conn,_:=upgrader.Upgrade(c.Writer,c.Request,nil)
+3. redisSub:=rdb.Subscribe(ctx,"query:status:"+queryID)
+4. go func(){ for msg:=range redisSub.Channel(){ conn.WriteMessage(TextMessage,msg.Payload) } }()
+5. ticker:=time.NewTicker(30s); conn.WriteMessage(PingMessage,...)
+6. defer redisSub.Close(); conn.Close() | **✅ Acceptance Criteria**
+- WS connect → receives status events as query progresses.
+- Invalid token → 401 (before upgrade).
+- >1MB result → { type:"result_ready", download_url }.
+- Heartbeat every 30s.
+- Disconnect → goroutine cleaned up (no leak).
+**⚠️ Error Responses**
+- 101 - Upgrade OK.
+- 401 - Invalid token.
+- 403 - Not query owner.
+- 1001 - WS close on heartbeat timeout. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (transparent - WebSocket managed in background)
+**🧩 shadcn/ui Components**
+- No visible component - WS is a background connection
+- Badge ("Connected" / "Reconnecting...") - subtle WS status indicator in SQL Lab footer
+- Toast - "Connection lost. Reconnecting..." on WS disconnect
+**📦 State & TanStack Query**
+- Zustand wsStore: { connections: Map, subscribe, unsubscribe }
+- wsStore.subscribe(queryId): creates new WebSocket → ws.onmessage → update queryResult in sqlLabStore
+- ws.onclose: attempt reconnect ×3 with exponential backoff → fall back to polling (QE-004)
+- ws.onmessage: parse event type → "progress": update Badge → "done": setQueryResult → "error": setQueryError
+**✨ UX Behaviors**
+- WS connect on async query submit: transparent, no UI action needed.
+- Progress event: Badge "Running (42%)..." with percentage if server sends progress.
+- "Done" event with inline data ≤1MB: instantly show results in DataTable.
+- "result_ready" event >1MB: show Button "Download Results" → triggers SQL-008 flow.
+- WS disconnect: Toast "Connection dropped. Reconnecting..." + auto-reconnect silently.
+- Reconnect fails: fall back to polling (useQuery refetchInterval:2000) - seamless degradation.
+**🌐 API Calls**
+1. new WebSocket("wss://"+location.host+"/ws/query/"+queryId+"?token="+accessToken)
+2. ws.onmessage = (e)=>{ const event=JSON.parse(e.data); dispatch(event) } |
+| --- | --- | --- |
+
 
 **QE-006** - **Query Cancellation**
 
@@ -134,7 +361,45 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** QE-004 (async query running), DBC-006 (pool for DB-level cancel)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Cancel in-flight async query. Two layers: (1) Application: redis.Set("query:cancel:{id}","1",5min). Worker polls every 500ms → context.Cancel(). (2) DB-level: PostgreSQL pg_cancel_backend, MySQL KILL QUERY, BigQuery job.Cancel(). Update query.status="stopped". Only owner or Admin. Idempotent: already-done query → 200 with current status.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership check → GORM.First(query) verify status is pending/running.</li><li>redis.Set("query:cancel:"+id,"1",5min).</li><li>DB-level cancel (PostgreSQL: pg_cancel_backend).</li><li>GORM.Update(query,{Status:"stopped",EndTime:now()}).</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>rdb.Set("query:cancel:"+id,"1",5*time.Minute)</li><li>Worker poll: ticker 500ms → redis.Exists("query:cancel:"+id) → cancelFunc()</li><li>PostgreSQL: db.ExecContext(ctx,"SELECT pg_cancel_backend($1)",backendPID)</li><li>GORM.Model(&amp;query{ID:id}).Updates({Status:"stopped",EndTime:now()})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>DELETE → 202 { status:"stopping" }.</li><li>Query transitions to "stopped" within 2s.</li><li>pg_cancel_backend called for PostgreSQL.</li><li>Non-owner → 403.</li><li>Already completed → 200 { status:"success", message:"Query already completed" }.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>404 - Query not found.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (Cancel button in toolbar)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Button ("Cancel", StopCircle Lucide icon, variant=destructive) - shown only when query is running</li><li>AlertDialog (for long-running queries &gt;10s) - "Cancel this query? It may take a moment to stop."</li><li>Badge → transitions from "Running" to "Cancelled" after cancel</li><li>Toast - "Query cancelled"</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useMutation({ mutationFn: (id)=&gt;api.cancelQuery(id), onSuccess: ()=&gt;{ setQueryStatus("stopped"); toast.info("Query cancelled") } })</li><li>Show Cancel Button only when queryStatus === "running" || queryStatus === "pending"</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Cancel Button replaces Run Button while query is in-flight.</li><li>Immediate: Button becomes disabled + Loader2 while cancel request in flight.</li><li>After cancel: Badge "Cancelled" + empty result DataTable.</li><li>If DB-level cancel successful: Toast "Query cancelled" within 2s.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: (id)=&gt;fetch("/api/v1/query/"+id,{method:"DELETE"}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Cancel in-flight async query. Two layers: (1) Application: redis.Set("query:cancel:{id}","1",5min). Worker polls every 500ms → context.Cancel(). (2) DB-level: PostgreSQL pg_cancel_backend, MySQL KILL QUERY, BigQuery job.Cancel(). Update query.status="stopped". Only owner or Admin. Idempotent: already-done query → 200 with current status.
+**🔄 Request Flow**
+1. Ownership check → GORM.First(query) verify status is pending/running.
+2. redis.Set("query:cancel:"+id,"1",5min).
+3. DB-level cancel (PostgreSQL: pg_cancel_backend).
+4. GORM.Update(query,{Status:"stopped",EndTime:now()}).
+**⚙️ Go Implementation**
+1. rdb.Set("query:cancel:"+id,"1",5*time.Minute)
+2. Worker poll: ticker 500ms → redis.Exists("query:cancel:"+id) → cancelFunc()
+3. PostgreSQL: db.ExecContext(ctx,"SELECT pg_cancel_backend($1)",backendPID)
+4. GORM.Model(&query{ID:id}).Updates({Status:"stopped",EndTime:now()}) | **✅ Acceptance Criteria**
+- DELETE → 202 { status:"stopping" }.
+- Query transitions to "stopped" within 2s.
+- pg_cancel_backend called for PostgreSQL.
+- Non-owner → 403.
+- Already completed → 200 { status:"success", message:"Query already completed" }.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 404 - Query not found. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (Cancel button in toolbar)
+**🧩 shadcn/ui Components**
+- Button ("Cancel", StopCircle Lucide icon, variant=destructive) - shown only when query is running
+- AlertDialog (for long-running queries >10s) - "Cancel this query? It may take a moment to stop."
+- Badge → transitions from "Running" to "Cancelled" after cancel
+- Toast - "Query cancelled"
+**📦 State & TanStack Query**
+- useMutation({ mutationFn: (id)=>api.cancelQuery(id), onSuccess: ()=>{ setQueryStatus("stopped"); toast.info("Query cancelled") } })
+- Show Cancel Button only when queryStatus === "running" &#124;&#124; queryStatus === "pending"
+**✨ UX Behaviors**
+- Cancel Button replaces Run Button while query is in-flight.
+- Immediate: Button becomes disabled + Loader2 while cancel request in flight.
+- After cancel: Badge "Cancelled" + empty result DataTable.
+- If DB-level cancel successful: Toast "Query cancelled" within 2s.
+**🌐 API Calls**
+1. useMutation({ mutationFn: (id)=>fetch("/api/v1/query/"+id,{method:"DELETE"}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **QE-007** - **Query History & Result Retrieval**
 
@@ -144,7 +409,53 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** QE-001/QE-004 (queries must be recorded first)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Paginated query history: own queries (non-Admin) or all (Admin). Filters: status, database_id, sql_contains (GIN index on PG), start_time range. Response: id, client_id, database_id, database_name, status, sql (first 500 chars), rows, start_time, end_time, duration_ms, error_message, results_key.</li><li>Result retrieval: GET /:id/result → fetch from Redis using results_key. If expired → 410. Admin bulk delete: DELETE /history?older_than=30d.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GET history: GORM.Where(user_id OR isAdmin).Where(filters).Order(start_time DESC).Paginate.</li><li>GET result: GORM.First(query) → redis.Get("qresult:"+results_key) → 410 if nil.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Where("user_id=? OR ?",uid,isAdmin).Where(statusFilter).Order("start_time DESC").Offset(off).Limit(sz)</li><li>GIN index on query.sql for contains search (PostgreSQL)</li><li>redis.Get("qresult:"+query.ResultsKey) → if nil: 410</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>GET /history → paginated list, newest first.</li><li>GET /history?status=failed → only failed.</li><li>GET /history?sql_contains=orders → GIN index search.</li><li>GET /:id/result → data if Redis key valid.</li><li>/:id/result (expired) → 410.</li><li>DELETE /history?older_than=30d (Admin) → 200 { deleted:N }.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Non-admin accessing others.</li><li>410 - Result expired.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (Results panel → "History" tab)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Tabs [Results | History | Saved Queries] - in SQL Lab results panel</li><li>DataTable (History tab) - cols: Status (Badge), SQL (truncated), DB, Duration, Rows, Actions</li><li>Badge (status color-coded: green=success, red=failed, amber=running, gray=stopped)</li><li>Tooltip on SQL cell - full SQL on hover (Popover)</li><li>Button ("Run Again") per row - loads SQL into editor + runs</li><li>Button ("Load SQL") per row - loads SQL into editor without running</li><li>Button ("Download") per row - triggers SQL-008 if results_key exists</li><li>Input + Search - filter history by SQL content</li><li>Select (Status filter)</li><li>Button ("Clear History") - Admin only, opens AlertDialog</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useQuery({ queryKey:["query-history",{status,q,page}], queryFn: ()=&gt;api.getQueryHistory(filters), refetchInterval:5000 }) - auto-refreshes to show running queries</li><li>useMutation({ mutationFn: (sql)=&gt;{ sqlLabStore.setTabSQL(activeTabId,sql); executeQuery(sql) } }) - "Run Again"</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>History tab auto-refreshes every 5s to show running query progress.</li><li>Status Badge: pulsing animation for "Running" status.</li><li>"Run Again": loads SQL into editor + immediately executes.</li><li>"Load SQL": loads SQL into editor without executing.</li><li>Download icon: only shown if results_key exists (result still cached).</li><li>Expired results: Download icon grayed out with Tooltip "Result expired - rerun query".</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useQuery({ queryKey:["query-history",filters], queryFn: ()=&gt;fetch("/api/v1/query/history?"+qs).then(r=&gt;r.json()), refetchInterval:5000 })</li><li>useQuery({ queryKey:["query-result",id], queryFn: ()=&gt;fetch("/api/v1/query/"+id+"/result").then(r=&gt;r.json()), enabled:false }) - triggered manually</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Paginated query history: own queries (non-Admin) or all (Admin). Filters: status, database_id, sql_contains (GIN index on PG), start_time range. Response: id, client_id, database_id, database_name, status, sql (first 500 chars), rows, start_time, end_time, duration_ms, error_message, results_key.
+- Result retrieval: GET /:id/result → fetch from Redis using results_key. If expired → 410. Admin bulk delete: DELETE /history?older_than=30d.
+**🔄 Request Flow**
+1. GET history: GORM.Where(user_id OR isAdmin).Where(filters).Order(start_time DESC).Paginate.
+2. GET result: GORM.First(query) → redis.Get("qresult:"+results_key) → 410 if nil.
+**⚙️ Go Implementation**
+1. GORM.Where("user_id=? OR ?",uid,isAdmin).Where(statusFilter).Order("start_time DESC").Offset(off).Limit(sz)
+2. GIN index on query.sql for contains search (PostgreSQL)
+3. redis.Get("qresult:"+query.ResultsKey) → if nil: 410 | **✅ Acceptance Criteria**
+- GET /history → paginated list, newest first.
+- GET /history?status=failed → only failed.
+- GET /history?sql_contains=orders → GIN index search.
+- GET /:id/result → data if Redis key valid.
+- /:id/result (expired) → 410.
+- DELETE /history?older_than=30d (Admin) → 200 { deleted:N }.
+**⚠️ Error Responses**
+- 403 - Non-admin accessing others.
+- 410 - Result expired. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (Results panel → "History" tab)
+**🧩 shadcn/ui Components**
+- Tabs [Results &#124; History &#124; Saved Queries] - in SQL Lab results panel
+- DataTable (History tab) - cols: Status (Badge), SQL (truncated), DB, Duration, Rows, Actions
+- Badge (status color-coded: green=success, red=failed, amber=running, gray=stopped)
+- Tooltip on SQL cell - full SQL on hover (Popover)
+- Button ("Run Again") per row - loads SQL into editor + runs
+- Button ("Load SQL") per row - loads SQL into editor without running
+- Button ("Download") per row - triggers SQL-008 if results_key exists
+- Input + Search - filter history by SQL content
+- Select (Status filter)
+- Button ("Clear History") - Admin only, opens AlertDialog
+**📦 State & TanStack Query**
+- useQuery({ queryKey:["query-history",{status,q,page}], queryFn: ()=>api.getQueryHistory(filters), refetchInterval:5000 }) - auto-refreshes to show running queries
+- useMutation({ mutationFn: (sql)=>{ sqlLabStore.setTabSQL(activeTabId,sql); executeQuery(sql) } }) - "Run Again"
+**✨ UX Behaviors**
+- History tab auto-refreshes every 5s to show running query progress.
+- Status Badge: pulsing animation for "Running" status.
+- "Run Again": loads SQL into editor + immediately executes.
+- "Load SQL": loads SQL into editor without executing.
+- Download icon: only shown if results_key exists (result still cached).
+- Expired results: Download icon grayed out with Tooltip "Result expired - rerun query".
+**🌐 API Calls**
+1. useQuery({ queryKey:["query-history",filters], queryFn: ()=>fetch("/api/v1/query/history?"+qs).then(r=>r.json()), refetchInterval:5000 })
+2. useQuery({ queryKey:["query-result",id], queryFn: ()=>fetch("/api/v1/query/"+id+"/result").then(r=>r.json()), enabled:false }) - triggered manually |
+| --- | --- | --- |
+
 
 **QE-008** - **Query Cost Estimation**
 
@@ -154,7 +465,46 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** DBC-006 (pool), DBC-001 (DB type detection)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Estimate query cost before execution. PostgreSQL: EXPLAIN (FORMAT JSON) → parse planner cost + estimated_rows. BigQuery: dry-run API → bytes_processed + estimated_cost_usd. Snowflake: EXPLAIN → partitions + bytes. MySQL/ClickHouse: EXPLAIN. Unsupported: { supported:false }. Rate limit: 30/min.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Detect driver from dbs.sqlalchemy_uri scheme → route to driver-specific estimator.</li><li>PostgreSQL: db.QueryRow("EXPLAIN (FORMAT JSON) "+sql) → parse JSON.</li><li>BigQuery: bqClient.Jobs.Insert(dryRun:true).</li><li>Return EstimateResult.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>switch driver { case "postgresql": explainQuery(); case "bigquery": dryRunBQ(); default: return Estimate{Supported:false} }</li><li>rdb.Incr("rate:estimate:"+uid) Expire(60s) → 429 if &gt;30</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST (PG DB) → { supported:true, total_cost:1250, estimated_rows:50000, driver:"postgresql" }.</li><li>BigQuery → { supported:true, bytes_processed:1073741824, estimated_cost_usd:0.005 }.</li><li>Unsupported → { supported:false }.</li><li>Rate limit → 429.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>200 with supported:false.</li><li>429 - Rate limited.</li><li>422 - SQL error in EXPLAIN.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (optional "Estimate Cost" button, shown for BigQuery/Snowflake connections)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Button ("Estimate Cost", Zap icon, variant=outline) - in SQL Lab toolbar, shown only for supported DBs</li><li>Popover - shows estimate result on button click</li><li>Popover content: Card with metrics (rows, cost, bytes)</li><li>Badge ("PostgreSQL: ~50k rows" or "BigQuery: ~$0.005") - summary in toolbar</li><li>Skeleton - loading state inside Popover</li><li>Alert (info, inside Popover) - "Estimate only. Actual execution may differ."</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useMutation({ mutationFn: api.estimateQuery, onSuccess: (r)=&gt;setEstimate(r) })</li><li>Show button only if: db.backend in ["postgresql","bigquery","snowflake","mysql"]</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Button → Loader2 → Popover opens with estimate.</li><li>PostgreSQL: "Estimated: ~50,000 rows, planner cost: 1,250".</li><li>BigQuery: "Estimated: 1 GB processed (~$0.005 at $5/TB)".</li><li>Estimate refreshes on SQL change (debounced 2s).</li><li>Unsupported DB: Button hidden entirely.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: ({sql,db_id})=&gt;fetch("/api/v1/query/estimate",{method:"POST",body:JSON.stringify({sql,database_id:db_id})}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Estimate query cost before execution. PostgreSQL: EXPLAIN (FORMAT JSON) → parse planner cost + estimated_rows. BigQuery: dry-run API → bytes_processed + estimated_cost_usd. Snowflake: EXPLAIN → partitions + bytes. MySQL/ClickHouse: EXPLAIN. Unsupported: { supported:false }. Rate limit: 30/min.
+**🔄 Request Flow**
+1. Detect driver from dbs.sqlalchemy_uri scheme → route to driver-specific estimator.
+2. PostgreSQL: db.QueryRow("EXPLAIN (FORMAT JSON) "+sql) → parse JSON.
+3. BigQuery: bqClient.Jobs.Insert(dryRun:true).
+4. Return EstimateResult.
+**⚙️ Go Implementation**
+1. switch driver { case "postgresql": explainQuery(); case "bigquery": dryRunBQ(); default: return Estimate{Supported:false} }
+2. rdb.Incr("rate:estimate:"+uid) Expire(60s) → 429 if >30 | **✅ Acceptance Criteria**
+- POST (PG DB) → { supported:true, total_cost:1250, estimated_rows:50000, driver:"postgresql" }.
+- BigQuery → { supported:true, bytes_processed:1073741824, estimated_cost_usd:0.005 }.
+- Unsupported → { supported:false }.
+- Rate limit → 429.
+**⚠️ Error Responses**
+- 200 with supported:false.
+- 429 - Rate limited.
+- 422 - SQL error in EXPLAIN. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (optional "Estimate Cost" button, shown for BigQuery/Snowflake connections)
+**🧩 shadcn/ui Components**
+- Button ("Estimate Cost", Zap icon, variant=outline) - in SQL Lab toolbar, shown only for supported DBs
+- Popover - shows estimate result on button click
+- Popover content: Card with metrics (rows, cost, bytes)
+- Badge ("PostgreSQL: ~50k rows" or "BigQuery: ~$0.005") - summary in toolbar
+- Skeleton - loading state inside Popover
+- Alert (info, inside Popover) - "Estimate only. Actual execution may differ."
+**📦 State & TanStack Query**
+- useMutation({ mutationFn: api.estimateQuery, onSuccess: (r)=>setEstimate(r) })
+- Show button only if: db.backend in ["postgresql","bigquery","snowflake","mysql"]
+**✨ UX Behaviors**
+- Button → Loader2 → Popover opens with estimate.
+- PostgreSQL: "Estimated: ~50,000 rows, planner cost: 1,250".
+- BigQuery: "Estimated: 1 GB processed (~$0.005 at $5/TB)".
+- Estimate refreshes on SQL change (debounced 2s).
+- Unsupported DB: Button hidden entirely.
+**🌐 API Calls**
+1. useMutation({ mutationFn: ({sql,db_id})=>fetch("/api/v1/query/estimate",{method:"POST",body:JSON.stringify({sql,database_id:db_id})}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 ## **Requirements Summary**
 

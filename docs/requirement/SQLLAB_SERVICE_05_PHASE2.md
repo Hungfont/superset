@@ -78,7 +78,75 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-004 (user context), DBC-001 (db_id must be visible)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Create tab with db_id, schema, label (auto "Untitled Query N"), sql, query_limit. Restore: GET all active tabs ordered by created_on. latest_query status included for badge display.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate db_id visibility → auto-label → GORM.Create → return 201. GET: GORM.Where(user,active=true).Preload(LatestQuery).Order(created_on)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>autoLabel: GORM.Where("user_id=? AND label LIKE ?",uid,"Untitled Query%").Find → maxN → "Untitled Query N+1"</li><li>GORM.Create(&amp;tab_state{Active:true,...})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>201 {id,label,active:true}.</li><li>Auto-label increments correctly.</li><li>GET returns cross-device tabs.</li><li>db_id not visible → 422.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>422 - Not visible db_id.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>- SQL Lab Page Layout -</li><li>ResizablePanel + ResizablePanelGroup + ResizableHandle (shadcn) - 3-pane layout: Schema Browser | Editor+Results | (optional detail)</li><li>- Tab Bar (top) -</li><li>Tabs + TabsList - horizontal tab strip above editor</li><li>TabsTrigger per tab - label + close X button + status badge</li><li>Button ("+", size=icon) - add new tab → POST /sqllab/tabs</li><li>DropdownMenu on tab right-click - Close, Close All, Rename</li><li>- Schema Browser (left panel) -</li><li>ScrollArea - scrollable schema tree</li><li>Collapsible + CollapsibleTrigger + CollapsibleContent - schema &gt; tables &gt; columns tree</li><li>Input + Search icon - schema search</li><li>Select (schema) - schema switcher at top of browser</li><li>Skeleton × 5 - loading state for schema list</li><li>- Editor Panel (center) -</li><li>Monaco Editor (SQL mode, dark theme) - main SQL editor</li><li>Button ("Run", size=sm) with Play icon - execute selected SQL or all</li><li>Button ("Run All") - executes entire editor content</li><li>Select (limit) - result row limit dropdown (100/1000/10000)</li><li>Button ("Save") with Save icon - opens saved query Dialog</li><li>Badge (db_name, schema_name) - current connection indicator</li><li>- Results Panel (bottom, inside TabsContent) -</li><li>Tabs [Results | Query Details | Saved Queries]</li><li>DataTable (TanStack Table) - query results with sort + pagination</li><li>Button ("Download CSV/Excel") - export dropdown</li><li>DropdownMenu - format selector for download</li><li>Alert (destructive) - query error display</li><li>Skeleton - results loading state</li><li>Badge (from_cache, latency_ms, rows_count) - query metadata</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>Zustand sqlLabStore: { tabs: Tab[], activeTabId, addTab, closeTab, updateTab }</li><li>Tab state: { id, label, dbId, schema, sql, queryLimit, latestQueryId, resultData, queryStatus }</li><li>useQuery({ queryKey:["sqllab-tabs"], queryFn: api.getTabs, onSuccess: (tabs)=&gt;sqlLabStore.initTabs(tabs) }) - on page mount</li><li>useMutation({ mutationFn: api.createTab, onSuccess: (tab)=&gt;sqlLabStore.addTab(tab) })</li><li>Auto-save: useEffect with debounce(1000ms) → PUT /sqllab/tabs/:id on sql/schema change</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Page load: GET /sqllab/tabs → restore all active tabs. First tab auto-selected.</li><li>Tab strip: each TabsTrigger shows label + status icon (⏳ running / ✅ success / ❌ error) + × close.</li><li>Tab double-click → inline label rename (Input replaces label, blur saves via PUT).</li><li>Editor: Monaco with SQL syntax, line numbers, keyboard shortcut Ctrl+Enter = Run.</li><li>Ctrl+Enter: executes selected text if selection exists, else full editor content.</li><li>Schema browser: click column name → inserts column name at cursor position in Monaco.</li><li>Results: DataTable with sticky header, virtual scrolling for 10k+ rows (TanStack Table virtualized).</li><li>from_cache Badge: green "Cached (42ms)" or gray "Live (234ms)".</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>Monaco Editor: aria-label="SQL Editor".</li><li>Tab strip: role="tablist" with aria-label="SQL Editor Tabs".</li><li>Run Button: aria-label="Run Query (Ctrl+Enter)".</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["sqllab-tabs"], queryFn: ()=&gt;fetch("/api/v1/sqllab/tabs").then(r=&gt;r.json()) })</li><li>useMutation({ mutationFn: (data)=&gt;fetch("/api/v1/sqllab/tabs",{method:"POST",body:JSON.stringify(data)}) })</li><li>Auto-save: debounced fetch("/api/v1/sqllab/tabs/"+id,{method:"PUT",body:JSON.stringify({sql,schema})})</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Create tab with db_id, schema, label (auto "Untitled Query N"), sql, query_limit. Restore: GET all active tabs ordered by created_on. latest_query status included for badge display.
+**🔄 Request Flow**
+1. Validate db_id visibility → auto-label → GORM.Create → return 201. GET: GORM.Where(user,active=true).Preload(LatestQuery).Order(created_on)
+**⚙️ Go Implementation**
+1. autoLabel: GORM.Where("user_id=? AND label LIKE ?",uid,"Untitled Query%").Find → maxN → "Untitled Query N+1"
+2. GORM.Create(&tab_state{Active:true,...}) | **✅ Acceptance Criteria**
+- 201 {id,label,active:true}.
+- Auto-label increments correctly.
+- GET returns cross-device tabs.
+- db_id not visible → 422.
+**⚠️ Error Responses**
+- 422 - Not visible db_id. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab
+**🧩 shadcn/ui Components**
+- - SQL Lab Page Layout -
+- ResizablePanel + ResizablePanelGroup + ResizableHandle (shadcn) - 3-pane layout: Schema Browser &#124; Editor+Results &#124; (optional detail)
+- - Tab Bar (top) -
+- Tabs + TabsList - horizontal tab strip above editor
+- TabsTrigger per tab - label + close X button + status badge
+- Button ("+", size=icon) - add new tab → POST /sqllab/tabs
+- DropdownMenu on tab right-click - Close, Close All, Rename
+- - Schema Browser (left panel) -
+- ScrollArea - scrollable schema tree
+- Collapsible + CollapsibleTrigger + CollapsibleContent - schema > tables > columns tree
+- Input + Search icon - schema search
+- Select (schema) - schema switcher at top of browser
+- Skeleton × 5 - loading state for schema list
+- - Editor Panel (center) -
+- Monaco Editor (SQL mode, dark theme) - main SQL editor
+- Button ("Run", size=sm) with Play icon - execute selected SQL or all
+- Button ("Run All") - executes entire editor content
+- Select (limit) - result row limit dropdown (100/1000/10000)
+- Button ("Save") with Save icon - opens saved query Dialog
+- Badge (db_name, schema_name) - current connection indicator
+- - Results Panel (bottom, inside TabsContent) -
+- Tabs [Results &#124; Query Details &#124; Saved Queries]
+- DataTable (TanStack Table) - query results with sort + pagination
+- Button ("Download CSV/Excel") - export dropdown
+- DropdownMenu - format selector for download
+- Alert (destructive) - query error display
+- Skeleton - results loading state
+- Badge (from_cache, latency_ms, rows_count) - query metadata
+**📦 State & Data Fetching**
+- Zustand sqlLabStore: { tabs: Tab[], activeTabId, addTab, closeTab, updateTab }
+- Tab state: { id, label, dbId, schema, sql, queryLimit, latestQueryId, resultData, queryStatus }
+- useQuery({ queryKey:["sqllab-tabs"], queryFn: api.getTabs, onSuccess: (tabs)=>sqlLabStore.initTabs(tabs) }) - on page mount
+- useMutation({ mutationFn: api.createTab, onSuccess: (tab)=>sqlLabStore.addTab(tab) })
+- Auto-save: useEffect with debounce(1000ms) → PUT /sqllab/tabs/:id on sql/schema change
+**✨ UX Behaviors**
+- Page load: GET /sqllab/tabs → restore all active tabs. First tab auto-selected.
+- Tab strip: each TabsTrigger shows label + status icon (⏳ running / ✅ success / ❌ error) + × close.
+- Tab double-click → inline label rename (Input replaces label, blur saves via PUT).
+- Editor: Monaco with SQL syntax, line numbers, keyboard shortcut Ctrl+Enter = Run.
+- Ctrl+Enter: executes selected text if selection exists, else full editor content.
+- Schema browser: click column name → inserts column name at cursor position in Monaco.
+- Results: DataTable with sticky header, virtual scrolling for 10k+ rows (TanStack Table virtualized).
+- from_cache Badge: green "Cached (42ms)" or gray "Live (234ms)".
+**♿ Accessibility (a11y)**
+- Monaco Editor: aria-label="SQL Editor".
+- Tab strip: role="tablist" with aria-label="SQL Editor Tabs".
+- Run Button: aria-label="Run Query (Ctrl+Enter)".
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["sqllab-tabs"], queryFn: ()=>fetch("/api/v1/sqllab/tabs").then(r=>r.json()) })
+2. useMutation({ mutationFn: (data)=>fetch("/api/v1/sqllab/tabs",{method:"POST",body:JSON.stringify(data)}) })
+3. Auto-save: debounced fetch("/api/v1/sqllab/tabs/"+id,{method:"PUT",body:JSON.stringify({sql,schema})}) |
+| --- | --- | --- |
+
 
 **SQL-002** - **Auto-Save Tab SQL and Editor State**
 
@@ -88,7 +156,38 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** SQL-001 (tab must exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Partial update: sql (max 64KB), schema, db_id, query_limit, label, latest_query_id, hide_left_bar, extra_json. Only non-null provided fields updated. Ownership enforced.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership → validate sql size → GORM.Model.Updates(nonZeroFields)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>nonZeroFields from JSON body (distinguish null vs absent)</li><li>GORM.Model(&amp;tab_state{ID:id}).Updates(fields)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 updated.</li><li>SQL &gt; 64KB → 422.</li><li>Other user → 403.</li><li>Partial update: only provided fields change.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>422 - SQL &gt; 64KB.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (transparent auto-save, no UI)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No dedicated component - auto-save is a background behavior</li><li>Toast (brief, non-intrusive) - "Saving..." indicator (optional, debounced)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useEffect: watch sqlLabStore.tabs[activeTabId].sql → debounce 1000ms → PUT /sqllab/tabs/:id</li><li>useEffect: watch selected schema → immediate PUT (schema changes are intentional, not auto-saved)</li><li>sqlLabStore.setTabDirty(id, bool) - track save state per tab</li><li>useMutation({ mutationFn: api.updateTab }) - called by debounced effect</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Auto-save: silent, no user action needed. Tab label shows unsaved dot (•) if dirty.</li><li>latest_query_id: after QE query completes → PUT { latest_query_id: queryId } → tab linked to last query.</li><li>Network error during auto-save: Toast (warning) "Failed to save tab. Check connection."</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>debounced: fetch("/api/v1/sqllab/tabs/"+id,{method:"PUT",body:JSON.stringify(changes)})</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Partial update: sql (max 64KB), schema, db_id, query_limit, label, latest_query_id, hide_left_bar, extra_json. Only non-null provided fields updated. Ownership enforced.
+**🔄 Request Flow**
+1. Ownership → validate sql size → GORM.Model.Updates(nonZeroFields)
+**⚙️ Go Implementation**
+1. nonZeroFields from JSON body (distinguish null vs absent)
+2. GORM.Model(&tab_state{ID:id}).Updates(fields) | **✅ Acceptance Criteria**
+- 200 updated.
+- SQL > 64KB → 422.
+- Other user → 403.
+- Partial update: only provided fields change.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 422 - SQL > 64KB. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (transparent auto-save, no UI)
+**🧩 shadcn/ui Components**
+- No dedicated component - auto-save is a background behavior
+- Toast (brief, non-intrusive) - "Saving..." indicator (optional, debounced)
+**📦 State & Data Fetching**
+- useEffect: watch sqlLabStore.tabs[activeTabId].sql → debounce 1000ms → PUT /sqllab/tabs/:id
+- useEffect: watch selected schema → immediate PUT (schema changes are intentional, not auto-saved)
+- sqlLabStore.setTabDirty(id, bool) - track save state per tab
+- useMutation({ mutationFn: api.updateTab }) - called by debounced effect
+**✨ UX Behaviors**
+- Auto-save: silent, no user action needed. Tab label shows unsaved dot (•) if dirty.
+- latest_query_id: after QE query completes → PUT { latest_query_id: queryId } → tab linked to last query.
+- Network error during auto-save: Toast (warning) "Failed to save tab. Check connection."
+**🌐 API Calls (TanStack Query)**
+1. debounced: fetch("/api/v1/sqllab/tabs/"+id,{method:"PUT",body:JSON.stringify(changes)}) |
+| --- | --- | --- |
+
 
 **SQL-003** - **Close and Delete Tabs**
 
@@ -98,7 +197,40 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** SQL-001 (tab must exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Soft close: active=false, retained 30d. Hard delete: permanent, cascades table_schema. Close all. include_closed=true restores recently closed tabs.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Soft: GORM.Update(active=false). Hard: TX(delete table_schema, delete tab_state). Close all: GORM.Where(user,active=true).Update(active,false)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>TX: GORM.Where("tab_state_id=?",id).Delete(&amp;table_schema{}); GORM.Delete(&amp;tab_state{},id)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Soft close → tab gone from GET list.</li><li>Hard delete → 204 + table_schema gone.</li><li>Close all → {closed:N}.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>404 - Not found.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (tab × button and context menu)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>TabsTrigger × button - close tab on click (soft close)</li><li>DropdownMenu (right-click on tab) - "Close", "Close All", "Close Others", "Reopen Closed Tab"</li><li>AlertDialog - only if tab has unsaved query running: "Close tab while query is running?"</li><li>Sheet ("Recently Closed") - shows tabs closed in last 7 days for recovery</li><li>Button (in Sheet) - "Reopen" per closed tab</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: (id)=&gt;api.closeTab(id), onSuccess: (id)=&gt;sqlLabStore.removeTab(id) })</li><li>useMutation({ mutationFn: ()=&gt;api.closeAllTabs() })</li><li>useQuery({ queryKey:["closed-tabs"], queryFn: ()=&gt;api.getTabs({include_closed:true}) }) - for Sheet</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Close ×: if tab has running query → AlertDialog confirmation. Else → immediate soft close.</li><li>"Reopen Closed Tab" (Ctrl+Shift+T shortcut): opens Sheet with recently closed tabs list.</li><li>Reopen: POST /sqllab/tabs with recovered sql+schema → adds back as new active tab.</li><li>Close All: DropdownMenu item → AlertDialog "Close all N tabs?" → DELETE /sqllab/tabs.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (id)=&gt;fetch("/api/v1/sqllab/tabs/"+id+"/close",{method:"PUT"}) })</li><li>useMutation({ mutationFn: ()=&gt;fetch("/api/v1/sqllab/tabs",{method:"DELETE"}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Soft close: active=false, retained 30d. Hard delete: permanent, cascades table_schema. Close all. include_closed=true restores recently closed tabs.
+**🔄 Request Flow**
+1. Soft: GORM.Update(active=false). Hard: TX(delete table_schema, delete tab_state). Close all: GORM.Where(user,active=true).Update(active,false)
+**⚙️ Go Implementation**
+1. TX: GORM.Where("tab_state_id=?",id).Delete(&table_schema{}); GORM.Delete(&tab_state{},id) | **✅ Acceptance Criteria**
+- Soft close → tab gone from GET list.
+- Hard delete → 204 + table_schema gone.
+- Close all → {closed:N}.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 404 - Not found. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (tab × button and context menu)
+**🧩 shadcn/ui Components**
+- TabsTrigger × button - close tab on click (soft close)
+- DropdownMenu (right-click on tab) - "Close", "Close All", "Close Others", "Reopen Closed Tab"
+- AlertDialog - only if tab has unsaved query running: "Close tab while query is running?"
+- Sheet ("Recently Closed") - shows tabs closed in last 7 days for recovery
+- Button (in Sheet) - "Reopen" per closed tab
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: (id)=>api.closeTab(id), onSuccess: (id)=>sqlLabStore.removeTab(id) })
+- useMutation({ mutationFn: ()=>api.closeAllTabs() })
+- useQuery({ queryKey:["closed-tabs"], queryFn: ()=>api.getTabs({include_closed:true}) }) - for Sheet
+**✨ UX Behaviors**
+- Close ×: if tab has running query → AlertDialog confirmation. Else → immediate soft close.
+- "Reopen Closed Tab" (Ctrl+Shift+T shortcut): opens Sheet with recently closed tabs list.
+- Reopen: POST /sqllab/tabs with recovered sql+schema → adds back as new active tab.
+- Close All: DropdownMenu item → AlertDialog "Close all N tabs?" → DELETE /sqllab/tabs.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (id)=>fetch("/api/v1/sqllab/tabs/"+id+"/close",{method:"PUT"}) })
+2. useMutation({ mutationFn: ()=>fetch("/api/v1/sqllab/tabs",{method:"DELETE"}) }) |
+| --- | --- | --- |
+
 
 **SQL-004** - **Save Query**
 
@@ -108,7 +240,50 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-004 (user context), DBC-001 (db_id visible)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Create named labeled query. Case-insensitive unique label per user. sql_tables auto-extracted via sqlparser. Published = org-visible. Paginated list: own + published.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate db_id → label uniqueness (case-insensitive) → sqlparser extract tables → GORM.Create</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>sqlparser table extractor → strings.Join → sql_tables</li><li>GORM.Where("LOWER(label)=LOWER(?) AND created_by_fk=?",label,uid).First → 409</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>201 {id,label,sql_tables}.</li><li>Duplicate label (case-insensitive) → 409.</li><li>Published queries visible to org.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>409 - Duplicate label.</li><li>422 - Missing fields.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (Save dialog) + /sqllab/saved-queries (library page)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>- Save Dialog (from SQL Lab "Save" Button) -</li><li>Dialog + DialogContent - save form</li><li>Form + Input - label (query name)</li><li>Textarea - description (optional, markdown)</li><li>Switch - published (share with org)</li><li>Button ("Save Query") - submit</li><li>- Saved Queries Sidebar (Results tab → "Saved Queries" subtab) -</li><li>ScrollArea - list of saved queries</li><li>Input + Search - filter by label</li><li>Button per query - click to load into current tab editor</li><li>- /sqllab/saved-queries Page -</li><li>DataTable - columns: Name, Database, Schema, Modified, Published, Actions</li><li>Badge (Published/Private) - status</li><li>DropdownMenu (Actions) - Load in SQL Lab, Edit, Fork, Delete</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.saveQuery, onSuccess: ()=&gt;{ dialog.close(); toast.success("Query saved"); queryClient.invalidateQueries(["saved-queries"]) } })</li><li>useQuery({ queryKey:["saved-queries",{q,published}] }) - list</li><li>Load query: onClick → sqlLabStore.setTabSQL(activeTabId, query.sql)</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Save Button in editor toolbar → Dialog opens with current tab label pre-filled.</li><li>"Published" Switch: info text "Visible to all team members in your organization".</li><li>Saved Queries subtab in Results panel: compact list with label + DB badge. Click loads SQL into editor.</li><li>"Fork" action: creates copy with "Copy of {label}" → navigate to edit page.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (q)=&gt;fetch("/api/v1/sqllab/saved-queries",{method:"POST",body:JSON.stringify(q)}) })</li><li>useQuery({ queryKey:["saved-queries",filters], queryFn: ()=&gt;fetch("/api/v1/sqllab/saved-queries?"+qs).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Create named labeled query. Case-insensitive unique label per user. sql_tables auto-extracted via sqlparser. Published = org-visible. Paginated list: own + published.
+**🔄 Request Flow**
+1. Validate db_id → label uniqueness (case-insensitive) → sqlparser extract tables → GORM.Create
+**⚙️ Go Implementation**
+1. sqlparser table extractor → strings.Join → sql_tables
+2. GORM.Where("LOWER(label)=LOWER(?) AND created_by_fk=?",label,uid).First → 409 | **✅ Acceptance Criteria**
+- 201 {id,label,sql_tables}.
+- Duplicate label (case-insensitive) → 409.
+- Published queries visible to org.
+**⚠️ Error Responses**
+- 409 - Duplicate label.
+- 422 - Missing fields. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (Save dialog) + /sqllab/saved-queries (library page)
+**🧩 shadcn/ui Components**
+- - Save Dialog (from SQL Lab "Save" Button) -
+- Dialog + DialogContent - save form
+- Form + Input - label (query name)
+- Textarea - description (optional, markdown)
+- Switch - published (share with org)
+- Button ("Save Query") - submit
+- - Saved Queries Sidebar (Results tab → "Saved Queries" subtab) -
+- ScrollArea - list of saved queries
+- Input + Search - filter by label
+- Button per query - click to load into current tab editor
+- - /sqllab/saved-queries Page -
+- DataTable - columns: Name, Database, Schema, Modified, Published, Actions
+- Badge (Published/Private) - status
+- DropdownMenu (Actions) - Load in SQL Lab, Edit, Fork, Delete
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.saveQuery, onSuccess: ()=>{ dialog.close(); toast.success("Query saved"); queryClient.invalidateQueries(["saved-queries"]) } })
+- useQuery({ queryKey:["saved-queries",{q,published}] }) - list
+- Load query: onClick → sqlLabStore.setTabSQL(activeTabId, query.sql)
+**✨ UX Behaviors**
+- Save Button in editor toolbar → Dialog opens with current tab label pre-filled.
+- "Published" Switch: info text "Visible to all team members in your organization".
+- Saved Queries subtab in Results panel: compact list with label + DB badge. Click loads SQL into editor.
+- "Fork" action: creates copy with "Copy of {label}" → navigate to edit page.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (q)=>fetch("/api/v1/sqllab/saved-queries",{method:"POST",body:JSON.stringify(q)}) })
+2. useQuery({ queryKey:["saved-queries",filters], queryFn: ()=>fetch("/api/v1/sqllab/saved-queries?"+qs).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **SQL-005** - **Update and Delete Saved Query**
 
@@ -118,7 +293,43 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** SQL-004 (query must exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Owner/Admin update: label (uniqueness re-check), sql (re-extract sql_tables), description, published, extra_json. Delete: null tab FK refs → hard delete. Fork: copy with "Copy of" prefix.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership → label uniqueness → sql table re-extract → GORM.Updates. Delete: null tab_state.saved_query_id → GORM.Delete</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Model(&amp;tab_state{}).Where("saved_query_id=?",id).Update("saved_query_id",gorm.Expr("NULL"))</li><li>Fork: GORM.First → new struct → GORM.Create</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 updated.</li><li>Fork → 201 new query.</li><li>Delete → tab FK nulled.</li><li>Non-owner → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>409 - Duplicate label.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab/saved-queries (edit via Sheet or dedicated page /sqllab/saved-queries/:id/edit)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Sheet - slide-in edit panel from list page</li><li>Form + Input (label) + Textarea (description) + Switch (published) inside Sheet</li><li>Monaco Editor (mini) - SQL edit inside Sheet</li><li>Button ("Save Changes") - in Sheet footer</li><li>Button ("Fork") - creates copy, opens in new SQL Lab tab</li><li>AlertDialog - delete confirmation</li><li>Badge ("In use by N tabs") - if saved_query_id referenced by tabs</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: (data)=&gt;api.updateSavedQuery(id,data) })</li><li>useMutation({ mutationFn: (id)=&gt;api.deleteSavedQuery(id) })</li><li>useMutation({ mutationFn: (id)=&gt;api.forkSavedQuery(id), onSuccess: (q)=&gt;{ sqlLabStore.openNewTab({sql:q.sql}); toast.success("Forked to new tab") } })</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Sheet: opens on row click from list. Pre-fills all fields.</li><li>"Fork" Button: creates copy + immediately opens forked SQL in new SQL Lab tab.</li><li>Delete: AlertDialog "Delete {label}? This cannot be undone." If used by tabs: info note.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: ({id,...data})=&gt;fetch("/api/v1/sqllab/saved-queries/"+id,{method:"PUT",body:JSON.stringify(data)}) })</li><li>useMutation({ mutationFn: (id)=&gt;fetch("/api/v1/sqllab/saved-queries/"+id+"/fork",{method:"POST"}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Owner/Admin update: label (uniqueness re-check), sql (re-extract sql_tables), description, published, extra_json. Delete: null tab FK refs → hard delete. Fork: copy with "Copy of" prefix.
+**🔄 Request Flow**
+1. Ownership → label uniqueness → sql table re-extract → GORM.Updates. Delete: null tab_state.saved_query_id → GORM.Delete
+**⚙️ Go Implementation**
+1. GORM.Model(&tab_state{}).Where("saved_query_id=?",id).Update("saved_query_id",gorm.Expr("NULL"))
+2. Fork: GORM.First → new struct → GORM.Create | **✅ Acceptance Criteria**
+- 200 updated.
+- Fork → 201 new query.
+- Delete → tab FK nulled.
+- Non-owner → 403.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 409 - Duplicate label. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab/saved-queries (edit via Sheet or dedicated page /sqllab/saved-queries/:id/edit)
+**🧩 shadcn/ui Components**
+- Sheet - slide-in edit panel from list page
+- Form + Input (label) + Textarea (description) + Switch (published) inside Sheet
+- Monaco Editor (mini) - SQL edit inside Sheet
+- Button ("Save Changes") - in Sheet footer
+- Button ("Fork") - creates copy, opens in new SQL Lab tab
+- AlertDialog - delete confirmation
+- Badge ("In use by N tabs") - if saved_query_id referenced by tabs
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: (data)=>api.updateSavedQuery(id,data) })
+- useMutation({ mutationFn: (id)=>api.deleteSavedQuery(id) })
+- useMutation({ mutationFn: (id)=>api.forkSavedQuery(id), onSuccess: (q)=>{ sqlLabStore.openNewTab({sql:q.sql}); toast.success("Forked to new tab") } })
+**✨ UX Behaviors**
+- Sheet: opens on row click from list. Pre-fills all fields.
+- "Fork" Button: creates copy + immediately opens forked SQL in new SQL Lab tab.
+- Delete: AlertDialog "Delete {label}? This cannot be undone." If used by tabs: info note.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: ({id,...data})=>fetch("/api/v1/sqllab/saved-queries/"+id,{method:"PUT",body:JSON.stringify(data)}) })
+2. useMutation({ mutationFn: (id)=>fetch("/api/v1/sqllab/saved-queries/"+id+"/fork",{method:"POST"}) }) |
+| --- | --- | --- |
+
 
 **SQL-006** - **Schema Browser - Table List & Column Expansion**
 
@@ -128,7 +339,53 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** DBC-007 (schema cached in Redis), SQL-001 (tab DB/schema context)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Left panel schema browser: GET merges DBC-007 table list with table_schema expanded state. POST expand: DBC-007.ListColumns + upsert table_schema. DELETE collapse: expanded=false. Schema switch: delete all table_schema for tab.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GET: DBC-007.ListTables → merge with GORM table_schema expanded state. POST: DBC-007.ListColumns → upsert table_schema{expanded:true}. DELETE: GORM.Update(expanded,false)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>Merge: stateMap:=map[string]bool{}; for _,s:=range schemaState{ stateMap[s.Table]=s.Expanded }</li><li>GORM.Clauses(OnConflict DoUpdates[expanded,changed_on]).Create(&amp;table_schema{Expanded:true})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>GET → tables with expanded state.</li><li>POST expand → columns returned + table_schema upserted.</li><li>DELETE collapse → expanded:false.</li><li>Schema change → fresh table list.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>502 - DB unreachable.</li><li>403 - Not tab owner.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (left Schema Browser panel)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>ResizablePanel (left) - schema browser container</li><li>Select - schema picker at top of browser</li><li>Input + Search icon - table filter (client-side)</li><li>Button (RefreshCw icon) - force_refresh schema</li><li>ScrollArea - table list container</li><li>Collapsible + CollapsibleTrigger + CollapsibleContent - per table (expand = columns)</li><li>CollapsibleTrigger: table name + type icon (Table/Eye for view) + column count Badge</li><li>CollapsibleContent: column list with type labels</li><li>Tooltip - full data_type on column hover</li><li>Button (Copy icon, size=xs) on column - copy column name to clipboard</li><li>Skeleton × N - table list loading state</li><li>Badge (VIEW) - for view type tables</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["schema-tables",tabId], queryFn: ()=&gt;api.getSchemaTables(tabId) })</li><li>useState: expandedTables (Set&lt;string&gt;) - local expand tracking (mirrors server state)</li><li>useMutation({ mutationFn: (tableName)=&gt;api.expandTable(tabId,tableName), onSuccess: (r)=&gt;setColumnCache(tableName,r.columns) })</li><li>On schema Select change: clear expandedTables + refetch table list</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Table Collapsible: click trigger → POST expand if not yet expanded → show columns in CollapsibleContent.</li><li>Already expanded (from previous session): columns shown immediately from table_schema state.</li><li>Column click → insert column name at Monaco Editor cursor position.</li><li>Column type: shown as small Badge (INT, VARCHAR, TIMESTAMP, etc.) with color coding.</li><li>Copy icon: click → navigator.clipboard.writeText(columnName) → Tooltip "Copied!".</li><li>Refresh Button: fires GET with force_refresh=true → Skeleton during reload.</li><li>"No tables found" empty state with info text "Select a schema to browse tables".</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["schema-tables",tabId], queryFn: ()=&gt;fetch("/api/v1/sqllab/tabs/"+tabId+"/schema").then(r=&gt;r.json()) })</li><li>useMutation({ mutationFn: (table)=&gt;fetch("/api/v1/sqllab/tabs/"+tabId+"/schema",{method:"POST",body:JSON.stringify({table_name:table})}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Left panel schema browser: GET merges DBC-007 table list with table_schema expanded state. POST expand: DBC-007.ListColumns + upsert table_schema. DELETE collapse: expanded=false. Schema switch: delete all table_schema for tab.
+**🔄 Request Flow**
+1. GET: DBC-007.ListTables → merge with GORM table_schema expanded state. POST: DBC-007.ListColumns → upsert table_schema{expanded:true}. DELETE: GORM.Update(expanded,false)
+**⚙️ Go Implementation**
+1. Merge: stateMap:=map[string]bool{}; for _,s:=range schemaState{ stateMap[s.Table]=s.Expanded }
+2. GORM.Clauses(OnConflict DoUpdates[expanded,changed_on]).Create(&table_schema{Expanded:true}) | **✅ Acceptance Criteria**
+- GET → tables with expanded state.
+- POST expand → columns returned + table_schema upserted.
+- DELETE collapse → expanded:false.
+- Schema change → fresh table list.
+**⚠️ Error Responses**
+- 502 - DB unreachable.
+- 403 - Not tab owner. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (left Schema Browser panel)
+**🧩 shadcn/ui Components**
+- ResizablePanel (left) - schema browser container
+- Select - schema picker at top of browser
+- Input + Search icon - table filter (client-side)
+- Button (RefreshCw icon) - force_refresh schema
+- ScrollArea - table list container
+- Collapsible + CollapsibleTrigger + CollapsibleContent - per table (expand = columns)
+- CollapsibleTrigger: table name + type icon (Table/Eye for view) + column count Badge
+- CollapsibleContent: column list with type labels
+- Tooltip - full data_type on column hover
+- Button (Copy icon, size=xs) on column - copy column name to clipboard
+- Skeleton × N - table list loading state
+- Badge (VIEW) - for view type tables
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["schema-tables",tabId], queryFn: ()=>api.getSchemaTables(tabId) })
+- useState: expandedTables (Set) - local expand tracking (mirrors server state)
+- useMutation({ mutationFn: (tableName)=>api.expandTable(tabId,tableName), onSuccess: (r)=>setColumnCache(tableName,r.columns) })
+- On schema Select change: clear expandedTables + refetch table list
+**✨ UX Behaviors**
+- Table Collapsible: click trigger → POST expand if not yet expanded → show columns in CollapsibleContent.
+- Already expanded (from previous session): columns shown immediately from table_schema state.
+- Column click → insert column name at Monaco Editor cursor position.
+- Column type: shown as small Badge (INT, VARCHAR, TIMESTAMP, etc.) with color coding.
+- Copy icon: click → navigator.clipboard.writeText(columnName) → Tooltip "Copied!".
+- Refresh Button: fires GET with force_refresh=true → Skeleton during reload.
+- "No tables found" empty state with info text "Select a schema to browse tables".
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["schema-tables",tabId], queryFn: ()=>fetch("/api/v1/sqllab/tabs/"+tabId+"/schema").then(r=>r.json()) })
+2. useMutation({ mutationFn: (table)=>fetch("/api/v1/sqllab/tabs/"+tabId+"/schema",{method:"POST",body:JSON.stringify({table_name:table})}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **SQL-007** - **SQL Autocomplete Hints**
 
@@ -138,7 +395,32 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** DBC-007 (schema in Redis), SQL-001 (tab provides DB/schema)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Return autocomplete suggestions: SQL keywords (score 300), schema names (250), table names (200), column names (100), DB functions (150). Fuzzy match (levenshtein ≤2 OR prefix). Context boost: FROM/JOIN → tables+100. Cache miss → keywords only + cache_miss:true. &lt;50ms p99.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Load keywords → redis.Get schema cache → if miss: cache_miss=true → filter+score candidates → context boost → sort → top 20</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>levenshtein O(mn) for short tokens</li><li>contextBoost: lastTokens parse → +100 if FROM/JOIN</li><li>sort.Slice by prefixMatch&gt;score&gt;leven</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>&lt;50ms p99.</li><li>FROM context → tables scored higher.</li><li>Cache miss → keywords only + cache_miss flag.</li><li>Top 20 returned.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>200 with cache_miss:true - schema not cached.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (Monaco Editor autocomplete provider)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Monaco Editor - built-in completion provider registration (no shadcn component needed)</li><li>Alert (info, dismissible) - "Schema not loaded yet. Autocomplete showing SQL keywords only." when cache_miss</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>Monaco completion provider registered via monaco.languages.registerCompletionItemProvider("sql", provider)</li><li>provider.provideCompletionItems: fires POST /api/v1/sqllab/autocomplete with current word + prefix</li><li>Map response to Monaco CompletionItem[] with kind (Keyword/Field/Module) + detail (meta)</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Autocomplete: Ctrl+Space or triggered automatically after 200ms debounce.</li><li>Suggestion list: Monaco native popup. Keyword suggestions shown with "keyword" detail. Table with "table" detail.</li><li>cache_miss=true: Monaco shows keywords only. Alert below editor "Schema loading - full autocomplete will be available shortly.".</li><li>Alert auto-hides when next autocomplete request returns cache_miss=false.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>fetch("/api/v1/sqllab/autocomplete",{method:"POST",body:JSON.stringify({word,prefix,db_id,schema})}).then(r=&gt;r.json())</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Return autocomplete suggestions: SQL keywords (score 300), schema names (250), table names (200), column names (100), DB functions (150). Fuzzy match (levenshtein ≤2 OR prefix). Context boost: FROM/JOIN → tables+100. Cache miss → keywords only + cache_miss:true. score>leven | **✅ Acceptance Criteria**
+- <50ms p99.
+- FROM context → tables scored higher.
+- Cache miss → keywords only + cache_miss flag.
+- Top 20 returned.
+**⚠️ Error Responses**
+- 200 with cache_miss:true - schema not cached. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (Monaco Editor autocomplete provider)
+**🧩 shadcn/ui Components**
+- Monaco Editor - built-in completion provider registration (no shadcn component needed)
+- Alert (info, dismissible) - "Schema not loaded yet. Autocomplete showing SQL keywords only." when cache_miss
+**📦 State & Data Fetching**
+- Monaco completion provider registered via monaco.languages.registerCompletionItemProvider("sql", provider)
+- provider.provideCompletionItems: fires POST /api/v1/sqllab/autocomplete with current word + prefix
+- Map response to Monaco CompletionItem[] with kind (Keyword/Field/Module) + detail (meta)
+**✨ UX Behaviors**
+- Autocomplete: Ctrl+Space or triggered automatically after 200ms debounce.
+- Suggestion list: Monaco native popup. Keyword suggestions shown with "keyword" detail. Table with "table" detail.
+- cache_miss=true: Monaco shows keywords only. Alert below editor "Schema loading - full autocomplete will be available shortly.".
+- Alert auto-hides when next autocomplete request returns cache_miss=false.
+**🌐 API Calls (TanStack Query)**
+1. fetch("/api/v1/sqllab/autocomplete",{method:"POST",body:JSON.stringify({word,prefix,db_id,schema})}).then(r=>r.json()) |
+| --- | --- | --- |
+
 
 **SQL-008** - **Export Query Results (CSV / XLSX / JSON)**
 
@@ -148,7 +430,46 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** QE-001/QE-003 (result in Redis via results_key), AUTH-004 (ownership)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Stream result from Redis. CSV: UTF-8 BOM + encoding/csv streaming. XLSX: excelize with typed cells + bold headers. JSON: streaming array. Rate limit 10/hour.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership → results_key check → set headers → stream format encoder to c.Writer → audit log</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>c.Writer.Write([]byte{0xEF,0xBB,0xBF}) // BOM</li><li>csv.NewWriter(c.Writer) → stream chunks</li><li>excelize: f.Write(c.Writer)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Streamed file download.</li><li>BOM in CSV.</li><li>XLSX bold headers + typed cells.</li><li>Expired result → 410.</li><li>Rate limit → 429.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>410 - Expired.</li><li>422 - Invalid format.</li><li>429 - Rate limit.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/sqllab (Results panel download actions)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DropdownMenu ("Download" button in Results panel) - format selector</li><li>DropdownMenuItem ("Download as CSV") with FileText Lucide icon</li><li>DropdownMenuItem ("Download as Excel") with FileSpreadsheet icon</li><li>DropdownMenuItem ("Download as JSON") with Braces icon</li><li>Toast - "Preparing download..." during fetch + "Download complete" or error</li><li>Button (variant=outline, size=sm) - "Download" trigger in results toolbar</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: ({queryId,format})=&gt;downloadFile("/api/v1/query/"+queryId+"/download?format="+format) })</li><li>downloadFile: fetch → response.blob() → URL.createObjectURL → click &lt;a&gt; → URL.revokeObjectURL</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Download Button in results toolbar → DropdownMenu with 3 format options.</li><li>Click format → Toast "Preparing your download..." with Loader2.</li><li>On blob ready: browser triggers file download with filename "query_{id}_{timestamp}.{ext}".</li><li>Error (410 expired): Toast "Result expired. Re-run query to download.".</li><li>Large downloads (&gt;1MB): progress indication if server streams via ReadableStream.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>async function downloadFile(url){ const r=await fetch(url,{headers:{Authorization:"Bearer "+token}}); const blob=await r.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href) }</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Stream result from Redis. CSV: UTF-8 BOM + encoding/csv streaming. XLSX: excelize with typed cells + bold headers. JSON: streaming array. Rate limit 10/hour.
+**🔄 Request Flow**
+1. Ownership → results_key check → set headers → stream format encoder to c.Writer → audit log
+**⚙️ Go Implementation**
+1. c.Writer.Write([]byte{0xEF,0xBB,0xBF}) // BOM
+2. csv.NewWriter(c.Writer) → stream chunks
+3. excelize: f.Write(c.Writer) | **✅ Acceptance Criteria**
+- Streamed file download.
+- BOM in CSV.
+- XLSX bold headers + typed cells.
+- Expired result → 410.
+- Rate limit → 429.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 410 - Expired.
+- 422 - Invalid format.
+- 429 - Rate limit. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/sqllab (Results panel download actions)
+**🧩 shadcn/ui Components**
+- DropdownMenu ("Download" button in Results panel) - format selector
+- DropdownMenuItem ("Download as CSV") with FileText Lucide icon
+- DropdownMenuItem ("Download as Excel") with FileSpreadsheet icon
+- DropdownMenuItem ("Download as JSON") with Braces icon
+- Toast - "Preparing download..." during fetch + "Download complete" or error
+- Button (variant=outline, size=sm) - "Download" trigger in results toolbar
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: ({queryId,format})=>downloadFile("/api/v1/query/"+queryId+"/download?format="+format) })
+- downloadFile: fetch → response.blob() → URL.createObjectURL → click  → URL.revokeObjectURL
+**✨ UX Behaviors**
+- Download Button in results toolbar → DropdownMenu with 3 format options.
+- Click format → Toast "Preparing your download..." with Loader2.
+- On blob ready: browser triggers file download with filename "query_{id}_{timestamp}.{ext}".
+- Error (410 expired): Toast "Result expired. Re-run query to download.".
+- Large downloads (>1MB): progress indication if server streams via ReadableStream.
+**🌐 API Calls (TanStack Query)**
+1. async function downloadFile(url){ const r=await fetch(url,{headers:{Authorization:"Bearer "+token}}); const blob=await r.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href) } |
+| --- | --- | --- |
+
 
 ## **Requirements Summary**
 

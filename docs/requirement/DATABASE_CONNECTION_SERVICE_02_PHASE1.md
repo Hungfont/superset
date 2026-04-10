@@ -72,7 +72,64 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ---------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | POST /api/v1/databases |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Accept database_name, sqlalchemy_uri, capability flags. Extract + AES-256-GCM encrypt password. Run connection test (strict_test=true default). Persist dbs record. Async audit log.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate → unique check → encrypt password → test connection → GORM.Create → audit log</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>encryptField(plain,key) → AES-256-GCM + base64</li><li>GORM.Create(&amp;dbs{...})</li><li>go auditLog("database_created",id)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>201 with masked URI.</li><li>Duplicate name → 409.</li><li>Test failure + strict=true → 422.</li><li>Raw DB stores ciphertext, not plaintext password.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>409 - Duplicate name.</li><li>422 - Test failed or invalid URI.</li><li>500 - Encryption error.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/databases/new (multi-step Dialog or full page wizard)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Dialog or full-page wizard shell - 3 steps: "Select DB Type" → "Configure Connection" → "Test &amp; Save"</li><li>Tabs or stepper: shadcn Tabs with TabsList + TabsTrigger per step (visual step indicator)</li><li>RadioGroup + RadioGroupItem - DB type selector (PostgreSQL, MySQL, BigQuery, Snowflake, etc.) with logos</li><li>Form + FormField + Input - database_name, host, port, database, username, password fields (auto-populated from type template)</li><li>Input (type=password) - password with show/hide toggle</li><li>Switch - capability toggles (Allow DML, Expose in SQL Lab, Allow Async, Allow File Upload)</li><li>Textarea - Advanced: extra JSON for engine_params</li><li>Button ("Test Connection") - manual test trigger</li><li>Alert (variant=default|destructive) - connection test result inline</li><li>Badge (green/red) - test status indicator</li><li>Button ("Save" + "Back") - wizard navigation</li><li>Accordion - "Advanced Settings" section (SSH Tunnel, SSL cert)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.testConnection }) - "Test Connection" button</li><li>useMutation({ mutationFn: api.createDatabase, onSuccess: ()=&gt;{ navigate("/settings/databases"); toast.success("Database connected successfully") } })</li><li>React Hook Form with Zod - field validation per DB type template</li><li>useState: { step: 0|1|2, testResult: null|{success,latency,version} }</li><li>DB type selection → auto-populate default host/port/driver template</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Step 1: grid of DB type cards (RadioGroup). Each card has DB logo + name. Click selects and enables "Next".</li><li>Step 2: form auto-fills default port (5432 for PG, 3306 for MySQL, etc.) based on DB type.</li><li>Step 3: "Test Connection" Button → POST test endpoint → shows latency, DB version, green/red Badge.</li><li>"Save" disabled until test passes (or user explicitly checks "Save without testing").</li><li>Connection string preview: live-updated masked URI shown below form as user types.</li><li>Error feedback: inline Alert per field (host unreachable, auth failure) from test result.</li><li>Password field: never pre-filled on edit (shows placeholder "Unchanged - leave blank to keep current").</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>database_name: z.string().min(3).max(128)</li><li>port: z.number().int().min(1).max(65535)</li><li>host: z.string().min(1,"Host is required")</li><li>At least database_name + sqlalchemy_uri (or structured fields) required</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>DB type RadioGroup: aria-label="Select database type".</li><li>Step indicator: aria-current="step" on active step.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (data)=&gt;fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(data)}) })</li><li>useMutation({ mutationFn: (data)=&gt;fetch("/api/v1/databases",{method:"POST",body:JSON.stringify(data)}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Accept database_name, sqlalchemy_uri, capability flags. Extract + AES-256-GCM encrypt password. Run connection test (strict_test=true default). Persist dbs record. Async audit log.
+**🔄 Request Flow**
+1. Validate → unique check → encrypt password → test connection → GORM.Create → audit log
+**⚙️ Go Implementation**
+1. encryptField(plain,key) → AES-256-GCM + base64
+2. GORM.Create(&dbs{...})
+3. go auditLog("database_created",id) | **✅ Acceptance Criteria**
+- 201 with masked URI.
+- Duplicate name → 409.
+- Test failure + strict=true → 422.
+- Raw DB stores ciphertext, not plaintext password.
+**⚠️ Error Responses**
+- 409 - Duplicate name.
+- 422 - Test failed or invalid URI.
+- 500 - Encryption error. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/databases/new (multi-step Dialog or full page wizard)
+**🧩 shadcn/ui Components**
+- Dialog or full-page wizard shell - 3 steps: "Select DB Type" → "Configure Connection" → "Test & Save"
+- Tabs or stepper: shadcn Tabs with TabsList + TabsTrigger per step (visual step indicator)
+- RadioGroup + RadioGroupItem - DB type selector (PostgreSQL, MySQL, BigQuery, Snowflake, etc.) with logos
+- Form + FormField + Input - database_name, host, port, database, username, password fields (auto-populated from type template)
+- Input (type=password) - password with show/hide toggle
+- Switch - capability toggles (Allow DML, Expose in SQL Lab, Allow Async, Allow File Upload)
+- Textarea - Advanced: extra JSON for engine_params
+- Button ("Test Connection") - manual test trigger
+- Alert (variant=default&#124;destructive) - connection test result inline
+- Badge (green/red) - test status indicator
+- Button ("Save" + "Back") - wizard navigation
+- Accordion - "Advanced Settings" section (SSH Tunnel, SSL cert)
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.testConnection }) - "Test Connection" button
+- useMutation({ mutationFn: api.createDatabase, onSuccess: ()=>{ navigate("/settings/databases"); toast.success("Database connected successfully") } })
+- React Hook Form with Zod - field validation per DB type template
+- useState: { step: 0&#124;1&#124;2, testResult: null&#124;{success,latency,version} }
+- DB type selection → auto-populate default host/port/driver template
+**✨ UX Behaviors**
+- Step 1: grid of DB type cards (RadioGroup). Each card has DB logo + name. Click selects and enables "Next".
+- Step 2: form auto-fills default port (5432 for PG, 3306 for MySQL, etc.) based on DB type.
+- Step 3: "Test Connection" Button → POST test endpoint → shows latency, DB version, green/red Badge.
+- "Save" disabled until test passes (or user explicitly checks "Save without testing").
+- Connection string preview: live-updated masked URI shown below form as user types.
+- Error feedback: inline Alert per field (host unreachable, auth failure) from test result.
+- Password field: never pre-filled on edit (shows placeholder "Unchanged - leave blank to keep current").
+**🛡️ Client-Side Validation**
+- database_name: z.string().min(3).max(128)
+- port: z.number().int().min(1).max(65535)
+- host: z.string().min(1,"Host is required")
+- At least database_name + sqlalchemy_uri (or structured fields) required
+**♿ Accessibility (a11y)**
+- DB type RadioGroup: aria-label="Select database type".
+- Step indicator: aria-current="step" on active step.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(data)}) })
+2. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases",{method:"POST",body:JSON.stringify(data)}) }) |
+| --- | --- | --- |
+
 
 **DBC-002** - **Test Database Connection**
 
@@ -80,7 +137,43 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ----------------------- | ------------------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read for existing) | POST /api/v1/databases/test · POST /api/v1/databases/:id/test |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Two modes: pre-save (raw config) and existing (by ID). sql.Open → PingContext(5s) → SELECT version(). Return {success, latency_ms, db_version, driver, error}. Rate limit 10/min.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Decrypt creds (mode B) → sql.Open → PingContext(5s) → version query → return TestResult</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>context.WithTimeout(5s)</li><li>db.PingContext(ctx)</li><li>sanitizeError(err,dsn) → remove credentials from error string</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 {success:true, latency_ms, db_version}.</li><li>Bad creds → {success:false, error:"..."}.</li><li>Timeout at 5s.</li><li>Rate limit → 429.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>200 with success:false - connection failure.</li><li>422 - Unknown driver.</li><li>429 - Rate limited.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Inline within DBC-001 wizard (Step 3) + database detail page</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Button ("Test Connection") - primary action, shows Loader2 during test</li><li>Alert - result display: success (green, CheckCircle icon) or failure (red, XCircle icon)</li><li>Badge - latency_ms display ("42ms")</li><li>Card (mini) - DB version string display on success</li><li>Collapsible - "Error details" expansion on failure to show full driver error</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useState: { testStatus: "idle"|"testing"|"success"|"error", testResult: null|TestResult }</li><li>useMutation({ mutationFn: api.testConnection, onSuccess: (r)=&gt;setTestResult(r), onError: ()=&gt;setTestStatus("error") })</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Button shows Loader2 spinner during test (disabled, no double-submit).</li><li>Success: green Alert "Connection successful - PostgreSQL 15.4 (42ms)".</li><li>Failure: red Alert "Connection failed" + Collapsible "Show error details" → driver message.</li><li>Test result persists until form changes (clears on any input change).</li><li>Rate limit hit: Toast "Too many test attempts. Wait 60 seconds."</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (cfg)=&gt;fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(cfg)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Two modes: pre-save (raw config) and existing (by ID). sql.Open → PingContext(5s) → SELECT version(). Return {success, latency_ms, db_version, driver, error}. Rate limit 10/min.
+**🔄 Request Flow**
+1. Decrypt creds (mode B) → sql.Open → PingContext(5s) → version query → return TestResult
+**⚙️ Go Implementation**
+1. context.WithTimeout(5s)
+2. db.PingContext(ctx)
+3. sanitizeError(err,dsn) → remove credentials from error string | **✅ Acceptance Criteria**
+- 200 {success:true, latency_ms, db_version}.
+- Bad creds → {success:false, error:"..."}.
+- Timeout at 5s.
+- Rate limit → 429.
+**⚠️ Error Responses**
+- 200 with success:false - connection failure.
+- 422 - Unknown driver.
+- 429 - Rate limited. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Inline within DBC-001 wizard (Step 3) + database detail page
+**🧩 shadcn/ui Components**
+- Button ("Test Connection") - primary action, shows Loader2 during test
+- Alert - result display: success (green, CheckCircle icon) or failure (red, XCircle icon)
+- Badge - latency_ms display ("42ms")
+- Card (mini) - DB version string display on success
+- Collapsible - "Error details" expansion on failure to show full driver error
+**📦 State & Data Fetching**
+- useState: { testStatus: "idle"&#124;"testing"&#124;"success"&#124;"error", testResult: null&#124;TestResult }
+- useMutation({ mutationFn: api.testConnection, onSuccess: (r)=>setTestResult(r), onError: ()=>setTestStatus("error") })
+**✨ UX Behaviors**
+- Button shows Loader2 spinner during test (disabled, no double-submit).
+- Success: green Alert "Connection successful - PostgreSQL 15.4 (42ms)".
+- Failure: red Alert "Connection failed" + Collapsible "Show error details" → driver message.
+- Test result persists until form changes (clears on any input change).
+- Rate limit hit: Toast "Too many test attempts. Wait 60 seconds."
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (cfg)=>fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(cfg)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **DBC-003** - **List & Get Database Connections**
 
@@ -88,7 +181,47 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | GET /api/v1/databases · GET /api/v1/databases/:id |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Paginated list with role-based visibility (Admin=all, Alpha=own+expose_in_sqllab, Gamma=expose_in_sqllab only). Masks password. Detail adds dataset_count.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Resolve visibility scope → apply filters → GORM.Paginate → mask URIs → return</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Scopes(TenantScope,visibilityScope).Where(filters).Paginate</li><li>maskURI: regexp replace password with "***"</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 paginated list.</li><li>Admin sees all.</li><li>Gamma sees only expose_in_sqllab=true.</li><li>Password never returned.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>404 - Not found or not visible.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/databases</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DataTable - columns: Name, Backend (Badge), SQL Lab (Switch), Async (Switch), Status, Actions</li><li>Button ("+ Connect a Database") - opens DBC-001 wizard</li><li>DropdownMenu (Actions column) - Edit, Test Connection, Delete</li><li>AlertDialog - delete confirmation</li><li>Badge - backend type label (PostgreSQL, MySQL, BigQuery...)</li><li>Switch (read-only) - expose_in_sqllab, allow_run_async display</li><li>Tooltip - hover shows full sqlalchemy_uri with masked password</li><li>Input + Search icon - search by database_name</li><li>Select - filter by backend type</li><li>Skeleton - loading state (3 skeleton rows)</li><li>Empty state - "No databases connected yet" illustration + "Connect a Database" Button</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["databases", filters], queryFn: ()=&gt;api.getDatabases(filters) })</li><li>useState: { searchQ, selectedBackend, page } - filter state</li><li>useMutation for delete: onSuccess: invalidateQueries(["databases"]) + toast.success</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Empty state: centered icon (Database Lucide) + "No databases yet" + CTA Button.</li><li>Table row click → navigate to /settings/databases/:id (detail/edit page).</li><li>Delete: AlertDialog with database name + "This will disconnect all datasets using this database."</li><li>"Test" action in row DropdownMenu → runs DBC-002, shows result in Toast.</li><li>Backend Badge: color-coded (blue=PostgreSQL, orange=MySQL, green=BigQuery, etc.).</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["databases",{q,backend}], queryFn: ()=&gt;fetch("/api/v1/databases?q="+q+"&amp;backend="+backend).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Paginated list with role-based visibility (Admin=all, Alpha=own+expose_in_sqllab, Gamma=expose_in_sqllab only). Masks password. Detail adds dataset_count.
+**🔄 Request Flow**
+1. Resolve visibility scope → apply filters → GORM.Paginate → mask URIs → return
+**⚙️ Go Implementation**
+1. GORM.Scopes(TenantScope,visibilityScope).Where(filters).Paginate
+2. maskURI: regexp replace password with "***" | **✅ Acceptance Criteria**
+- 200 paginated list.
+- Admin sees all.
+- Gamma sees only expose_in_sqllab=true.
+- Password never returned.
+**⚠️ Error Responses**
+- 404 - Not found or not visible. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/databases
+**🧩 shadcn/ui Components**
+- DataTable - columns: Name, Backend (Badge), SQL Lab (Switch), Async (Switch), Status, Actions
+- Button ("+ Connect a Database") - opens DBC-001 wizard
+- DropdownMenu (Actions column) - Edit, Test Connection, Delete
+- AlertDialog - delete confirmation
+- Badge - backend type label (PostgreSQL, MySQL, BigQuery...)
+- Switch (read-only) - expose_in_sqllab, allow_run_async display
+- Tooltip - hover shows full sqlalchemy_uri with masked password
+- Input + Search icon - search by database_name
+- Select - filter by backend type
+- Skeleton - loading state (3 skeleton rows)
+- Empty state - "No databases connected yet" illustration + "Connect a Database" Button
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["databases", filters], queryFn: ()=>api.getDatabases(filters) })
+- useState: { searchQ, selectedBackend, page } - filter state
+- useMutation for delete: onSuccess: invalidateQueries(["databases"]) + toast.success
+**✨ UX Behaviors**
+- Empty state: centered icon (Database Lucide) + "No databases yet" + CTA Button.
+- Table row click → navigate to /settings/databases/:id (detail/edit page).
+- Delete: AlertDialog with database name + "This will disconnect all datasets using this database."
+- "Test" action in row DropdownMenu → runs DBC-002, shows result in Toast.
+- Backend Badge: color-coded (blue=PostgreSQL, orange=MySQL, green=BigQuery, etc.).
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["databases",{q,backend}], queryFn: ()=>fetch("/api/v1/databases?q="+q+"&backend="+backend).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **DBC-004** - **Update Database Connection**
 
@@ -96,7 +229,45 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | PUT /api/v1/databases/:id |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Owner/Admin partial update. Smart password merge (*** = keep existing). Re-test credentials on change. Flush pool + Redis schema cache.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership check → smart password merge → re-encrypt if changed → test → GORM.Save → pool.Close → redis SCAN+DEL</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>if !strings.Contains(newURI,"***"): re-encrypt</li><li>pool.Close(dbID); redis SCAN+DEL "schema:"+dbID+":*"</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 updated record.</li><li>*** password → existing unchanged.</li><li>Test failure → 422, no update.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>422 - Test failed.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/databases/:id</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Same Form as DBC-001 wizard but pre-populated (edit mode)</li><li>Input (password) - placeholder "•••••••• Leave blank to keep current password" (never pre-filled)</li><li>Button ("Save Changes") - disabled until isDirty</li><li>Button ("Test Connection") - same inline test as DBC-002</li><li>Alert - "Changes saved" success inline + Toast</li><li>Breadcrumb - "Settings / Databases / {database_name}"</li><li>Tabs [Connection, Advanced, Datasets] - organize edit sections</li><li>"Datasets" tab: DataTable of datasets using this connection (read-only, links to /datasets/:id)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["database",id] }) - pre-populate form</li><li>useMutation({ mutationFn: api.updateDatabase, onSuccess: ()=&gt;toast.success("Database updated") })</li><li>React Hook Form + Zod - same schema as create, password not required on edit</li><li>isDirty from React Hook Form formState.isDirty</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Edit mode: form pre-filled from GET /api/v1/databases/:id response (masked URI).</li><li>"Save Changes" Button disabled until isDirty=true.</li><li>Password: empty = keep existing, any value = update password.</li><li>Datasets tab shows warning if updating connection used by N active datasets.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery(["database",id])</li><li>useMutation({ mutationFn: (data)=&gt;fetch("/api/v1/databases/"+id,{method:"PUT",body:JSON.stringify(data)}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Owner/Admin partial update. Smart password merge (*** = keep existing). Re-test credentials on change. Flush pool + Redis schema cache.
+**🔄 Request Flow**
+1. Ownership check → smart password merge → re-encrypt if changed → test → GORM.Save → pool.Close → redis SCAN+DEL
+**⚙️ Go Implementation**
+1. if !strings.Contains(newURI,"***"): re-encrypt
+2. pool.Close(dbID); redis SCAN+DEL "schema:"+dbID+":*" | **✅ Acceptance Criteria**
+- 200 updated record.
+- *** password → existing unchanged.
+- Test failure → 422, no update.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 422 - Test failed. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/databases/:id
+**🧩 shadcn/ui Components**
+- Same Form as DBC-001 wizard but pre-populated (edit mode)
+- Input (password) - placeholder "•••••••• Leave blank to keep current password" (never pre-filled)
+- Button ("Save Changes") - disabled until isDirty
+- Button ("Test Connection") - same inline test as DBC-002
+- Alert - "Changes saved" success inline + Toast
+- Breadcrumb - "Settings / Databases / {database_name}"
+- Tabs [Connection, Advanced, Datasets] - organize edit sections
+- "Datasets" tab: DataTable of datasets using this connection (read-only, links to /datasets/:id)
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["database",id] }) - pre-populate form
+- useMutation({ mutationFn: api.updateDatabase, onSuccess: ()=>toast.success("Database updated") })
+- React Hook Form + Zod - same schema as create, password not required on edit
+- isDirty from React Hook Form formState.isDirty
+**✨ UX Behaviors**
+- Edit mode: form pre-filled from GET /api/v1/databases/:id response (masked URI).
+- "Save Changes" Button disabled until isDirty=true.
+- Password: empty = keep existing, any value = update password.
+- Datasets tab shows warning if updating connection used by N active datasets.
+**🌐 API Calls (TanStack Query)**
+1. useQuery(["database",id])
+2. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases/"+id,{method:"PUT",body:JSON.stringify(data)}) }) |
+| --- | --- | --- |
+
 
 **DBC-005** - **Delete Database Connection**
 
@@ -104,7 +275,38 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ---------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | DELETE /api/v1/databases/:id |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Guard: block if datasets exist or queries running. On approve: close pool, clear Redis cache, hard delete.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership → count datasets → count running queries → pool.Close → redis cleanup → GORM.Delete → audit</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Where("database_id=?",id).Count → 409</li><li>pool.Close(id); redis SCAN+DEL pattern</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>204 on success.</li><li>Has datasets → 409 with list.</li><li>Has running queries → 409.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>409 - In use.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>AlertDialog triggered from DBC-003 table or DBC-004 edit page</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>AlertDialog + AlertDialogContent + AlertDialogHeader + AlertDialogTitle + AlertDialogDescription</li><li>AlertDialogFooter + AlertDialogCancel + AlertDialogAction (destructive variant)</li><li>Alert (variant=destructive, shown inside dialog) - if dataset_count &gt; 0: "This database has N datasets. Delete or reassign them first."</li><li>Button (variant=destructive, disabled if has_datasets) - "Delete Database"</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.deleteDatabase, onSuccess: ()=&gt;{ navigate("/settings/databases"); toast.success("Database deleted") } })</li><li>Pre-fetch dataset_count before showing AlertDialog to configure disable state</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>AlertDialog: "Delete {database_name}? This cannot be undone. All connections to this database will be closed."</li><li>If has_datasets: Action Button disabled + Alert inside dialog listing dataset names.</li><li>If has_running_queries: same pattern with running query count.</li><li>On success: navigate back to list + Toast "Database removed".</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (id)=&gt;fetch("/api/v1/databases/"+id,{method:"DELETE"}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Guard: block if datasets exist or queries running. On approve: close pool, clear Redis cache, hard delete.
+**🔄 Request Flow**
+1. Ownership → count datasets → count running queries → pool.Close → redis cleanup → GORM.Delete → audit
+**⚙️ Go Implementation**
+1. GORM.Where("database_id=?",id).Count → 409
+2. pool.Close(id); redis SCAN+DEL pattern | **✅ Acceptance Criteria**
+- 204 on success.
+- Has datasets → 409 with list.
+- Has running queries → 409.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 409 - In use. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+AlertDialog triggered from DBC-003 table or DBC-004 edit page
+**🧩 shadcn/ui Components**
+- AlertDialog + AlertDialogContent + AlertDialogHeader + AlertDialogTitle + AlertDialogDescription
+- AlertDialogFooter + AlertDialogCancel + AlertDialogAction (destructive variant)
+- Alert (variant=destructive, shown inside dialog) - if dataset_count > 0: "This database has N datasets. Delete or reassign them first."
+- Button (variant=destructive, disabled if has_datasets) - "Delete Database"
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.deleteDatabase, onSuccess: ()=>{ navigate("/settings/databases"); toast.success("Database deleted") } })
+- Pre-fetch dataset_count before showing AlertDialog to configure disable state
+**✨ UX Behaviors**
+- AlertDialog: "Delete {database_name}? This cannot be undone. All connections to this database will be closed."
+- If has_datasets: Action Button disabled + Alert inside dialog listing dataset names.
+- If has_running_queries: same pattern with running query count.
+- On success: navigate back to list + Toast "Database removed".
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (id)=>fetch("/api/v1/databases/"+id,{method:"DELETE"}) }) |
+| --- | --- | --- |
+
 
 **DBC-006** - **Connection Pool Management**
 
@@ -112,7 +314,31 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | --------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | - in-memory   | Internal - no HTTP endpoint |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>sync.Map[dbID→*sql.DB]. Lazy init with singleflight. MaxOpenConns=10, MaxIdleConns=3, ConnMaxLifetime=30min. Health monitor goroutine every 60s. Graceful shutdown on SIGTERM.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Get(dbID): sync.Map.Load → hit: return. Miss: singleflight.Do(initPool) → configure → ping → store</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>type PoolManager struct{ pools sync.Map; sf singleflight.Group }</li><li>db.SetMaxOpenConns(10); db.SetMaxIdleConns(3); db.SetConnMaxLifetime(30*time.Minute)</li><li>go healthMonitor(60s ticker)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>1000 concurrent queries → max 10 actual DB connections.</li><li>Singleflight prevents thundering herd.</li><li>Graceful shutdown closes all pools within 10s.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>503 - Pool exhausted (context deadline).</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>N/A - internal backend component</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No UI component</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>No frontend state - transparent to UI</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Pool errors surface as "Database unavailable" Toast when a query fails due to connection exhaustion.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>N/A</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- sync.Map[dbID→*sql.DB]. Lazy init with singleflight. MaxOpenConns=10, MaxIdleConns=3, ConnMaxLifetime=30min. Health monitor goroutine every 60s. Graceful shutdown on SIGTERM.
+**🔄 Request Flow**
+1. Get(dbID): sync.Map.Load → hit: return. Miss: singleflight.Do(initPool) → configure → ping → store
+**⚙️ Go Implementation**
+1. type PoolManager struct{ pools sync.Map; sf singleflight.Group }
+2. db.SetMaxOpenConns(10); db.SetMaxIdleConns(3); db.SetConnMaxLifetime(30*time.Minute)
+3. go healthMonitor(60s ticker) | **✅ Acceptance Criteria**
+- 1000 concurrent queries → max 10 actual DB connections.
+- Singleflight prevents thundering herd.
+- Graceful shutdown closes all pools within 10s.
+**⚠️ Error Responses**
+- 503 - Pool exhausted (context deadline). | **🖥️ Frontend Specification**
+**📍 Route & Page**
+N/A - internal backend component
+**🧩 shadcn/ui Components**
+- No UI component
+**📦 State & Data Fetching**
+- No frontend state - transparent to UI
+**✨ UX Behaviors**
+- Pool errors surface as "Database unavailable" Toast when a query fails due to connection exhaustion.
+**🌐 API Calls (TanStack Query)**
+1. N/A |
+| --- | --- | --- |
+
 
 **DBC-007** - **Schema Introspection**
 
@@ -120,7 +346,47 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | -------------------------------------------------------------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read)    | GET /api/v1/databases/:id/schemas · GET /api/v1/databases/:id/tables · GET /api/v1/databases/:id/columns |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Driver-abstracted schema discovery. Redis cache 10min. Paginated table list. Per-driver INFORMATION_SCHEMA or native queries. force_refresh bypasses cache (rate-limited 5/min).</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Pool.Get → cache check → if miss: inspector.ListX() → redis.Set(10min) → return</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>type SchemaInspector interface{ ListSchemas,ListTables,ListColumns }</li><li>redis.Get("schema:"+dbID+":"+schema+":tables") → if miss: inspector → redis.Set(10min)</li><li>isDttm map per driver</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>GET /schemas → string array.</li><li>GET /tables?schema=X → paginated.</li><li>GET /columns?schema=X&amp;table=Y → column metadata with is_dttm.</li><li>Cache hit on second request.</li><li>force_refresh=true bypasses cache.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>502 - DB unreachable.</li><li>504 - Timeout.</li><li>429 - force_refresh rate limit.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Used by SQL Lab schema browser (SQL-006) + Dataset create wizard (DS-001)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No dedicated page - consumed as API by SQL Lab and Dataset wizard</li><li>In Dataset create wizard: Select (schema dropdown) populated from GET /schemas</li><li>In Dataset create wizard: Command + CommandList (searchable table list) from GET /tables</li><li>ScrollArea + TreeView pattern - schemas → tables → columns hierarchy in SQL Lab sidebar</li><li>Skeleton - loading state during introspection</li><li>Tooltip - column type shown on hover</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["db-schemas",dbId], queryFn: ()=&gt;api.getSchemas(dbId), staleTime: 10*60*1000 }) - match server cache TTL</li><li>useQuery({ queryKey:["db-tables",dbId,schema] }) - populated after schema select</li><li>useQuery({ queryKey:["db-columns",dbId,schema,table] }) - on table expand</li><li>All 3 queries use staleTime=600000 (10min) to match server cache</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Schema select: populated on DB selection, Skeleton while loading.</li><li>Table command: searchable Command component, lazy-loaded on schema selection.</li><li>Columns: loaded on table expand (accordion/collapsible pattern in SQL Lab sidebar).</li><li>force_refresh: "Refresh Schema" Button in SQL Lab sidebar header → fires request with ?force_refresh=true.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["schemas",dbId], queryFn: ()=&gt;fetch("/api/v1/databases/"+dbId+"/schemas").then(r=&gt;r.json()) })</li><li>useQuery({ queryKey:["tables",dbId,schema], queryFn: ()=&gt;fetch("/api/v1/databases/"+dbId+"/tables?schema="+schema).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Driver-abstracted schema discovery. Redis cache 10min. Paginated table list. Per-driver INFORMATION_SCHEMA or native queries. force_refresh bypasses cache (rate-limited 5/min).
+**🔄 Request Flow**
+1. Pool.Get → cache check → if miss: inspector.ListX() → redis.Set(10min) → return
+**⚙️ Go Implementation**
+1. type SchemaInspector interface{ ListSchemas,ListTables,ListColumns }
+2. redis.Get("schema:"+dbID+":"+schema+":tables") → if miss: inspector → redis.Set(10min)
+3. isDttm map per driver | **✅ Acceptance Criteria**
+- GET /schemas → string array.
+- GET /tables?schema=X → paginated.
+- GET /columns?schema=X&table=Y → column metadata with is_dttm.
+- Cache hit on second request.
+- force_refresh=true bypasses cache.
+**⚠️ Error Responses**
+- 502 - DB unreachable.
+- 504 - Timeout.
+- 429 - force_refresh rate limit. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Used by SQL Lab schema browser (SQL-006) + Dataset create wizard (DS-001)
+**🧩 shadcn/ui Components**
+- No dedicated page - consumed as API by SQL Lab and Dataset wizard
+- In Dataset create wizard: Select (schema dropdown) populated from GET /schemas
+- In Dataset create wizard: Command + CommandList (searchable table list) from GET /tables
+- ScrollArea + TreeView pattern - schemas → tables → columns hierarchy in SQL Lab sidebar
+- Skeleton - loading state during introspection
+- Tooltip - column type shown on hover
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["db-schemas",dbId], queryFn: ()=>api.getSchemas(dbId), staleTime: 10*60*1000 }) - match server cache TTL
+- useQuery({ queryKey:["db-tables",dbId,schema] }) - populated after schema select
+- useQuery({ queryKey:["db-columns",dbId,schema,table] }) - on table expand
+- All 3 queries use staleTime=600000 (10min) to match server cache
+**✨ UX Behaviors**
+- Schema select: populated on DB selection, Skeleton while loading.
+- Table command: searchable Command component, lazy-loaded on schema selection.
+- Columns: loaded on table expand (accordion/collapsible pattern in SQL Lab sidebar).
+- force_refresh: "Refresh Schema" Button in SQL Lab sidebar header → fires request with ?force_refresh=true.
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["schemas",dbId], queryFn: ()=>fetch("/api/v1/databases/"+dbId+"/schemas").then(r=>r.json()) })
+2. useQuery({ queryKey:["tables",dbId,schema], queryFn: ()=>fetch("/api/v1/databases/"+dbId+"/tables?schema="+schema).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **⚠ DEPENDENT (2) - requires prior services/requirements**
 
@@ -132,7 +398,44 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** DBC-001 (SSH config in extra JSON), DBC-006 (tunnel lifecycle)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>SSH PKCE flow: parse private key → ssh.Dial → local listener → forward to remote → sql.Open with local port. Private key encrypted. Health monitor verifies SSH every 60s.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>initPool: detect ssh_tunnel → decrypt PEM → ssh.Dial → net.Listen(":0") → forwardTunnel goroutine → sql.Open(localPort)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>ssh.ParsePrivateKeyWithPassphrase(pem,passphrase)</li><li>net.Listen("tcp","127.0.0.1:0") → localPort</li><li>go io.Copy tunnel</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>DB behind bastion → connects through tunnel.</li><li>Wrong passphrase → test returns {success:false}.</li><li>Tunnel drop → health monitor detects + pool cleared.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>502 - SSH unreachable.</li><li>401 - SSH auth failure.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Advanced section in DBC-001 wizard (Accordion "SSH Tunnel")</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Accordion + AccordionItem + AccordionTrigger + AccordionContent - "SSH Tunnel" section</li><li>Switch - enable/disable SSH tunnel</li><li>Form + FormField + Input - SSH Host, Port (default 22), Username</li><li>Textarea - Private Key PEM paste area</li><li>Input (type=password) - Private Key Passphrase (optional)</li><li>Alert (info) - "SSH tunnel will be used to connect to the database through a bastion host"</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useState: sshEnabled (bool) - toggles SSH form visibility</li><li>SSH fields added to React Hook Form when sshEnabled=true</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Switch enables SSH section accordion expansion.</li><li>Private key: Textarea with monospace font, placeholder "-----BEGIN RSA PRIVATE KEY-----".</li><li>Test Connection (DBC-002) validates SSH tunnel too.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>If sshEnabled: ssh_host and ssh_username required.</li><li>Port: integer 1-65535.</li><li>private_key_pem: must start with "-----BEGIN" if provided.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>N/A - part of existing DBC-001/DBC-002 mutations, SSH fields included in payload</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- SSH PKCE flow: parse private key → ssh.Dial → local listener → forward to remote → sql.Open with local port. Private key encrypted. Health monitor verifies SSH every 60s.
+**🔄 Request Flow**
+1. initPool: detect ssh_tunnel → decrypt PEM → ssh.Dial → net.Listen(":0") → forwardTunnel goroutine → sql.Open(localPort)
+**⚙️ Go Implementation**
+1. ssh.ParsePrivateKeyWithPassphrase(pem,passphrase)
+2. net.Listen("tcp","127.0.0.1:0") → localPort
+3. go io.Copy tunnel | **✅ Acceptance Criteria**
+- DB behind bastion → connects through tunnel.
+- Wrong passphrase → test returns {success:false}.
+- Tunnel drop → health monitor detects + pool cleared.
+**⚠️ Error Responses**
+- 502 - SSH unreachable.
+- 401 - SSH auth failure. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Advanced section in DBC-001 wizard (Accordion "SSH Tunnel")
+**🧩 shadcn/ui Components**
+- Accordion + AccordionItem + AccordionTrigger + AccordionContent - "SSH Tunnel" section
+- Switch - enable/disable SSH tunnel
+- Form + FormField + Input - SSH Host, Port (default 22), Username
+- Textarea - Private Key PEM paste area
+- Input (type=password) - Private Key Passphrase (optional)
+- Alert (info) - "SSH tunnel will be used to connect to the database through a bastion host"
+**📦 State & Data Fetching**
+- useState: sshEnabled (bool) - toggles SSH form visibility
+- SSH fields added to React Hook Form when sshEnabled=true
+**✨ UX Behaviors**
+- Switch enables SSH section accordion expansion.
+- Private key: Textarea with monospace font, placeholder "-----BEGIN RSA PRIVATE KEY-----".
+- Test Connection (DBC-002) validates SSH tunnel too.
+**🛡️ Client-Side Validation**
+- If sshEnabled: ssh_host and ssh_username required.
+- Port: integer 1-65535.
+- private_key_pem: must start with "-----BEGIN" if provided.
+**🌐 API Calls (TanStack Query)**
+1. N/A - part of existing DBC-001/DBC-002 mutations, SSH fields included in payload |
+| --- | --- | --- |
+
 
 **DBC-009** - **File Upload to Database Table**
 
@@ -142,7 +445,55 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** DBC-001 (allow_file_upload flag), DBC-006 (pool), AUTH-011 (RBAC)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Multipart CSV/XLSX upload. Guard allow_file_upload flag + RBAC. Validate max 100MB, MIME type, formula injection. Async Asynq job. Worker: parse → infer types → CREATE TABLE → batch INSERT.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Check flag → RBAC → validate file → write temp → Asynq.Enqueue → return 202 {job_id}</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>multipart parse → validate MIME → formula scan</li><li>asynq.Enqueue("csv:import",payload)</li><li>Worker: csv.Reader → type inference → batch INSERT</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>202 + job_id.</li><li>allow_file_upload=false → 403.</li><li>&gt;100MB → 413.</li><li>Formula injection → 422.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Flag disabled.</li><li>413 - Too large.</li><li>422 - Invalid file or injection.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/databases/:id (Upload tab)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Tabs - add "Upload Data" tab to DBC-004 edit page (visible only if allow_file_upload=true)</li><li>Card + drag-drop zone - file drop area using react-dropzone + shadcn styling</li><li>Input (type=file, accept=".csv,.xlsx") - hidden, triggered by dropzone click</li><li>Form + FormField + Input - table_name, schema select, if_exists RadioGroup</li><li>RadioGroup + RadioGroupItem - if_exists: "Fail" | "Replace" | "Append"</li><li>Switch - has_header_row (default on)</li><li>Button ("Upload &amp; Import") - submit with Progress bar below</li><li>Progress - upload + processing progress (polls job status)</li><li>Alert - success (rows_imported count) or error</li><li>Table (preview) - first 5 rows of file shown before import (client-side parse)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.uploadFile }) → returns {job_id}</li><li>useQuery({ queryKey:["job",jobId], refetchInterval: 2000, enabled: !!jobId }) - polls job status</li><li>useState: { file, preview, jobId, importStatus }</li><li>Client-side file parse (PapaParse for CSV, SheetJS for XLSX) for preview</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Drag-drop zone: dashed border, CloudUpload icon, "Drop CSV or Excel file here or click to browse".</li><li>After file selection: show file name + size Badge + 5-row preview DataTable.</li><li>Upload Button → Progress bar 0% → polls job → Progress updates to 100% on completion.</li><li>Success Alert: "✓ 50,000 rows imported into table 'my_data'".</li><li>Error: red Alert with specific error (table exists + if_exists=fail, formula detected, etc.).</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>File: max 100MB client-side (before upload) - show Alert before submitting.</li><li>table_name: /^[a-zA-Z_][a-zA-Z0-9_]*$/ regex - real-time validation.</li><li>File type: only .csv and .xlsx accepted.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (formData)=&gt;fetch("/api/v1/databases/"+id+"/upload",{method:"POST",body:formData}) })</li><li>useQuery({ queryKey:["job",jobId], queryFn: ()=&gt;fetch("/api/v1/jobs/"+jobId).then(r=&gt;r.json()), refetchInterval:2000 })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Multipart CSV/XLSX upload. Guard allow_file_upload flag + RBAC. Validate max 100MB, MIME type, formula injection. Async Asynq job. Worker: parse → infer types → CREATE TABLE → batch INSERT.
+**🔄 Request Flow**
+1. Check flag → RBAC → validate file → write temp → Asynq.Enqueue → return 202 {job_id}
+**⚙️ Go Implementation**
+1. multipart parse → validate MIME → formula scan
+2. asynq.Enqueue("csv:import",payload)
+3. Worker: csv.Reader → type inference → batch INSERT | **✅ Acceptance Criteria**
+- 202 + job_id.
+- allow_file_upload=false → 403.
+- >100MB → 413.
+- Formula injection → 422.
+**⚠️ Error Responses**
+- 403 - Flag disabled.
+- 413 - Too large.
+- 422 - Invalid file or injection. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/databases/:id (Upload tab)
+**🧩 shadcn/ui Components**
+- Tabs - add "Upload Data" tab to DBC-004 edit page (visible only if allow_file_upload=true)
+- Card + drag-drop zone - file drop area using react-dropzone + shadcn styling
+- Input (type=file, accept=".csv,.xlsx") - hidden, triggered by dropzone click
+- Form + FormField + Input - table_name, schema select, if_exists RadioGroup
+- RadioGroup + RadioGroupItem - if_exists: "Fail" &#124; "Replace" &#124; "Append"
+- Switch - has_header_row (default on)
+- Button ("Upload & Import") - submit with Progress bar below
+- Progress - upload + processing progress (polls job status)
+- Alert - success (rows_imported count) or error
+- Table (preview) - first 5 rows of file shown before import (client-side parse)
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.uploadFile }) → returns {job_id}
+- useQuery({ queryKey:["job",jobId], refetchInterval: 2000, enabled: !!jobId }) - polls job status
+- useState: { file, preview, jobId, importStatus }
+- Client-side file parse (PapaParse for CSV, SheetJS for XLSX) for preview
+**✨ UX Behaviors**
+- Drag-drop zone: dashed border, CloudUpload icon, "Drop CSV or Excel file here or click to browse".
+- After file selection: show file name + size Badge + 5-row preview DataTable.
+- Upload Button → Progress bar 0% → polls job → Progress updates to 100% on completion.
+- Success Alert: "✓ 50,000 rows imported into table 'my_data'".
+- Error: red Alert with specific error (table exists + if_exists=fail, formula detected, etc.).
+**🛡️ Client-Side Validation**
+- File: max 100MB client-side (before upload) - show Alert before submitting.
+- table_name: /^[a-zA-Z_][a-zA-Z0-9_]*$/ regex - real-time validation.
+- File type: only .csv and .xlsx accepted.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (formData)=>fetch("/api/v1/databases/"+id+"/upload",{method:"POST",body:formData}) })
+2. useQuery({ queryKey:["job",jobId], queryFn: ()=>fetch("/api/v1/jobs/"+jobId).then(r=>r.json()), refetchInterval:2000 }) |
+| --- | --- | --- |
+
 
 ## **Requirements Summary**
 

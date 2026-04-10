@@ -76,7 +76,46 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 | ----------------- | ------------ | --------- | ---------------- | ------------------------------ |
 | **✓ INDEPENDENT** | **P2**       | Phase 3   | annotation_layer | POST /api/v1/annotation-layers |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Create a named annotation layer. Required: name (unique per org, 3-100 chars). Optional: descr (description, markdown). Layers are org-level shared resources - all authenticated users can use them when configuring charts. Owner = created_by_fk.</li><li>Use cases: "Marketing Campaigns" layer for launch dates, "Incidents" for outage periods, "Releases" for deployments. Layers are reused across multiple charts.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate name uniqueness → GORM.Create(&amp;annotation_layer) → 201.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Where("name=? AND org_id=?",name,orgID).First → 409 if found</li><li>GORM.Create(&amp;annotation_layer{Name:name,Descr:descr,CreatedByFK:uid,OrgID:orgID})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST { name:"Marketing Campaigns", descr:"All campaign launch dates" } → 201 { id, name }.</li><li>Duplicate name in org → 409.</li><li>GET /annotation-layers → all org layers.</li><li>Non-authenticated → 401.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>409 - Duplicate name in org.</li><li>422 - Name too short or too long.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/annotation-layers (+ Button opens Dialog)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DataTable - cols: Name, Description, Annotations (count Badge), Created By, Modified, Actions</li><li>Button ("+ New Layer") - opens Dialog</li><li>Dialog ("New Annotation Layer")</li><li>Form + Input (name) + Textarea (descr) inside Dialog</li><li>Button ("Create Layer") - Dialog submit</li><li>DropdownMenu (Actions per row) - View Annotations, Edit, Delete</li><li>Badge (annotation_count) - click → navigates to /annotation-layers/:id</li><li>Skeleton - 3 loading rows</li><li>Empty state - Tag icon + "No annotation layers yet" + CTA</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useQuery({ queryKey:["annotation-layers"] })</li><li>useMutation({ mutationFn: api.createLayer, onSuccess: ()=&gt;{ queryClient.invalidateQueries(["annotation-layers"]); dialog.close(); toast.success("Layer created") } })</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Dialog: Input auto-focused on open. Enter submits.</li><li>After create: row appears in DataTable (optimistic update).</li><li>annotation_count Badge: click → navigate to /annotation-layers/:id to manage annotations.</li></ul><p><strong>🛡️ Client Validation</strong></p><ul><li>name: z.string().min(3,"Min 3 characters").max(100,"Max 100 characters")</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: (data)=&gt;fetch("/api/v1/annotation-layers",{method:"POST",body:JSON.stringify(data)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Create a named annotation layer. Required: name (unique per org, 3-100 chars). Optional: descr (description, markdown). Layers are org-level shared resources - all authenticated users can use them when configuring charts. Owner = created_by_fk.
+- Use cases: "Marketing Campaigns" layer for launch dates, "Incidents" for outage periods, "Releases" for deployments. Layers are reused across multiple charts.
+**🔄 Request Flow**
+1. Validate name uniqueness → GORM.Create(&annotation_layer) → 201.
+**⚙️ Go Implementation**
+1. GORM.Where("name=? AND org_id=?",name,orgID).First → 409 if found
+2. GORM.Create(&annotation_layer{Name:name,Descr:descr,CreatedByFK:uid,OrgID:orgID}) | **✅ Acceptance Criteria**
+- POST { name:"Marketing Campaigns", descr:"All campaign launch dates" } → 201 { id, name }.
+- Duplicate name in org → 409.
+- GET /annotation-layers → all org layers.
+- Non-authenticated → 401.
+**⚠️ Error Responses**
+- 409 - Duplicate name in org.
+- 422 - Name too short or too long. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/annotation-layers (+ Button opens Dialog)
+**🧩 shadcn/ui Components**
+- DataTable - cols: Name, Description, Annotations (count Badge), Created By, Modified, Actions
+- Button ("+ New Layer") - opens Dialog
+- Dialog ("New Annotation Layer")
+- Form + Input (name) + Textarea (descr) inside Dialog
+- Button ("Create Layer") - Dialog submit
+- DropdownMenu (Actions per row) - View Annotations, Edit, Delete
+- Badge (annotation_count) - click → navigates to /annotation-layers/:id
+- Skeleton - 3 loading rows
+- Empty state - Tag icon + "No annotation layers yet" + CTA
+**📦 State & TanStack Query**
+- useQuery({ queryKey:["annotation-layers"] })
+- useMutation({ mutationFn: api.createLayer, onSuccess: ()=>{ queryClient.invalidateQueries(["annotation-layers"]); dialog.close(); toast.success("Layer created") } })
+**✨ UX Behaviors**
+- Dialog: Input auto-focused on open. Enter submits.
+- After create: row appears in DataTable (optimistic update).
+- annotation_count Badge: click → navigate to /annotation-layers/:id to manage annotations.
+**🛡️ Client Validation**
+- name: z.string().min(3,"Min 3 characters").max(100,"Max 100 characters")
+**🌐 API Calls**
+1. useMutation({ mutationFn: (data)=>fetch("/api/v1/annotation-layers",{method:"POST",body:JSON.stringify(data)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **⚠ DEPENDENT (3) - requires prior services/requirements**
 
@@ -88,7 +127,50 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** ANN-001 (layer must exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Update layer name (re-check uniqueness) or description. Owner or Admin.</li><li>Delete: pre-delete guard - count annotations in layer. If count &gt; 0 → 409 { count, error:"Layer has N annotations. Delete them first." }. If count = 0 → hard delete. Non-owner, non-Admin → 403.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Ownership check → validate name uniqueness if changed.</li><li>GORM.Model(&amp;layer).Updates(fields).</li><li>Delete: GORM.Where("layer_id=?",id).Count → 409 if &gt; 0.</li><li>GORM.Delete(&amp;annotation_layer{},id).</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Where("name=? AND org_id=? AND id!=?",name,orgID,id).First → 409 if found</li><li>GORM.Model(&amp;annotation_layer{ID:id}).Updates(fields)</li><li>GORM.Where("layer_id=?",id).Count(&amp;n) → 409 if n&gt;0</li><li>GORM.Delete(&amp;annotation_layer{},id)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>PUT { name:"Updated Name" } → 200.</li><li>PUT name conflict → 409.</li><li>DELETE with 5 annotations → 409 { count:5, error:"Delete annotations first." }.</li><li>DELETE empty layer → 204.</li><li>Non-owner → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not owner.</li><li>404 - Not found.</li><li>409 - Name conflict or has annotations.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/annotation-layers (edit via inline row actions)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DropdownMenu ("Edit" action) - opens Sheet with edit form</li><li>Sheet ("Edit Layer") - pre-filled name + descr form</li><li>Form + Input + Textarea inside Sheet</li><li>Button ("Save Changes") inside Sheet footer</li><li>AlertDialog - delete confirmation: "Delete {name}? All N annotations will also need to be deleted first."</li><li>AlertDialog (variant: if has annotations) - "This layer has N annotations. Delete all annotations first, then delete the layer."</li><li>Button (AlertDialogAction, disabled if has annotations) - "Delete Layer"</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useMutation({ mutationFn: ({id,...data})=&gt;api.updateLayer(id,data) })</li><li>useMutation({ mutationFn: (id)=&gt;api.deleteLayer(id), onSuccess: ()=&gt;{ queryClient.invalidateQueries(["annotation-layers"]); toast.success("Layer deleted") } })</li><li>Pre-fetch annotation count before opening delete AlertDialog</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Edit Sheet: opens on "Edit" action, pre-fills fields, saves via PUT.</li><li>Delete: check annotation count first. If &gt; 0: AlertDialog with count + "Delete annotations first" - Action button disabled.</li><li>If count = 0: standard AlertDialog confirmation.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: ({id,...d})=&gt;fetch("/api/v1/annotation-layers/"+id,{method:"PUT",body:JSON.stringify(d)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Update layer name (re-check uniqueness) or description. Owner or Admin.
+- Delete: pre-delete guard - count annotations in layer. If count > 0 → 409 { count, error:"Layer has N annotations. Delete them first." }. If count = 0 → hard delete. Non-owner, non-Admin → 403.
+**🔄 Request Flow**
+1. Ownership check → validate name uniqueness if changed.
+2. GORM.Model(&layer).Updates(fields).
+3. Delete: GORM.Where("layer_id=?",id).Count → 409 if > 0.
+4. GORM.Delete(&annotation_layer{},id).
+**⚙️ Go Implementation**
+1. GORM.Where("name=? AND org_id=? AND id!=?",name,orgID,id).First → 409 if found
+2. GORM.Model(&annotation_layer{ID:id}).Updates(fields)
+3. GORM.Where("layer_id=?",id).Count(&n) → 409 if n>0
+4. GORM.Delete(&annotation_layer{},id) | **✅ Acceptance Criteria**
+- PUT { name:"Updated Name" } → 200.
+- PUT name conflict → 409.
+- DELETE with 5 annotations → 409 { count:5, error:"Delete annotations first." }.
+- DELETE empty layer → 204.
+- Non-owner → 403.
+**⚠️ Error Responses**
+- 403 - Not owner.
+- 404 - Not found.
+- 409 - Name conflict or has annotations. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/annotation-layers (edit via inline row actions)
+**🧩 shadcn/ui Components**
+- DropdownMenu ("Edit" action) - opens Sheet with edit form
+- Sheet ("Edit Layer") - pre-filled name + descr form
+- Form + Input + Textarea inside Sheet
+- Button ("Save Changes") inside Sheet footer
+- AlertDialog - delete confirmation: "Delete {name}? All N annotations will also need to be deleted first."
+- AlertDialog (variant: if has annotations) - "This layer has N annotations. Delete all annotations first, then delete the layer."
+- Button (AlertDialogAction, disabled if has annotations) - "Delete Layer"
+**📦 State & TanStack Query**
+- useMutation({ mutationFn: ({id,...data})=>api.updateLayer(id,data) })
+- useMutation({ mutationFn: (id)=>api.deleteLayer(id), onSuccess: ()=>{ queryClient.invalidateQueries(["annotation-layers"]); toast.success("Layer deleted") } })
+- Pre-fetch annotation count before opening delete AlertDialog
+**✨ UX Behaviors**
+- Edit Sheet: opens on "Edit" action, pre-fills fields, saves via PUT.
+- Delete: check annotation count first. If > 0: AlertDialog with count + "Delete annotations first" - Action button disabled.
+- If count = 0: standard AlertDialog confirmation.
+**🌐 API Calls**
+1. useMutation({ mutationFn: ({id,...d})=>fetch("/api/v1/annotation-layers/"+id,{method:"PUT",body:JSON.stringify(d)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **ANN-003** - **Create Annotation**
 
@@ -98,7 +180,68 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** ANN-001 (layer must exist), AUTH-004 (user context)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Create an annotation within a layer. Required: layer_id, short_descr (label shown on chart, max 100 chars). Optional: long_descr (tooltip, markdown), start_dttm (default NOW()), end_dttm (if set → range annotation, must be &gt; start_dttm), json_metadata { color:"#hex", stroke_width:number, opacity:0-1 }.</li><li>Point annotation (no end_dttm): chart renders vertical line. Range annotation (start+end): chart renders shaded region. Validate end_dttm &gt; start_dttm if both provided.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GORM.First(&amp;layer,layerID) → 422 if not found.</li><li>Validate: if end_dttm != nil &amp;&amp; end_dttm &lt;= start_dttm → 422.</li><li>json.Unmarshal(json_metadata) → 422 if invalid.</li><li>GORM.Create(&amp;annotation{...}) → 201.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.First(&amp;layer,layerID) → 422 if err</li><li>if req.EndDttm!=nil &amp;&amp; req.EndDttm.Before(*req.StartDttm): return 422 "end_dttm must be after start_dttm"</li><li>if req.JsonMetadata!="": json.Unmarshal([]byte(req.JsonMetadata),&amp;map[string]interface{}{}) → 422 if err</li><li>GORM.Create(&amp;annotation{LayerID:layerID,...})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST { short_descr:"Q4 Launch", start_dttm:"2024-10-01T00:00:00Z" } → 201 { id, short_descr, start_dttm, end_dttm:null }.</li><li>end_dttm &lt; start_dttm → 422.</li><li>Invalid json_metadata → 422.</li><li>Layer not found → 422.</li><li>GET /annotation-layers/:id/annotations?start=2024-01-01&amp;end=2024-12-31 → time-filtered list.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>422 - Invalid time range, invalid metadata, or layer not found.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/annotation-layers/:id (annotation management page)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>- Page Layout -</li><li>Breadcrumb - "Annotation Layers / {layer_name}"</li><li>Card (header) - layer name + description + annotation count</li><li>Button ("+ Add Annotation") - opens Dialog</li><li>- Create/Edit Dialog -</li><li>Dialog ("Add Annotation")</li><li>Form + Input (short_descr) + Textarea (long_descr)</li><li>DatePicker (shadcn Calendar + Popover) - start_dttm (date + time)</li><li>DatePicker (optional) - end_dttm with Switch "Range Annotation" to toggle</li><li>Switch ("Range Annotation") - enables end_dttm picker</li><li>Input (type=color, shadcn styled) - annotation color picker</li><li>Slider - opacity 0-1</li><li>Input (type=number) - stroke_width 1-5</li><li>Card ("Preview") - shows how annotation will look on chart (line or shaded region)</li><li>Button ("Add Annotation") - submit</li><li>- Annotation List -</li><li>DataTable - cols: Label, Type (Point/Range), Start, End, Color (swatch), Actions</li><li>Badge (Point | Range, color-coded)</li><li>Color swatch cell - 16×16px colored square matching annotation color</li><li>Tooltip on Label - shows long_descr preview</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useQuery({ queryKey:["annotations",layerId,dateRange] })</li><li>useMutation({ mutationFn: api.createAnnotation, onSuccess: ()=&gt;{ queryClient.invalidateQueries(["annotations",layerId]); dialog.close() } })</li><li>useState: { isRange:false, startDttm, endDttm, color:"#1890FF", opacity:0.3, strokeWidth:2 }</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>"Range Annotation" Switch: toggle → second DatePicker appears for end_dttm.</li><li>Preview Card: shows a mini timeline with either a vertical line (point) or shaded region (range) at chosen color/opacity.</li><li>Color picker: native Input[type=color] styled with shadcn border/radius.</li><li>Date+Time picker: shadcn Calendar for date + Input[type=time] for time - combined in Popover.</li><li>DateRange filter above table: filter annotations to a specific time window.</li></ul><p><strong>🛡️ Client Validation</strong></p><ul><li>short_descr: z.string().min(1).max(100).</li><li>end_dttm (if isRange): z.date().min(startDttm,"End must be after start").</li><li>opacity: z.number().min(0).max(1).</li><li>stroke_width: z.number().int().min(1).max(5).</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useMutation({ mutationFn: ({layerId,...data})=&gt;fetch("/api/v1/annotation-layers/"+layerId+"/annotations",{method:"POST",body:JSON.stringify(data)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Create an annotation within a layer. Required: layer_id, short_descr (label shown on chart, max 100 chars). Optional: long_descr (tooltip, markdown), start_dttm (default NOW()), end_dttm (if set → range annotation, must be > start_dttm), json_metadata { color:"#hex", stroke_width:number, opacity:0-1 }.
+- Point annotation (no end_dttm): chart renders vertical line. Range annotation (start+end): chart renders shaded region. Validate end_dttm > start_dttm if both provided.
+**🔄 Request Flow**
+1. GORM.First(&layer,layerID) → 422 if not found.
+2. Validate: if end_dttm != nil && end_dttm <= start_dttm → 422.
+3. json.Unmarshal(json_metadata) → 422 if invalid.
+4. GORM.Create(&annotation{...}) → 201.
+**⚙️ Go Implementation**
+1. GORM.First(&layer,layerID) → 422 if err
+2. if req.EndDttm!=nil && req.EndDttm.Before(*req.StartDttm): return 422 "end_dttm must be after start_dttm"
+3. if req.JsonMetadata!="": json.Unmarshal([]byte(req.JsonMetadata),&map[string]interface{}{}) → 422 if err
+4. GORM.Create(&annotation{LayerID:layerID,...}) | **✅ Acceptance Criteria**
+- POST { short_descr:"Q4 Launch", start_dttm:"2024-10-01T00:00:00Z" } → 201 { id, short_descr, start_dttm, end_dttm:null }.
+- end_dttm < start_dttm → 422.
+- Invalid json_metadata → 422.
+- Layer not found → 422.
+- GET /annotation-layers/:id/annotations?start=2024-01-01&end=2024-12-31 → time-filtered list.
+**⚠️ Error Responses**
+- 422 - Invalid time range, invalid metadata, or layer not found. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/annotation-layers/:id (annotation management page)
+**🧩 shadcn/ui Components**
+- - Page Layout -
+- Breadcrumb - "Annotation Layers / {layer_name}"
+- Card (header) - layer name + description + annotation count
+- Button ("+ Add Annotation") - opens Dialog
+- - Create/Edit Dialog -
+- Dialog ("Add Annotation")
+- Form + Input (short_descr) + Textarea (long_descr)
+- DatePicker (shadcn Calendar + Popover) - start_dttm (date + time)
+- DatePicker (optional) - end_dttm with Switch "Range Annotation" to toggle
+- Switch ("Range Annotation") - enables end_dttm picker
+- Input (type=color, shadcn styled) - annotation color picker
+- Slider - opacity 0-1
+- Input (type=number) - stroke_width 1-5
+- Card ("Preview") - shows how annotation will look on chart (line or shaded region)
+- Button ("Add Annotation") - submit
+- - Annotation List -
+- DataTable - cols: Label, Type (Point/Range), Start, End, Color (swatch), Actions
+- Badge (Point &#124; Range, color-coded)
+- Color swatch cell - 16×16px colored square matching annotation color
+- Tooltip on Label - shows long_descr preview
+**📦 State & TanStack Query**
+- useQuery({ queryKey:["annotations",layerId,dateRange] })
+- useMutation({ mutationFn: api.createAnnotation, onSuccess: ()=>{ queryClient.invalidateQueries(["annotations",layerId]); dialog.close() } })
+- useState: { isRange:false, startDttm, endDttm, color:"#1890FF", opacity:0.3, strokeWidth:2 }
+**✨ UX Behaviors**
+- "Range Annotation" Switch: toggle → second DatePicker appears for end_dttm.
+- Preview Card: shows a mini timeline with either a vertical line (point) or shaded region (range) at chosen color/opacity.
+- Color picker: native Input[type=color] styled with shadcn border/radius.
+- Date+Time picker: shadcn Calendar for date + Input[type=time] for time - combined in Popover.
+- DateRange filter above table: filter annotations to a specific time window.
+**🛡️ Client Validation**
+- short_descr: z.string().min(1).max(100).
+- end_dttm (if isRange): z.date().min(startDttm,"End must be after start").
+- opacity: z.number().min(0).max(1).
+- stroke_width: z.number().int().min(1).max(5).
+**🌐 API Calls**
+1. useMutation({ mutationFn: ({layerId,...data})=>fetch("/api/v1/annotation-layers/"+layerId+"/annotations",{method:"POST",body:JSON.stringify(data)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **ANN-004** - **List, Update and Delete Annotations**
 
@@ -108,7 +251,61 @@ Error handling: React Error Boundary at page level. API errors via toast onError
 
 **⚑ Depends on:** ANN-003 (annotations must exist)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>List: paginated annotations in a layer. Time range filter: WHERE start_dttm BETWEEN filter.start AND filter.end OR (end_dttm IS NOT NULL AND end_dttm BETWEEN ...) - overlap detection. Sorted by start_dttm ASC.</li><li>Update: allow changing short_descr, long_descr, start_dttm, end_dttm, json_metadata. Re-validate time range. Creator or Admin.</li><li>Delete: hard delete, no guard needed (annotations have no downstream FKs). Creator or Admin.</li><li>Bulk delete: DELETE /annotation-layers/:id/annotations?before=ISO8601 - Admin only. Deletes all annotations in layer older than given date.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GET: GORM.Where("layer_id=? AND (start_dttm BETWEEN ? AND ? OR ...)",layerID,start,end).Order("start_dttm ASC").Paginate.</li><li>PUT: ownership → validate time range → GORM.Model.Updates.</li><li>DELETE: ownership → GORM.Delete.</li><li>Bulk DELETE: Admin → GORM.Where("layer_id=? AND start_dttm&lt;?",id,before).Delete.</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Where("layer_id=? AND (start_dttm BETWEEN ? AND ? OR (end_dttm IS NOT NULL AND end_dttm BETWEEN ? AND ?))",id,s,e,s,e)</li><li>.Order("start_dttm ASC").Offset(off).Limit(sz).Find(&amp;annotations)</li><li>Bulk delete: GORM.Where("layer_id=? AND start_dttm&lt;?",id,before).Delete(&amp;annotation{}) → RowsAffected</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>GET → list sorted by start_dttm.</li><li>GET ?start=2024-01-01&amp;end=2024-06-30 → H1 2024 annotations.</li><li>PUT { short_descr:"Updated" } → 200.</li><li>DELETE → 204.</li><li>DELETE ?before=2023-01-01 (Admin) → 200 { deleted:150 }.</li><li>Non-creator on PUT/DELETE → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Not creator.</li><li>404 - Not found.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/annotation-layers/:id (annotation list + edit)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DataTable - with time filter DateRangePicker above</li><li>DateRangePicker (shadcn Calendar range mode) - filter annotations by time window</li><li>Button ("Clear Filter") - reset date range</li><li>DropdownMenu (Actions) - Edit (opens Sheet), Delete</li><li>Sheet ("Edit Annotation") - pre-filled edit form</li><li>AlertDialog - delete confirmation "Delete this annotation?"</li><li>Button ("Bulk Delete Old") - Admin only, opens DatePicker + confirms count</li><li>Badge (count) - "Showing {N} annotations"</li><li>- Timeline Visualization (above DataTable) -</li><li>Recharts ComposedChart - mini timeline showing annotation positions</li><li>ReferenceLine per point annotation - at start_dttm x position</li><li>ReferenceArea per range annotation - from start to end x with fill color</li><li>Tooltip on chart element - shows short_descr + long_descr preview</li></ul><p><strong>📦 State &amp; TanStack Query</strong></p><ul><li>useQuery({ queryKey:["annotations",layerId,{start,end,page}], queryFn: ()=&gt;api.getAnnotations(layerId,{start,end}) })</li><li>useMutation({ mutationFn: ({layerId,annId,...data})=&gt;api.updateAnnotation(layerId,annId,data) })</li><li>useMutation({ mutationFn: ({layerId,annId})=&gt;api.deleteAnnotation(layerId,annId) })</li><li>useState: { dateRange:null, selectedAnnotation:null }</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Timeline chart: x-axis shows time, annotations shown as colored markers. Click marker → selects row in DataTable.</li><li>DateRangePicker filters both the timeline chart and the DataTable simultaneously.</li><li>Edit Sheet: pre-fills all fields. Same form as create Dialog.</li><li>"Bulk Delete Old" (Admin): DatePicker → "Delete all annotations before {date}" → AlertDialog "This will delete N annotations. Continue?"</li><li>Optimistic delete: row disappears immediately from table, restored on error.</li></ul><p><strong>🌐 API Calls</strong></p><ol><li>useQuery({ queryKey:["annotations",layerId,dateRange], queryFn: ()=&gt;fetch("/api/v1/annotation-layers/"+layerId+"/annotations?start="+start+"&amp;end="+end).then(r=&gt;r.json()) })</li><li>useMutation({ mutationFn: ({layerId,annId,...d})=&gt;fetch("/api/v1/annotation-layers/"+layerId+"/annotations/"+annId,{method:"PUT",body:JSON.stringify(d)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- List: paginated annotations in a layer. Time range filter: WHERE start_dttm BETWEEN filter.start AND filter.end OR (end_dttm IS NOT NULL AND end_dttm BETWEEN ...) - overlap detection. Sorted by start_dttm ASC.
+- Update: allow changing short_descr, long_descr, start_dttm, end_dttm, json_metadata. Re-validate time range. Creator or Admin.
+- Delete: hard delete, no guard needed (annotations have no downstream FKs). Creator or Admin.
+- Bulk delete: DELETE /annotation-layers/:id/annotations?before=ISO8601 - Admin only. Deletes all annotations in layer older than given date.
+**🔄 Request Flow**
+1. GET: GORM.Where("layer_id=? AND (start_dttm BETWEEN ? AND ? OR ...)",layerID,start,end).Order("start_dttm ASC").Paginate.
+2. PUT: ownership → validate time range → GORM.Model.Updates.
+3. DELETE: ownership → GORM.Delete.
+4. Bulk DELETE: Admin → GORM.Where("layer_id=? AND start_dttm<?",id,before).Delete.
+**⚙️ Go Implementation**
+1. GORM.Where("layer_id=? AND (start_dttm BETWEEN ? AND ? OR (end_dttm IS NOT NULL AND end_dttm BETWEEN ? AND ?))",id,s,e,s,e)
+2. .Order("start_dttm ASC").Offset(off).Limit(sz).Find(&annotations)
+3. Bulk delete: GORM.Where("layer_id=? AND start_dttm<?",id,before).Delete(&annotation{}) → RowsAffected | **✅ Acceptance Criteria**
+- GET → list sorted by start_dttm.
+- GET ?start=2024-01-01&end=2024-06-30 → H1 2024 annotations.
+- PUT { short_descr:"Updated" } → 200.
+- DELETE → 204.
+- DELETE ?before=2023-01-01 (Admin) → 200 { deleted:150 }.
+- Non-creator on PUT/DELETE → 403.
+**⚠️ Error Responses**
+- 403 - Not creator.
+- 404 - Not found. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/annotation-layers/:id (annotation list + edit)
+**🧩 shadcn/ui Components**
+- DataTable - with time filter DateRangePicker above
+- DateRangePicker (shadcn Calendar range mode) - filter annotations by time window
+- Button ("Clear Filter") - reset date range
+- DropdownMenu (Actions) - Edit (opens Sheet), Delete
+- Sheet ("Edit Annotation") - pre-filled edit form
+- AlertDialog - delete confirmation "Delete this annotation?"
+- Button ("Bulk Delete Old") - Admin only, opens DatePicker + confirms count
+- Badge (count) - "Showing {N} annotations"
+- - Timeline Visualization (above DataTable) -
+- Recharts ComposedChart - mini timeline showing annotation positions
+- ReferenceLine per point annotation - at start_dttm x position
+- ReferenceArea per range annotation - from start to end x with fill color
+- Tooltip on chart element - shows short_descr + long_descr preview
+**📦 State & TanStack Query**
+- useQuery({ queryKey:["annotations",layerId,{start,end,page}], queryFn: ()=>api.getAnnotations(layerId,{start,end}) })
+- useMutation({ mutationFn: ({layerId,annId,...data})=>api.updateAnnotation(layerId,annId,data) })
+- useMutation({ mutationFn: ({layerId,annId})=>api.deleteAnnotation(layerId,annId) })
+- useState: { dateRange:null, selectedAnnotation:null }
+**✨ UX Behaviors**
+- Timeline chart: x-axis shows time, annotations shown as colored markers. Click marker → selects row in DataTable.
+- DateRangePicker filters both the timeline chart and the DataTable simultaneously.
+- Edit Sheet: pre-fills all fields. Same form as create Dialog.
+- "Bulk Delete Old" (Admin): DatePicker → "Delete all annotations before {date}" → AlertDialog "This will delete N annotations. Continue?"
+- Optimistic delete: row disappears immediately from table, restored on error.
+**🌐 API Calls**
+1. useQuery({ queryKey:["annotations",layerId,dateRange], queryFn: ()=>fetch("/api/v1/annotation-layers/"+layerId+"/annotations?start="+start+"&end="+end).then(r=>r.json()) })
+2. useMutation({ mutationFn: ({layerId,annId,...d})=>fetch("/api/v1/annotation-layers/"+layerId+"/annotations/"+annId,{method:"PUT",body:JSON.stringify(d)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 ## **Requirements Summary**
 

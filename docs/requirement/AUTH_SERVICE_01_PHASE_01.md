@@ -81,7 +81,56 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ---------------- | -------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_register_user | POST /api/v1/auth/register |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Accept first_name, last_name, email, username, password. Validate uniqueness across ab_user and ab_register_user. Enforce password complexity (≥12 chars, upper, lower, digit, special). Hash with bcrypt cost=12. Generate 64-byte hex registration_hash. Persist to ab_register_user. Send verification email async.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate fields → uniqueness check → bcrypt hash → generate hash → GORM.Create → go sendEmail()</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>bcrypt.GenerateFromPassword([]byte(password),12)</li><li>hex.EncodeToString(rand.Read(32 bytes)) → RegistrationHash</li><li>GORM.Create(&amp;ab_register_user{...})</li><li>go sendVerificationEmail(email,hash)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST /api/v1/auth/register → 201 { message:"Verification email sent" }.</li><li>Duplicate email → 409. Weak password → 400. Missing field → 422.</li><li>Verification email received with /auth/verify?hash=&lt;64-hex&gt; link.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>400 - Password complexity.</li><li>409 - Duplicate email/username.</li><li>422 - Validation.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/register</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Card + CardHeader + CardContent + CardFooter - page shell</li><li>Form + FormField + FormItem + FormLabel + FormControl + FormMessage - all inputs</li><li>Input (type=text) - first_name, last_name, username</li><li>Input (type=email) - email</li><li>Input (type=password) - password + confirm_password</li><li>Button (type=submit, disabled during mutation) - "Create Account"</li><li>Alert (variant=destructive) - server error display</li><li>Separator + text - "Already have an account? Sign in"</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.register }) → handles POST /api/v1/auth/register</li><li>React Hook Form + Zod schema: z.object({ first_name: z.string().min(1), email: z.string().email(), password: z.string().min(12).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^a-zA-Z0-9]/) })</li><li>On success: navigate to /register/success page showing "Check your email"</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Password strength indicator: shadcn Progress bar 0-100% below password Input, colored red/orange/green.</li><li>Show/hide password toggle: Lucide Eye/EyeOff icon button inside Input suffix.</li><li>Form submit → Button shows Loader2 animate-spin + disabled until mutation settles.</li><li>Field-level errors appear inline via FormMessage below each FormControl.</li><li>After submit, full form disabled to prevent double-submit.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>Zod: password min 12 chars + uppercase regex + digit regex + special char regex.</li><li>confirmPassword: .refine(data =&gt; data.password === data.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] })</li><li>username: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_]+$/)</li><li>email: z.string().email("Enter a valid email address")</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>All inputs have htmlFor labels.</li><li>Error messages linked via aria-describedby.</li><li>Form role="form" with aria-label.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (data) =&gt; fetch("/api/v1/auth/register",{method:"POST",body:JSON.stringify(data)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Accept first_name, last_name, email, username, password. Validate uniqueness across ab_user and ab_register_user. Enforce password complexity (≥12 chars, upper, lower, digit, special). Hash with bcrypt cost=12. Generate 64-byte hex registration_hash. Persist to ab_register_user. Send verification email async.
+**🔄 Request Flow**
+1. Validate fields → uniqueness check → bcrypt hash → generate hash → GORM.Create → go sendEmail()
+**⚙️ Go Implementation**
+1. bcrypt.GenerateFromPassword([]byte(password),12)
+2. hex.EncodeToString(rand.Read(32 bytes)) → RegistrationHash
+3. GORM.Create(&ab_register_user{...})
+4. go sendVerificationEmail(email,hash) | **✅ Acceptance Criteria**
+- POST /api/v1/auth/register → 201 { message:"Verification email sent" }.
+- Duplicate email → 409. Weak password → 400. Missing field → 422.
+- Verification email received with /auth/verify?hash= link.
+**⚠️ Error Responses**
+- 400 - Password complexity.
+- 409 - Duplicate email/username.
+- 422 - Validation. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/register
+**🧩 shadcn/ui Components**
+- Card + CardHeader + CardContent + CardFooter - page shell
+- Form + FormField + FormItem + FormLabel + FormControl + FormMessage - all inputs
+- Input (type=text) - first_name, last_name, username
+- Input (type=email) - email
+- Input (type=password) - password + confirm_password
+- Button (type=submit, disabled during mutation) - "Create Account"
+- Alert (variant=destructive) - server error display
+- Separator + text - "Already have an account? Sign in"
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.register }) → handles POST /api/v1/auth/register
+- React Hook Form + Zod schema: z.object({ first_name: z.string().min(1), email: z.string().email(), password: z.string().min(12).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^a-zA-Z0-9]/) })
+- On success: navigate to /register/success page showing "Check your email"
+**✨ UX Behaviors**
+- Password strength indicator: shadcn Progress bar 0-100% below password Input, colored red/orange/green.
+- Show/hide password toggle: Lucide Eye/EyeOff icon button inside Input suffix.
+- Form submit → Button shows Loader2 animate-spin + disabled until mutation settles.
+- Field-level errors appear inline via FormMessage below each FormControl.
+- After submit, full form disabled to prevent double-submit.
+**🛡️ Client-Side Validation**
+- Zod: password min 12 chars + uppercase regex + digit regex + special char regex.
+- confirmPassword: .refine(data => data.password === data.confirmPassword, { message: "Passwords do not match", path: ["confirmPassword"] })
+- username: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_]+$/)
+- email: z.string().email("Enter a valid email address")
+**♿ Accessibility (a11y)**
+- All inputs have htmlFor labels.
+- Error messages linked via aria-describedby.
+- Form role="form" with aria-label.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (data) => fetch("/api/v1/auth/register",{method:"POST",body:JSON.stringify(data)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **AUTH-002** - **Email Verification & Account Activation**
 
@@ -89,7 +138,42 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | -------------------------- | ----------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_register_user → ab_user | GET /api/v1/auth/verify?hash= |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Verify registration_hash from URL. Check not expired (24h). Atomic TX: create ab_user, delete ab_register_user. Redirect to /login?activated=true.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Parse hash → GORM.First → expiry check → TX(create ab_user, delete reg) → redirect</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>db.Transaction(func(tx){ tx.Create(&amp;ab_user{...}); tx.Delete(®) })</li><li>c.Redirect(302,"/login?activated=true")</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Valid hash → ab_user created, redirect to /login?activated=true.</li><li>Expired → 410. Already used → 404.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>404 - Invalid/used hash.</li><li>410 - Expired link.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/auth/verify (handles the email link click)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Card + CardContent - centered verification status card</li><li>Alert (variant=default|destructive) - success or error state</li><li>Button - "Go to Login" link button</li><li>Skeleton - shown while verifying (async GET in progress)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["verify",hash], queryFn: ()=&gt;api.verify(hash), retry:false }) - fires on mount</li><li>Derive UI state from query: isLoading → Skeleton, isSuccess → green Alert, isError → red Alert + error message</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>On page load: immediately fire GET /api/v1/auth/verify?hash=&lt;hash from URL&gt;.</li><li>Loading state: shadcn Skeleton card for ~1s while request in flight.</li><li>Success: green Alert with CheckCircle Lucide icon + "Account activated! You can now sign in."</li><li>Error: red Alert with XCircle icon + specific error (expired / already used).</li><li>Success state: "Go to Login" Button auto-redirects after 3s countdown shown in Badge.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>hash param validated to be 64 hex chars before firing API call → show 400 Alert if malformed.</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>Alert has role="alert" + aria-live="assertive" so screen readers announce result.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["email-verify",hash], queryFn: ()=&gt;fetch("/api/v1/auth/verify?hash="+hash).then(r=&gt;{ if(!r.ok) throw r; return r.json() }) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Verify registration_hash from URL. Check not expired (24h). Atomic TX: create ab_user, delete ab_register_user. Redirect to /login?activated=true.
+**🔄 Request Flow**
+1. Parse hash → GORM.First → expiry check → TX(create ab_user, delete reg) → redirect
+**⚙️ Go Implementation**
+1. db.Transaction(func(tx){ tx.Create(&ab_user{...}); tx.Delete(®) })
+2. c.Redirect(302,"/login?activated=true") | **✅ Acceptance Criteria**
+- Valid hash → ab_user created, redirect to /login?activated=true.
+- Expired → 410. Already used → 404.
+**⚠️ Error Responses**
+- 404 - Invalid/used hash.
+- 410 - Expired link. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/auth/verify (handles the email link click)
+**🧩 shadcn/ui Components**
+- Card + CardContent - centered verification status card
+- Alert (variant=default&#124;destructive) - success or error state
+- Button - "Go to Login" link button
+- Skeleton - shown while verifying (async GET in progress)
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["verify",hash], queryFn: ()=>api.verify(hash), retry:false }) - fires on mount
+- Derive UI state from query: isLoading → Skeleton, isSuccess → green Alert, isError → red Alert + error message
+**✨ UX Behaviors**
+- On page load: immediately fire GET /api/v1/auth/verify?hash=.
+- Loading state: shadcn Skeleton card for ~1s while request in flight.
+- Success: green Alert with CheckCircle Lucide icon + "Account activated! You can now sign in."
+- Error: red Alert with XCircle icon + specific error (expired / already used).
+- Success state: "Go to Login" Button auto-redirects after 3s countdown shown in Badge.
+**🛡️ Client-Side Validation**
+- hash param validated to be 64 hex chars before firing API call → show 400 Alert if malformed.
+**♿ Accessibility (a11y)**
+- Alert has role="alert" + aria-live="assertive" so screen readers announce result.
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["email-verify",hash], queryFn: ()=>fetch("/api/v1/auth/verify?hash="+hash).then(r=>{ if(!r.ok) throw r; return r.json() }) }) |
+| --- | --- | --- |
+
 
 **AUTH-003** - **Login with Username / Password**
 
@@ -97,7 +181,58 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ----------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user       | POST /api/v1/auth/login |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Validate credentials, check active, enforce rate limit (20/min/IP) and account lockout (5 failures → 15min). Return RS256 JWT (15min) + refresh token (7d, HttpOnly cookie). Update login_count, last_login.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Rate limit → find user → lockout check → bcrypt.Compare → update counters → jwt.Sign → set cookie → return tokens</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>redis.Incr("rate:login:"+ip) Expire(60s) → 429 if &gt;20</li><li>bcrypt.CompareHashAndPassword</li><li>jwt.NewWithClaims(RS256,claims).SignedString(privateKey)</li><li>redis.Set("refresh:"+token,userID,7*24*time.Hour)</li><li>c.SetCookie("refresh_token",refresh,7*24*3600,"/","",true,true)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 + {access_token, refresh_token}.</li><li>5× bad password → 423 Locked.</li><li>Rate limit → 429.</li><li>Inactive → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>401 - Bad credentials.</li><li>403 - Inactive.</li><li>423 - Locked.</li><li>429 - Rate limit.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/login</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Card + CardHeader + CardTitle + CardDescription + CardContent + CardFooter - page shell</li><li>Form + FormField + FormItem + FormLabel + FormControl + FormMessage - all inputs</li><li>Input (type=text) - username or email</li><li>Input (type=password) - password with show/hide toggle</li><li>Button (type=submit) - "Sign In" with loading state</li><li>Alert (variant=destructive) - lockout / inactive / server error</li><li>Separator - between form and OAuth options</li><li>Button (variant=outline) × N - one per OAuth provider (Google, etc.) with provider icon</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>Zustand authStore: { user, accessToken, isAuthenticated, setAuth, clearAuth }</li><li>useMutation({ mutationFn: api.login, onSuccess: (data)=&gt;{ authStore.setAuth(data); navigate("/") }, onError: (err)=&gt;{ toast.error(err.message) } })</li><li>React Hook Form: { username: z.string().min(1), password: z.string().min(1) }</li><li>Persist accessToken in memory (NOT localStorage). Refresh token in HttpOnly cookie.</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>If redirected from protected route: show shadcn Alert (info) "Sign in to continue".</li><li>?activated=true query param: show success Alert "Account activated! Welcome aboard."</li><li>Submit: Button disabled + Loader2 spinner during login request.</li><li>Lockout error: Alert shows countdown timer until account unlocks (JS setInterval).</li><li>Remember username: shadcn Checkbox "Remember me" → saves username to localStorage only.</li><li>Forgot password link → /forgot-password route.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>username + password both required (non-empty Zod).</li><li>No client-side length or complexity on login - server handles.</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>autocomplete="username" and autocomplete="current-password" on inputs.</li><li>Button aria-busy=true during submission.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (creds)=&gt;fetch("/api/v1/auth/login",{method:"POST",body:JSON.stringify(creds)}).then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Validate credentials, check active, enforce rate limit (20/min/IP) and account lockout (5 failures → 15min). Return RS256 JWT (15min) + refresh token (7d, HttpOnly cookie). Update login_count, last_login.
+**🔄 Request Flow**
+1. Rate limit → find user → lockout check → bcrypt.Compare → update counters → jwt.Sign → set cookie → return tokens
+**⚙️ Go Implementation**
+1. redis.Incr("rate:login:"+ip) Expire(60s) → 429 if >20
+2. bcrypt.CompareHashAndPassword
+3. jwt.NewWithClaims(RS256,claims).SignedString(privateKey)
+4. redis.Set("refresh:"+token,userID,7*24*time.Hour)
+5. c.SetCookie("refresh_token",refresh,7*24*3600,"/","",true,true) | **✅ Acceptance Criteria**
+- 200 + {access_token, refresh_token}.
+- 5× bad password → 423 Locked.
+- Rate limit → 429.
+- Inactive → 403.
+**⚠️ Error Responses**
+- 401 - Bad credentials.
+- 403 - Inactive.
+- 423 - Locked.
+- 429 - Rate limit. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/login
+**🧩 shadcn/ui Components**
+- Card + CardHeader + CardTitle + CardDescription + CardContent + CardFooter - page shell
+- Form + FormField + FormItem + FormLabel + FormControl + FormMessage - all inputs
+- Input (type=text) - username or email
+- Input (type=password) - password with show/hide toggle
+- Button (type=submit) - "Sign In" with loading state
+- Alert (variant=destructive) - lockout / inactive / server error
+- Separator - between form and OAuth options
+- Button (variant=outline) × N - one per OAuth provider (Google, etc.) with provider icon
+**📦 State & Data Fetching**
+- Zustand authStore: { user, accessToken, isAuthenticated, setAuth, clearAuth }
+- useMutation({ mutationFn: api.login, onSuccess: (data)=>{ authStore.setAuth(data); navigate("/") }, onError: (err)=>{ toast.error(err.message) } })
+- React Hook Form: { username: z.string().min(1), password: z.string().min(1) }
+- Persist accessToken in memory (NOT localStorage). Refresh token in HttpOnly cookie.
+**✨ UX Behaviors**
+- If redirected from protected route: show shadcn Alert (info) "Sign in to continue".
+- ?activated=true query param: show success Alert "Account activated! Welcome aboard."
+- Submit: Button disabled + Loader2 spinner during login request.
+- Lockout error: Alert shows countdown timer until account unlocks (JS setInterval).
+- Remember username: shadcn Checkbox "Remember me" → saves username to localStorage only.
+- Forgot password link → /forgot-password route.
+**🛡️ Client-Side Validation**
+- username + password both required (non-empty Zod).
+- No client-side length or complexity on login - server handles.
+**♿ Accessibility (a11y)**
+- autocomplete="username" and autocomplete="current-password" on inputs.
+- Button aria-busy=true during submission.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (creds)=>fetch("/api/v1/auth/login",{method:"POST",body:JSON.stringify(creds)}).then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 **AUTH-004** - **JWT Middleware & Token Validation**
 
@@ -105,7 +240,45 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | -------------- | ------------------------------------------ |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user (read) | Internal middleware - all protected routes |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Gin middleware: extract Bearer token → verify RS256 → check jti blacklist → load user from Redis cache → inject UserContext into Gin context. &lt;2ms p99.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Extract header → ParseWithClaims → check blacklist → cache lookup → inject ctx → Next()</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>jwt.ParseWithClaims(token,&amp;Claims{},keyFunc)</li><li>redis.Exists("jwt:blacklist:"+jti) → 401 if found</li><li>redis.Get("user:"+uid) → if miss: GORM.First → cache 5min</li><li>c.Set("user",UserContext{...}); c.Next()</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Valid token → ctx["user"] set, handler proceeds.</li><li>Missing/expired/tampered/revoked → 401.</li><li>Deactivated user → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>401 - All token failures.</li><li>403 - Inactive user.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>N/A - frontend-side token management via Zustand + axios/fetch interceptor</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No UI component - this is an HTTP interceptor concern</li><li>Toaster (shadcn) - surfaced when token expires mid-session</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>Zustand authStore.accessToken - stored in memory, never localStorage</li><li>TanStack Query: set retry: false for 401 errors, redirect to /login instead</li><li>Axios/fetch interceptor: on 401 response → attempt refresh (POST /auth/refresh) → retry original request → if refresh fails: authStore.clearAuth() + navigate("/login")</li><li>Silent refresh: schedule token refresh at (exp - 60s) using setTimeout stored in authStore</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Token expiry mid-session: transparent silent refresh (user sees nothing).</li><li>Silent refresh failure: shadcn Toast (variant=destructive) "Your session expired. Please sign in again." → redirect /login.</li><li>Protected routes: React Router &lt;RequireAuth&gt; wrapper component checks authStore.isAuthenticated, redirects /login with state={from:currentPath}.</li><li>On login after redirect: navigate to state.from or "/" (saved redirect).</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>Client checks token exp claim before making API calls (avoids unnecessary 401s).</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>Session expiry toast has role="alert" for screen reader announcement.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>Interceptor: fetch wrapper adds Authorization: Bearer {accessToken} header</li><li>Silent refresh: useMutation({ mutationFn: ()=&gt;fetch("/api/v1/auth/refresh",{method:"POST"}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Gin middleware: extract Bearer token → verify RS256 → check jti blacklist → load user from Redis cache → inject UserContext into Gin context. <2ms p99.
+**🔄 Request Flow**
+1. Extract header → ParseWithClaims → check blacklist → cache lookup → inject ctx → Next()
+**⚙️ Go Implementation**
+1. jwt.ParseWithClaims(token,&Claims{},keyFunc)
+2. redis.Exists("jwt:blacklist:"+jti) → 401 if found
+3. redis.Get("user:"+uid) → if miss: GORM.First → cache 5min
+4. c.Set("user",UserContext{...}); c.Next() | **✅ Acceptance Criteria**
+- Valid token → ctx["user"] set, handler proceeds.
+- Missing/expired/tampered/revoked → 401.
+- Deactivated user → 403.
+**⚠️ Error Responses**
+- 401 - All token failures.
+- 403 - Inactive user. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+N/A - frontend-side token management via Zustand + axios/fetch interceptor
+**🧩 shadcn/ui Components**
+- No UI component - this is an HTTP interceptor concern
+- Toaster (shadcn) - surfaced when token expires mid-session
+**📦 State & Data Fetching**
+- Zustand authStore.accessToken - stored in memory, never localStorage
+- TanStack Query: set retry: false for 401 errors, redirect to /login instead
+- Axios/fetch interceptor: on 401 response → attempt refresh (POST /auth/refresh) → retry original request → if refresh fails: authStore.clearAuth() + navigate("/login")
+- Silent refresh: schedule token refresh at (exp - 60s) using setTimeout stored in authStore
+**✨ UX Behaviors**
+- Token expiry mid-session: transparent silent refresh (user sees nothing).
+- Silent refresh failure: shadcn Toast (variant=destructive) "Your session expired. Please sign in again." → redirect /login.
+- Protected routes: React Router  wrapper component checks authStore.isAuthenticated, redirects /login with state={from:currentPath}.
+- On login after redirect: navigate to state.from or "/" (saved redirect).
+**🛡️ Client-Side Validation**
+- Client checks token exp claim before making API calls (avoids unnecessary 401s).
+**♿ Accessibility (a11y)**
+- Session expiry toast has role="alert" for screen reader announcement.
+**🌐 API Calls (TanStack Query)**
+1. Interceptor: fetch wrapper adds Authorization: Bearer {accessToken} header
+2. Silent refresh: useMutation({ mutationFn: ()=>fetch("/api/v1/auth/refresh",{method:"POST"}) }) |
+| --- | --- | --- |
+
 
 **AUTH-005** - **Refresh Token Rotation**
 
@@ -113,7 +286,33 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | - Redis only  | POST /api/v1/auth/refresh |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Validate refresh token from Redis. Rotate: atomically delete old + insert new. Detect reuse attacks (already-deleted = stolen → invalidate all sessions). Issue new access token with re-fetched roles.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>redis.Get(refresh) → validate → Del old → Set new → re-fetch roles → jwt.Sign → return</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>redis.Del("refresh:"+token) → 0 returned = reuse → scan+del all user tokens</li><li>jwt.NewWithClaims(RS256,updatedRoleClaims).Sign(privateKey)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>200 + new tokens.</li><li>Reuse of rotated token → 401 + all sessions killed.</li><li>Expired → 401.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>401 - Invalid/reuse/expired.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>N/A - called by interceptor, no UI page</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No direct UI component</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>Silent refresh logic in authStore.refresh() action</li><li>On success: authStore.setAccessToken(newToken) + reschedule next refresh</li><li>On failure: authStore.clearAuth() + navigate("/login")</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>100% transparent to user during normal flow.</li><li>Failure surfaces as session-expired Toast (see AUTH-004).</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>fetch("/api/v1/auth/refresh",{method:"POST",credentials:"include"}) // sends HttpOnly cookie</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Validate refresh token from Redis. Rotate: atomically delete old + insert new. Detect reuse attacks (already-deleted = stolen → invalidate all sessions). Issue new access token with re-fetched roles.
+**🔄 Request Flow**
+1. redis.Get(refresh) → validate → Del old → Set new → re-fetch roles → jwt.Sign → return
+**⚙️ Go Implementation**
+1. redis.Del("refresh:"+token) → 0 returned = reuse → scan+del all user tokens
+2. jwt.NewWithClaims(RS256,updatedRoleClaims).Sign(privateKey) | **✅ Acceptance Criteria**
+- 200 + new tokens.
+- Reuse of rotated token → 401 + all sessions killed.
+- Expired → 401.
+**⚠️ Error Responses**
+- 401 - Invalid/reuse/expired. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+N/A - called by interceptor, no UI page
+**🧩 shadcn/ui Components**
+- No direct UI component
+**📦 State & Data Fetching**
+- Silent refresh logic in authStore.refresh() action
+- On success: authStore.setAccessToken(newToken) + reschedule next refresh
+- On failure: authStore.clearAuth() + navigate("/login")
+**✨ UX Behaviors**
+- 100% transparent to user during normal flow.
+- Failure surfaces as session-expired Toast (see AUTH-004).
+**🌐 API Calls (TanStack Query)**
+1. fetch("/api/v1/auth/refresh",{method:"POST",credentials:"include"}) // sends HttpOnly cookie |
+| --- | --- | --- |
+
 
 **AUTH-006** - **Logout & Token Revocation**
 
@@ -121,7 +320,36 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | ------------------------ |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | - Redis only  | POST /api/v1/auth/logout |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Blacklist access token jti in Redis (remaining TTL). Delete refresh token. Clear HttpOnly cookie. Support logout-all-devices via all=true param.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Extract jti → redis.Set(blacklist,ttl) → redis.Del(refresh) → clearCookie → 204</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>redis.Set("jwt:blacklist:"+jti,"1",remainingTTL)</li><li>c.SetCookie("refresh_token","",0,"/","",true,true)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>204 always.</li><li>Access token rejected after logout.</li><li>logout?all=true kills all sessions.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>204 - Always (idempotent).</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>Triggered from /settings or header dropdown - no dedicated page</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DropdownMenu in TopNav - "Sign out" item with LogOut Lucide icon</li><li>AlertDialog - "Sign out from all devices?" confirmation for logout-all</li><li>DropdownMenuSeparator - visual separation before logout item</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useMutation({ mutationFn: api.logout, onSuccess: ()=&gt;{ authStore.clearAuth(); navigate("/login") } })</li><li>authStore.clearAuth() → sets user=null, accessToken=null, isAuthenticated=false</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>TopNav UserAvatar → DropdownMenu: { Profile, Settings, Separator, "Sign out" }.</li><li>"Sign out from all devices" in dropdown → AlertDialog confirmation → POST /logout?all=true.</li><li>After logout: navigate /login, clear TanStack Query cache (queryClient.clear()).</li><li>Loading state on DropdownMenu item: disable item + show Loader2 while request in flight.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (all)=&gt;fetch("/api/v1/auth/logout?all="+all,{method:"POST",credentials:"include"}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Blacklist access token jti in Redis (remaining TTL). Delete refresh token. Clear HttpOnly cookie. Support logout-all-devices via all=true param.
+**🔄 Request Flow**
+1. Extract jti → redis.Set(blacklist,ttl) → redis.Del(refresh) → clearCookie → 204
+**⚙️ Go Implementation**
+1. redis.Set("jwt:blacklist:"+jti,"1",remainingTTL)
+2. c.SetCookie("refresh_token","",0,"/","",true,true) | **✅ Acceptance Criteria**
+- 204 always.
+- Access token rejected after logout.
+- logout?all=true kills all sessions.
+**⚠️ Error Responses**
+- 204 - Always (idempotent). | **🖥️ Frontend Specification**
+**📍 Route & Page**
+Triggered from /settings or header dropdown - no dedicated page
+**🧩 shadcn/ui Components**
+- DropdownMenu in TopNav - "Sign out" item with LogOut Lucide icon
+- AlertDialog - "Sign out from all devices?" confirmation for logout-all
+- DropdownMenuSeparator - visual separation before logout item
+**📦 State & Data Fetching**
+- useMutation({ mutationFn: api.logout, onSuccess: ()=>{ authStore.clearAuth(); navigate("/login") } })
+- authStore.clearAuth() → sets user=null, accessToken=null, isAuthenticated=false
+**✨ UX Behaviors**
+- TopNav UserAvatar → DropdownMenu: { Profile, Settings, Separator, "Sign out" }.
+- "Sign out from all devices" in dropdown → AlertDialog confirmation → POST /logout?all=true.
+- After logout: navigate /login, clear TanStack Query cache (queryClient.clear()).
+- Loading state on DropdownMenu item: disable item + show Loader2 while request in flight.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (all)=>fetch("/api/v1/auth/logout?all="+all,{method:"POST",credentials:"include"}) }) |
+| --- | --- | --- |
+
 
 **AUTH-007** - **Role CRUD Management**
 
@@ -129,7 +357,54 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | --------------------- | ----------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_role, ab_user_role | GET/POST /api/v1/roles · PUT/DELETE /api/v1/roles/:id |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Admin CRUD on roles. Guard: cannot delete built-in roles or roles with assigned users. List includes user_count and permission_count. Cache bust after changes.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate Admin role → GORM CRUD on ab_role → guard checks → cache bust</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Create(&amp;ab_role{Name:name})</li><li>GORM.Where("role_id=?",id).Count(&amp;n) → 409 if n&gt;0</li><li>redis.Del("rbac:*")</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST → 201.</li><li>DELETE with users → 409.</li><li>Delete built-in → 403.</li><li>GET → list with counts.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Non-admin or built-in role.</li><li>409 - Role has users.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/roles</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>DataTable (TanStack Table) - columns: Name, Users, Permissions, Actions</li><li>Button (+ New Role) - opens Dialog</li><li>Dialog + DialogContent + DialogHeader + DialogTitle + DialogFooter - create/edit role modal</li><li>Form + FormField + Input - role name input inside Dialog</li><li>AlertDialog - delete confirmation "Delete role {name}? This cannot be undone."</li><li>Badge - user_count and permission_count display</li><li>DropdownMenu (Actions column) - Edit, Delete items</li><li>Tooltip - "Built-in roles cannot be deleted" on disabled delete for system roles</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["roles"], queryFn: api.getRoles }) - DataTable data source</li><li>useMutation({ mutationFn: api.createRole, onSuccess: ()=&gt;{ queryClient.invalidateQueries(["roles"]); toast.success("Role created") } })</li><li>useMutation({ mutationFn: api.deleteRole, onError: (e)=&gt;toast.error(e.message) })</li><li>local useState: { isCreateOpen, isDeleteOpen, selectedRole }</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Table column "Users": Badge with user count, click → opens Sheet with user list.</li><li>Table column "Permissions": Badge with count, click → navigates to role permission matrix.</li><li>Delete: AlertDialog with role name in bold + warning if user_count &gt; 0.</li><li>Create/Edit Dialog: Input auto-focused on open, Enter submits form.</li><li>Toast on success, Toast (destructive) on error.</li><li>Optimistic update: role appears in table immediately on create, removed on delete.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>Role name: z.string().min(1,"Name is required").max(64,"Max 64 chars")</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>Dialog has aria-labelledby pointing to DialogTitle.</li><li>DataTable rows navigable with keyboard (tabIndex on rows).</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["roles"], queryFn: ()=&gt;fetch("/api/v1/roles").then(r=&gt;r.json()) })</li><li>useMutation({ mutationFn: (role)=&gt;fetch("/api/v1/roles",{method:"POST",body:JSON.stringify(role)}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Admin CRUD on roles. Guard: cannot delete built-in roles or roles with assigned users. List includes user_count and permission_count. Cache bust after changes.
+**🔄 Request Flow**
+1. Validate Admin role → GORM CRUD on ab_role → guard checks → cache bust
+**⚙️ Go Implementation**
+1. GORM.Create(&ab_role{Name:name})
+2. GORM.Where("role_id=?",id).Count(&n) → 409 if n>0
+3. redis.Del("rbac:*") | **✅ Acceptance Criteria**
+- POST → 201.
+- DELETE with users → 409.
+- Delete built-in → 403.
+- GET → list with counts.
+**⚠️ Error Responses**
+- 403 - Non-admin or built-in role.
+- 409 - Role has users. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/roles
+**🧩 shadcn/ui Components**
+- DataTable (TanStack Table) - columns: Name, Users, Permissions, Actions
+- Button (+ New Role) - opens Dialog
+- Dialog + DialogContent + DialogHeader + DialogTitle + DialogFooter - create/edit role modal
+- Form + FormField + Input - role name input inside Dialog
+- AlertDialog - delete confirmation "Delete role {name}? This cannot be undone."
+- Badge - user_count and permission_count display
+- DropdownMenu (Actions column) - Edit, Delete items
+- Tooltip - "Built-in roles cannot be deleted" on disabled delete for system roles
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["roles"], queryFn: api.getRoles }) - DataTable data source
+- useMutation({ mutationFn: api.createRole, onSuccess: ()=>{ queryClient.invalidateQueries(["roles"]); toast.success("Role created") } })
+- useMutation({ mutationFn: api.deleteRole, onError: (e)=>toast.error(e.message) })
+- local useState: { isCreateOpen, isDeleteOpen, selectedRole }
+**✨ UX Behaviors**
+- Table column "Users": Badge with user count, click → opens Sheet with user list.
+- Table column "Permissions": Badge with count, click → navigates to role permission matrix.
+- Delete: AlertDialog with role name in bold + warning if user_count > 0.
+- Create/Edit Dialog: Input auto-focused on open, Enter submits form.
+- Toast on success, Toast (destructive) on error.
+- Optimistic update: role appears in table immediately on create, removed on delete.
+**🛡️ Client-Side Validation**
+- Role name: z.string().min(1,"Name is required").max(64,"Max 64 chars")
+**♿ Accessibility (a11y)**
+- Dialog has aria-labelledby pointing to DialogTitle.
+- DataTable rows navigable with keyboard (tabIndex on rows).
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["roles"], queryFn: ()=>fetch("/api/v1/roles").then(r=>r.json()) })
+2. useMutation({ mutationFn: (role)=>fetch("/api/v1/roles",{method:"POST",body:JSON.stringify(role)}) }) |
+| --- | --- | --- |
+
 
 **AUTH-008** - **Permission & View Menu Management**
 
@@ -137,7 +412,42 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/permissions · GET/POST /api/v1/view-menus · GET/POST/DELETE /api/v1/permission-views |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Admin CRUD for permission actions, view menus, and their combinations (permission_views). Permission_views are seeded at startup. Delete guarded by role assignment count.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GORM CRUD on ab_permission, ab_view_menu, ab_permission_view with guards</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.FirstOrCreate(&amp;ab_permission,ab_permission{Name:name}) for seed</li><li>GORM.Where("permission_view_id=?",id).Count on ab_permission_view_role → 409</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>POST permission → 201.</li><li>Duplicate perm_view → 409.</li><li>Delete assigned perm_view → 409.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>409 - Duplicate or in-use.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/permissions</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Tabs + TabsList + TabsTrigger + TabsContent - "Permissions" | "View Menus" | "Permission Matrix"</li><li>DataTable - list permissions and view menus in their respective tabs</li><li>Command + CommandInput + CommandList + CommandItem - searchable dropdown to create permission_view pairs</li><li>Badge - display permission name and view menu name in matrix cells</li><li>ScrollArea - scrollable permission matrix grid</li><li>Skeleton - loading state for each tab</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["permissions"] }) - tab 1 data</li><li>useQuery({ queryKey:["view-menus"] }) - tab 2 data</li><li>useQuery({ queryKey:["permission-views"] }) - matrix data</li><li>useMutation for create/delete permission_view pairs</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Permission Matrix tab: grid with view_menus as columns, permissions as rows, checkboxes at intersections.</li><li>Check a cell → POST /permission-views. Uncheck → DELETE /permission-views/:id.</li><li>Bulk save: "Save Changes" Button collects all diff → single batch API call.</li><li>Command search filters the grid rows/columns in real-time.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery(["permission-views"])</li><li>useMutation({ mutationFn: (pair)=&gt;fetch("/api/v1/permission-views",{method:"POST",...}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Admin CRUD for permission actions, view menus, and their combinations (permission_views). Permission_views are seeded at startup. Delete guarded by role assignment count.
+**🔄 Request Flow**
+1. GORM CRUD on ab_permission, ab_view_menu, ab_permission_view with guards
+**⚙️ Go Implementation**
+1. GORM.FirstOrCreate(&ab_permission,ab_permission{Name:name}) for seed
+2. GORM.Where("permission_view_id=?",id).Count on ab_permission_view_role → 409 | **✅ Acceptance Criteria**
+- POST permission → 201.
+- Duplicate perm_view → 409.
+- Delete assigned perm_view → 409.
+**⚠️ Error Responses**
+- 409 - Duplicate or in-use. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/permissions
+**🧩 shadcn/ui Components**
+- Tabs + TabsList + TabsTrigger + TabsContent - "Permissions" &#124; "View Menus" &#124; "Permission Matrix"
+- DataTable - list permissions and view menus in their respective tabs
+- Command + CommandInput + CommandList + CommandItem - searchable dropdown to create permission_view pairs
+- Badge - display permission name and view menu name in matrix cells
+- ScrollArea - scrollable permission matrix grid
+- Skeleton - loading state for each tab
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["permissions"] }) - tab 1 data
+- useQuery({ queryKey:["view-menus"] }) - tab 2 data
+- useQuery({ queryKey:["permission-views"] }) - matrix data
+- useMutation for create/delete permission_view pairs
+**✨ UX Behaviors**
+- Permission Matrix tab: grid with view_menus as columns, permissions as rows, checkboxes at intersections.
+- Check a cell → POST /permission-views. Uncheck → DELETE /permission-views/:id.
+- Bulk save: "Save Changes" Button collects all diff → single batch API call.
+- Command search filters the grid rows/columns in real-time.
+**🌐 API Calls (TanStack Query)**
+1. useQuery(["permission-views"])
+2. useMutation({ mutationFn: (pair)=>fetch("/api/v1/permission-views",{method:"POST",...}) }) |
+| --- | --- | --- |
+
 
 **AUTH-009** - **Assign Permissions to Role (RBAC Matrix)**
 
@@ -145,7 +455,48 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission_view_role | PUT /api/v1/roles/:id/permissions · POST /api/v1/roles/:id/permissions/add · DELETE /api/v1/roles/:id/permissions/:pv_id |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Replace-all permission assignment to a role. Also additive add and single revoke. After any change, bust RBAC Redis cache for all users with this role.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>TX: delete existing → bulk insert new → cache bust for affected users</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>db.Transaction(func(tx){ tx.Where("role_id=?",id).Delete; tx.CreateInBatches(newRows,100) })</li><li>redis.Del("rbac:"+userID) for each user with this role</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>PUT with [1,2,3] → 200.</li><li>Invalid pv_id → 422.</li><li>Cache busted for affected users.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>422 - Invalid permission_view_id.</li><li>403 - Non-admin.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/roles/:id/permissions</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Card - page container with role name in CardHeader</li><li>ScrollArea - scrollable permission list</li><li>Checkbox - per permission_view row, checked = assigned</li><li>Button ("Save Changes", variant=default) - triggers PUT with all checked IDs</li><li>Button ("Reset", variant=ghost) - reverts local changes to server state</li><li>Badge - category grouping (e.g., "Dataset", "Dashboard", "SQLLab")</li><li>Input + Lucide Search icon - filter permissions by name</li><li>Skeleton - loading state</li><li>Toast - success/error feedback</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["role-permissions",roleId] }) - current assignments</li><li>useState: localAssignments (Set&lt;number&gt;) - tracks current checkbox state</li><li>useMutation({ mutationFn: (ids)=&gt;api.setRolePermissions(roleId,ids) })</li><li>isDirty: compare localAssignments vs server state → show "unsaved changes" Badge</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>"Save Changes" Button disabled until isDirty=true.</li><li>Unsaved changes indicator: shadcn Badge "Unsaved changes" in page header area.</li><li>Group permissions by view_menu name with Separator between groups.</li><li>Search Input filters visible rows (client-side, no API call).</li><li>Confirm before navigating away with unsaved changes: browser beforeunload + React Router blocker.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>At least one permission must be assigned - disable Save if Set is empty.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (ids)=&gt;fetch("/api/v1/roles/"+roleId+"/permissions",{method:"PUT",body:JSON.stringify({permission_view_ids:ids})}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Replace-all permission assignment to a role. Also additive add and single revoke. After any change, bust RBAC Redis cache for all users with this role.
+**🔄 Request Flow**
+1. TX: delete existing → bulk insert new → cache bust for affected users
+**⚙️ Go Implementation**
+1. db.Transaction(func(tx){ tx.Where("role_id=?",id).Delete; tx.CreateInBatches(newRows,100) })
+2. redis.Del("rbac:"+userID) for each user with this role | **✅ Acceptance Criteria**
+- PUT with [1,2,3] → 200.
+- Invalid pv_id → 422.
+- Cache busted for affected users.
+**⚠️ Error Responses**
+- 422 - Invalid permission_view_id.
+- 403 - Non-admin. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/roles/:id/permissions
+**🧩 shadcn/ui Components**
+- Card - page container with role name in CardHeader
+- ScrollArea - scrollable permission list
+- Checkbox - per permission_view row, checked = assigned
+- Button ("Save Changes", variant=default) - triggers PUT with all checked IDs
+- Button ("Reset", variant=ghost) - reverts local changes to server state
+- Badge - category grouping (e.g., "Dataset", "Dashboard", "SQLLab")
+- Input + Lucide Search icon - filter permissions by name
+- Skeleton - loading state
+- Toast - success/error feedback
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["role-permissions",roleId] }) - current assignments
+- useState: localAssignments (Set) - tracks current checkbox state
+- useMutation({ mutationFn: (ids)=>api.setRolePermissions(roleId,ids) })
+- isDirty: compare localAssignments vs server state → show "unsaved changes" Badge
+**✨ UX Behaviors**
+- "Save Changes" Button disabled until isDirty=true.
+- Unsaved changes indicator: shadcn Badge "Unsaved changes" in page header area.
+- Group permissions by view_menu name with Separator between groups.
+- Search Input filters visible rows (client-side, no API call).
+- Confirm before navigating away with unsaved changes: browser beforeunload + React Router blocker.
+**🛡️ Client-Side Validation**
+- At least one permission must be assigned - disable Save if Set is empty.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/roles/"+roleId+"/permissions",{method:"PUT",body:JSON.stringify({permission_view_ids:ids})}) }) |
+| --- | --- | --- |
+
 
 **AUTH-010** - **Assign Roles to User**
 
@@ -153,7 +504,42 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | ------------- | --------------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user_role  | PUT /api/v1/users/:id/roles · GET /api/v1/users/:id/roles |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Replace-all role assignment to a user (Admin only). Must keep at least 1 role. Invalidate RBAC cache for user.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Validate Admin → validate ≥1 role → TX delete+insert → redis.Del("rbac:"+uid)</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>TX: Delete existing ab_user_role for user; CreateInBatches new</li><li>redis.Del("rbac:"+userID)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>PUT with [1,3] → 200.</li><li>Empty roles → 422.</li><li>Non-admin → 403.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Non-admin.</li><li>422 - Empty roles or invalid role_id.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/users/:id (user detail page, roles section)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Sheet (from table row action) or inline section in user detail page</li><li>Select (multi) - shadcn MultiSelect via Command + Popover pattern for role selection</li><li>Badge × N - display currently assigned roles with X remove button</li><li>Button ("Update Roles") - save changes</li><li>Alert (variant=destructive) - "User must have at least one role" error</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["user-roles",userId] }) - current roles</li><li>useState: selectedRoleIds (number[]) - local edit state</li><li>useMutation({ mutationFn: (ids)=&gt;api.setUserRoles(userId,ids) })</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Multi-select: Command + Popover pattern (shadcn standard multi-select). User types to filter roles.</li><li>Selected roles shown as Badge list below select. Click X on Badge removes role.</li><li>Minimum 1 role enforced: Save Button disabled if selectedRoleIds.length===0.</li><li>Toast success on save.</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>selectedRoleIds.length &gt;= 1 - client enforced before API call.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useMutation({ mutationFn: (ids)=&gt;fetch("/api/v1/users/"+userId+"/roles",{method:"PUT",body:JSON.stringify({role_ids:ids})}) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Replace-all role assignment to a user (Admin only). Must keep at least 1 role. Invalidate RBAC cache for user.
+**🔄 Request Flow**
+1. Validate Admin → validate ≥1 role → TX delete+insert → redis.Del("rbac:"+uid)
+**⚙️ Go Implementation**
+1. TX: Delete existing ab_user_role for user; CreateInBatches new
+2. redis.Del("rbac:"+userID) | **✅ Acceptance Criteria**
+- PUT with [1,3] → 200.
+- Empty roles → 422.
+- Non-admin → 403.
+**⚠️ Error Responses**
+- 403 - Non-admin.
+- 422 - Empty roles or invalid role_id. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/users/:id (user detail page, roles section)
+**🧩 shadcn/ui Components**
+- Sheet (from table row action) or inline section in user detail page
+- Select (multi) - shadcn MultiSelect via Command + Popover pattern for role selection
+- Badge × N - display currently assigned roles with X remove button
+- Button ("Update Roles") - save changes
+- Alert (variant=destructive) - "User must have at least one role" error
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["user-roles",userId] }) - current roles
+- useState: selectedRoleIds (number[]) - local edit state
+- useMutation({ mutationFn: (ids)=>api.setUserRoles(userId,ids) })
+**✨ UX Behaviors**
+- Multi-select: Command + Popover pattern (shadcn standard multi-select). User types to filter roles.
+- Selected roles shown as Badge list below select. Click X on Badge removes role.
+- Minimum 1 role enforced: Save Button disabled if selectedRoleIds.length===0.
+- Toast success on save.
+**🛡️ Client-Side Validation**
+- selectedRoleIds.length >= 1 - client enforced before API call.
+**🌐 API Calls (TanStack Query)**
+1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/users/"+userId+"/roles",{method:"PUT",body:JSON.stringify({role_ids:ids})}) }) |
+| --- | --- | --- |
+
 
 **AUTH-011** - **RBAC Permission Check Middleware**
 
@@ -161,7 +547,37 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | ----------------- | ------------ | --------- | --------------------------------------------------- | --------------------------------------------------- |
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user_role, ab_permission_view_role (Redis cache) | Internal middleware - wraps all protected endpoints |
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>Gin middleware factory RequirePermission("action","resource"). Resolves user RBAC from Redis cache (TTL 5min). Admin bypass. Rejects with 403 if missing.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Get UserContext → Admin bypass → cache check → DB join if miss → evaluate → Next() or 403</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>func RequirePermission(perm,view string) gin.HandlerFunc</li><li>redis.SMembers("rbac:"+uid) → if miss: DB join query → redis.SAdd(...) Expire(5min)</li><li>if !set.Contains(perm+":"+view): c.AbortWithStatusJSON(403,...)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Authorized → handler proceeds.</li><li>Unauthorized → 403.</li><li>Cache hit &lt;1ms.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>403 - Permission denied.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>N/A - handled via route guards in React Router</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>&lt;RequirePermission permission="can_write" resource="Dataset"&gt; - HOC that renders children or 403 page</li><li>Card (centered) - 403 "Access Denied" page with ShieldAlert Lucide icon</li><li>Button - "Go Back" navigation</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>authStore.user.permissions (Set&lt;string&gt;) - loaded from JWT claims on login</li><li>hasPermission(perm,resource): checks authStore.user.permissions.has(perm+":"+resource)</li><li>usePermission(perm,resource): hook returning bool, used in components to conditionally render UI</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Navigation items hidden (not just disabled) when user lacks permission to see them.</li><li>Action buttons (Edit, Delete) hidden via usePermission hook - not just disabled.</li><li>403 page: shadcn Card centered on screen, ShieldAlert icon, "You don't have permission to access this page." text, "Go back" Button.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>No API call - derived from JWT claims in authStore</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- Gin middleware factory RequirePermission("action","resource"). Resolves user RBAC from Redis cache (TTL 5min). Admin bypass. Rejects with 403 if missing.
+**🔄 Request Flow**
+1. Get UserContext → Admin bypass → cache check → DB join if miss → evaluate → Next() or 403
+**⚙️ Go Implementation**
+1. func RequirePermission(perm,view string) gin.HandlerFunc
+2. redis.SMembers("rbac:"+uid) → if miss: DB join query → redis.SAdd(...) Expire(5min)
+3. if !set.Contains(perm+":"+view): c.AbortWithStatusJSON(403,...) | **✅ Acceptance Criteria**
+- Authorized → handler proceeds.
+- Unauthorized → 403.
+- Cache hit <1ms.
+**⚠️ Error Responses**
+- 403 - Permission denied. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+N/A - handled via route guards in React Router
+**🧩 shadcn/ui Components**
+-  - HOC that renders children or 403 page
+- Card (centered) - 403 "Access Denied" page with ShieldAlert Lucide icon
+- Button - "Go Back" navigation
+**📦 State & Data Fetching**
+- authStore.user.permissions (Set) - loaded from JWT claims on login
+- hasPermission(perm,resource): checks authStore.user.permissions.has(perm+":"+resource)
+- usePermission(perm,resource): hook returning bool, used in components to conditionally render UI
+**✨ UX Behaviors**
+- Navigation items hidden (not just disabled) when user lacks permission to see them.
+- Action buttons (Edit, Delete) hidden via usePermission hook - not just disabled.
+- 403 page: shadcn Card centered on screen, ShieldAlert icon, "You don't have permission to access this page." text, "Go back" Button.
+**🌐 API Calls (TanStack Query)**
+1. No API call - derived from JWT claims in authStore |
+| --- | --- | --- |
+
 
 **⚠ DEPENDENT (4) - requires prior services/requirements**
 
@@ -173,7 +589,30 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-004 - JWT middleware must run first to populate user context
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>After JWT validation, inject GORM TenantScope(orgID) into all downstream queries. Admin can override with X-Org-Id header for cross-tenant ops.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Extract orgID from JWT → if Admin + X-Org-Id: use header → db.Scopes(TenantScope) → c.Set("db",scopedDB) → Next()</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>scopedDB:=db.WithContext(ctx).Scopes(TenantScope(orgID))</li><li>c.Set("db",scopedDB)</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>All queries auto-filtered by org_id.</li><li>Cross-tenant access → 404 (not 403).</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>404 - Cross-tenant resource (hidden, not 403).</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>N/A - org_id is transparent to the frontend</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>OrgSwitcher in TopNav (if user belongs to multiple orgs)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>authStore.user.orgId - from JWT.</li><li>If multi-org: OrgSwitcher dropdown → triggers re-login flow with new orgId</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>OrgSwitcher: shadcn Select in TopNav showing current org name. Changing org = new JWT required.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>N/A - backend handles all org scoping transparently</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- After JWT validation, inject GORM TenantScope(orgID) into all downstream queries. Admin can override with X-Org-Id header for cross-tenant ops.
+**🔄 Request Flow**
+1. Extract orgID from JWT → if Admin + X-Org-Id: use header → db.Scopes(TenantScope) → c.Set("db",scopedDB) → Next()
+**⚙️ Go Implementation**
+1. scopedDB:=db.WithContext(ctx).Scopes(TenantScope(orgID))
+2. c.Set("db",scopedDB) | **✅ Acceptance Criteria**
+- All queries auto-filtered by org_id.
+- Cross-tenant access → 404 (not 403).
+**⚠️ Error Responses**
+- 404 - Cross-tenant resource (hidden, not 403). | **🖥️ Frontend Specification**
+**📍 Route & Page**
+N/A - org_id is transparent to the frontend
+**🧩 shadcn/ui Components**
+- OrgSwitcher in TopNav (if user belongs to multiple orgs)
+**📦 State & Data Fetching**
+- authStore.user.orgId - from JWT.
+- If multi-org: OrgSwitcher dropdown → triggers re-login flow with new orgId
+**✨ UX Behaviors**
+- OrgSwitcher: shadcn Select in TopNav showing current org name. Changing org = new JWT required.
+**🌐 API Calls (TanStack Query)**
+1. N/A - backend handles all org scoping transparently |
+| --- | --- | --- |
+
 
 **AUTH-013** - **OAuth2 Federation (Google / Okta)**
 
@@ -183,7 +622,42 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-003 (user upsert logic), AUTH-010 (default role assignment)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>OAuth2 PKCE flow. State + code_verifier stored in Redis 10min. Exchange code → fetch userinfo → upsert ab_user → issue JWT. Auto-provision controlled by OAUTH_AUTO_PROVISION env.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Generate state+verifier → redirect → provider → callback → validate state → exchange → userinfo → upsert → JWT</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>golang.org/x/oauth2</li><li>redis.Set("oauth:state:"+state,provider,10min)</li><li>GORM.FirstOrCreate(&amp;ab_user,ab_user{Email:email})</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Valid callback → JWT returned.</li><li>State mismatch → 400.</li><li>New user with provision=true → Gamma role assigned.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>400 - State mismatch.</li><li>403 - Auto-provision disabled.</li><li>502 - Provider unreachable.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/login (OAuth buttons) + /auth/oauth2/callback (redirect target)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>Button (variant=outline) per provider - "Continue with Google", "Continue with Okta"</li><li>Provider SVG icon inside Button (loaded as React component)</li><li>Separator with "or" text - between password form and OAuth buttons</li><li>Card (full page) on /auth/oauth2/callback - loading state while processing</li><li>Skeleton - shown while /callback page processes the exchange</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>OAuth redirect: window.location.href = "/api/v1/auth/oauth2/google/authorize" - full page redirect</li><li>/callback page: parse code+state from URL → fire GET /api/v1/auth/oauth2/google/callback (automatic, backend handles)</li><li>Backend redirects /callback to frontend /oauth-success?token=... → authStore.setAuth(token) → navigate("/")</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>OAuth Button: click → full browser redirect to provider (not popup).</li><li>/callback page shown while backend processes: Skeleton card "Signing you in..." + Loader2.</li><li>On success: toast "Welcome back, {name}!" (if returning) or "Account created!" (if new).</li><li>On error: navigate /login?oauth_error=&lt;message&gt; → Alert shown on login page.</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>window.location.href = "/api/v1/auth/oauth2/"+provider+"/authorize" // full redirect, not fetch</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- OAuth2 PKCE flow. State + code_verifier stored in Redis 10min. Exchange code → fetch userinfo → upsert ab_user → issue JWT. Auto-provision controlled by OAUTH_AUTO_PROVISION env.
+**🔄 Request Flow**
+1. Generate state+verifier → redirect → provider → callback → validate state → exchange → userinfo → upsert → JWT
+**⚙️ Go Implementation**
+1. golang.org/x/oauth2
+2. redis.Set("oauth:state:"+state,provider,10min)
+3. GORM.FirstOrCreate(&ab_user,ab_user{Email:email}) | **✅ Acceptance Criteria**
+- Valid callback → JWT returned.
+- State mismatch → 400.
+- New user with provision=true → Gamma role assigned.
+**⚠️ Error Responses**
+- 400 - State mismatch.
+- 403 - Auto-provision disabled.
+- 502 - Provider unreachable. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/login (OAuth buttons) + /auth/oauth2/callback (redirect target)
+**🧩 shadcn/ui Components**
+- Button (variant=outline) per provider - "Continue with Google", "Continue with Okta"
+- Provider SVG icon inside Button (loaded as React component)
+- Separator with "or" text - between password form and OAuth buttons
+- Card (full page) on /auth/oauth2/callback - loading state while processing
+- Skeleton - shown while /callback page processes the exchange
+**📦 State & Data Fetching**
+- OAuth redirect: window.location.href = "/api/v1/auth/oauth2/google/authorize" - full page redirect
+- /callback page: parse code+state from URL → fire GET /api/v1/auth/oauth2/google/callback (automatic, backend handles)
+- Backend redirects /callback to frontend /oauth-success?token=... → authStore.setAuth(token) → navigate("/")
+**✨ UX Behaviors**
+- OAuth Button: click → full browser redirect to provider (not popup).
+- /callback page shown while backend processes: Skeleton card "Signing you in..." + Loader2.
+- On success: toast "Welcome back, {name}!" (if returning) or "Account created!" (if new).
+- On error: navigate /login?oauth_error= → Alert shown on login page.
+**🌐 API Calls (TanStack Query)**
+1. window.location.href = "/api/v1/auth/oauth2/"+provider+"/authorize" // full redirect, not fetch |
+| --- | --- | --- |
+
 
 **AUTH-014** - **LDAP Authentication & Group Sync**
 
@@ -193,7 +667,34 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-003 (user upsert), AUTH-010 (role sync)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>LDAP bind flow: service bind → search user DN → user bind → fetch group memberships → map groups to ab_role → upsert ab_user → issue JWT. LDAP_FALLBACK_TO_LOCAL for unreachable LDAP.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>Bind service account → search user → bind as user → fetch groups → map roles → upsert → JWT</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>go-ldap/ldap v3</li><li>l.Bind(serviceDN,pass) → l.Search(userFilter) → l.Bind(userDN,userPass) → l.Search(groupFilter)</li><li>GORM.FirstOrCreate+role sync</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>Valid LDAP creds → JWT + roles synced.</li><li>Invalid → 401.</li><li>Group "superset-admins" → Admin role.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>401 - LDAP auth failure.</li><li>502 - LDAP unreachable.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/login (same form, LDAP is backend-transparent)</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>No additional component - same login form as AUTH-003</li><li>Alert (info) - shown if LDAP configured: "Sign in with your corporate credentials"</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>No frontend state difference - response is same JWT as password login</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>If LDAP_AUTH_ENABLED: show info Alert on login page explaining corporate credentials.</li><li>Username field placeholder changes to "Corporate username or email".</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>Same POST /api/v1/auth/login - backend detects LDAP vs local internally</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- LDAP bind flow: service bind → search user DN → user bind → fetch group memberships → map groups to ab_role → upsert ab_user → issue JWT. LDAP_FALLBACK_TO_LOCAL for unreachable LDAP.
+**🔄 Request Flow**
+1. Bind service account → search user → bind as user → fetch groups → map roles → upsert → JWT
+**⚙️ Go Implementation**
+1. go-ldap/ldap v3
+2. l.Bind(serviceDN,pass) → l.Search(userFilter) → l.Bind(userDN,userPass) → l.Search(groupFilter)
+3. GORM.FirstOrCreate+role sync | **✅ Acceptance Criteria**
+- Valid LDAP creds → JWT + roles synced.
+- Invalid → 401.
+- Group "superset-admins" → Admin role.
+**⚠️ Error Responses**
+- 401 - LDAP auth failure.
+- 502 - LDAP unreachable. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/login (same form, LDAP is backend-transparent)
+**🧩 shadcn/ui Components**
+- No additional component - same login form as AUTH-003
+- Alert (info) - shown if LDAP configured: "Sign in with your corporate credentials"
+**📦 State & Data Fetching**
+- No frontend state difference - response is same JWT as password login
+**✨ UX Behaviors**
+- If LDAP_AUTH_ENABLED: show info Alert on login page explaining corporate credentials.
+- Username field placeholder changes to "Corporate username or email".
+**🌐 API Calls (TanStack Query)**
+1. Same POST /api/v1/auth/login - backend detects LDAP vs local internally |
+| --- | --- | --- |
+
 
 **AUTH-015** - **User Profile & Password Management**
 
@@ -203,7 +704,64 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 **⚑ Depends on:** AUTH-003 (user must exist and be active)
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>⚙️ Backend - Description</strong></p><ul><li>User profile view/edit. Password change (verify current, complexity check, hash, invalidate refresh tokens). Admin user list/deactivate. Avatar upload to object storage.</li></ul><p><strong>🔄 Request Flow</strong></p><ol><li>GET /me → join user+user_attribute → return. PUT password → bcrypt verify → hash new → update → redis delete all refresh tokens</li></ol><p><strong>⚙️ Go Implementation</strong></p><ol><li>GORM.Preload("UserAttribute").Preload("Roles").First(&amp;user,uid)</li><li>bcrypt.CompareHashAndPassword → bcrypt.GenerateFromPassword → GORM.Update → redis.Del refresh pattern</li></ol></th><th><p><strong>✅ Acceptance Criteria</strong></p><ul><li>GET /me → full profile.</li><li>Wrong current_password → 400.</li><li>Password change → all sessions invalidated.</li><li>DELETE /users/:id → active=false.</li></ul><p><strong>⚠️ Error Responses</strong></p><ul><li>400 - Wrong current password.</li><li>403 - Non-admin on other user.</li><li>422 - Weak new password.</li></ul></th><th><p><strong>🖥️ Frontend Specification</strong></p><p><strong>📍 Route &amp; Page</strong></p><p>/settings/profile · /settings/users · /settings/users/:id</p><p><strong>🧩 shadcn/ui Components</strong></p><ul><li>- Profile Page (/settings/profile) -</li><li>Tabs [Profile, Security, Preferences] - main page structure</li><li>Card - section containers within each tab</li><li>Avatar + AvatarImage + AvatarFallback - profile picture display</li><li>Button (Upload Avatar) - triggers hidden Input[type=file]</li><li>Form + Input - first_name, last_name, email fields</li><li>Form + Input[type=password] × 3 - current, new, confirm on Security tab</li><li>Button ("Change Password") - separate mutation from profile save</li><li>- User Management (/settings/users) - Admin only -</li><li>DataTable - columns: Name, Email, Roles, Status, Last Login, Actions</li><li>Sheet - user detail slideout (edit roles, view profile)</li><li>AlertDialog - deactivate user confirmation</li><li>Badge (Active/Inactive) - status column</li><li>Select - per-row status toggle (Active/Inactive)</li></ul><p><strong>📦 State &amp; Data Fetching</strong></p><ul><li>useQuery({ queryKey:["me"] }) - profile data</li><li>useMutation({ mutationFn: api.updateProfile }) - profile form</li><li>useMutation({ mutationFn: api.changePassword, onSuccess: ()=&gt;{ authStore.clearAuth(); navigate("/login?passwordChanged=true") } })</li><li>useQuery({ queryKey:["users"] }) - admin user list</li><li>useMutation({ mutationFn: api.deactivateUser, onSuccess: ()=&gt;queryClient.invalidateQueries(["users"]) })</li></ul><p><strong>✨ UX Behaviors</strong></p><ul><li>Avatar: click avatar → hidden Input[type=file accept="image/*"] → preview in Avatar before upload → Button "Save" uploads.</li><li>Profile form: auto-populates from /me response. "Save Changes" Button enabled only when isDirty.</li><li>Password change: after success → forced logout with Toast "Password changed. Please sign in again."</li><li>Users table: Status Badge clickable → AlertDialog "Deactivate {name}? They will be signed out immediately."</li><li>User search: Input with Search icon above DataTable → client-side filter on name/email.</li><li>Last Login column: shadcn Tooltip showing exact datetime, cell shows relative ("3 days ago").</li></ul><p><strong>🛡️ Client-Side Validation</strong></p><ul><li>New password: same Zod schema as registration (min 12, complexity).</li><li>Confirm password must match new password.</li><li>Avatar: accept image/* only, max 2MB client-side before upload.</li></ul><p><strong>♿ Accessibility (a11y)</strong></p><ul><li>Avatar upload button: aria-label="Upload profile picture".</li><li>Password fields: autocomplete="current-password" and "new-password".</li></ul><p><strong>🌐 API Calls (TanStack Query)</strong></p><ol><li>useQuery({ queryKey:["me"], queryFn: ()=&gt;fetch("/api/v1/me").then(r=&gt;r.json()) })</li><li>useMutation({ mutationFn: (pwd)=&gt;fetch("/api/v1/me/password",{method:"PUT",body:JSON.stringify(pwd)}) })</li><li>useQuery({ queryKey:["users"], queryFn: ()=&gt;fetch("/api/v1/users").then(r=&gt;r.json()) })</li></ol></th></tr></tbody></table></div>
+| **⚙️ Backend - Description**
+- User profile view/edit. Password change (verify current, complexity check, hash, invalidate refresh tokens). Admin user list/deactivate. Avatar upload to object storage.
+**🔄 Request Flow**
+1. GET /me → join user+user_attribute → return. PUT password → bcrypt verify → hash new → update → redis delete all refresh tokens
+**⚙️ Go Implementation**
+1. GORM.Preload("UserAttribute").Preload("Roles").First(&user,uid)
+2. bcrypt.CompareHashAndPassword → bcrypt.GenerateFromPassword → GORM.Update → redis.Del refresh pattern | **✅ Acceptance Criteria**
+- GET /me → full profile.
+- Wrong current_password → 400.
+- Password change → all sessions invalidated.
+- DELETE /users/:id → active=false.
+**⚠️ Error Responses**
+- 400 - Wrong current password.
+- 403 - Non-admin on other user.
+- 422 - Weak new password. | **🖥️ Frontend Specification**
+**📍 Route & Page**
+/settings/profile · /settings/users · /settings/users/:id
+**🧩 shadcn/ui Components**
+- - Profile Page (/settings/profile) -
+- Tabs [Profile, Security, Preferences] - main page structure
+- Card - section containers within each tab
+- Avatar + AvatarImage + AvatarFallback - profile picture display
+- Button (Upload Avatar) - triggers hidden Input[type=file]
+- Form + Input - first_name, last_name, email fields
+- Form + Input[type=password] × 3 - current, new, confirm on Security tab
+- Button ("Change Password") - separate mutation from profile save
+- - User Management (/settings/users) - Admin only -
+- DataTable - columns: Name, Email, Roles, Status, Last Login, Actions
+- Sheet - user detail slideout (edit roles, view profile)
+- AlertDialog - deactivate user confirmation
+- Badge (Active/Inactive) - status column
+- Select - per-row status toggle (Active/Inactive)
+**📦 State & Data Fetching**
+- useQuery({ queryKey:["me"] }) - profile data
+- useMutation({ mutationFn: api.updateProfile }) - profile form
+- useMutation({ mutationFn: api.changePassword, onSuccess: ()=>{ authStore.clearAuth(); navigate("/login?passwordChanged=true") } })
+- useQuery({ queryKey:["users"] }) - admin user list
+- useMutation({ mutationFn: api.deactivateUser, onSuccess: ()=>queryClient.invalidateQueries(["users"]) })
+**✨ UX Behaviors**
+- Avatar: click avatar → hidden Input[type=file accept="image/*"] → preview in Avatar before upload → Button "Save" uploads.
+- Profile form: auto-populates from /me response. "Save Changes" Button enabled only when isDirty.
+- Password change: after success → forced logout with Toast "Password changed. Please sign in again."
+- Users table: Status Badge clickable → AlertDialog "Deactivate {name}? They will be signed out immediately."
+- User search: Input with Search icon above DataTable → client-side filter on name/email.
+- Last Login column: shadcn Tooltip showing exact datetime, cell shows relative ("3 days ago").
+**🛡️ Client-Side Validation**
+- New password: same Zod schema as registration (min 12, complexity).
+- Confirm password must match new password.
+- Avatar: accept image/* only, max 2MB client-side before upload.
+**♿ Accessibility (a11y)**
+- Avatar upload button: aria-label="Upload profile picture".
+- Password fields: autocomplete="current-password" and "new-password".
+**🌐 API Calls (TanStack Query)**
+1. useQuery({ queryKey:["me"], queryFn: ()=>fetch("/api/v1/me").then(r=>r.json()) })
+2. useMutation({ mutationFn: (pwd)=>fetch("/api/v1/me/password",{method:"PUT",body:JSON.stringify(pwd)}) })
+3. useQuery({ queryKey:["users"], queryFn: ()=>fetch("/api/v1/users").then(r=>r.json()) }) |
+| --- | --- | --- |
+
 
 ## **Requirements Summary**
 
