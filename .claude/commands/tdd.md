@@ -27,7 +27,7 @@ Apply the `tdd-workflow` skill.
 ## Step 3: Run Tests - Verify FAIL
 
 ```bash
-bun test lib/liquidity.test.ts
+npm run test lib/liquidity.test.ts
 
 FAIL lib/liquidity.test.ts
   ✕ should return high score for liquid market (2 ms)

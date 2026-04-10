@@ -10,8 +10,6 @@ Located in `~/.claude/agents/`:
 | architect | System design | Architectural decisions |
 | tdd-guide | Test-driven development | New features, bug fixes |
 | code-reviewer | Code review | After writing code |
-| doc-updater | Documentation | Updating docs |
-
 ## Immediate Agent Usage
 
 No user prompt needed:
