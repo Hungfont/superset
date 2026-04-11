@@ -5,8 +5,6 @@ import (
 	"encoding/pem"
 	"log"
 
-	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	"superset/auth-service/configs"
 	svcauth "superset/auth-service/internal/app/auth"
 	delivery "superset/auth-service/internal/delivery/http"
@@ -15,6 +13,9 @@ import (
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
 	reporedis "superset/auth-service/internal/repository/redis"
+
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -26,7 +27,8 @@ func main() {
 	}
 
 	cfg := configs.Load()
-
+	log.Printf("Loaded config: DB DSN=%s, SMTP Host=%s, App BaseURL=%s, Redis URL=%s",
+		cfg.DB.DSN, cfg.SMTP.Host, cfg.App.BaseURL, cfg.Redis.URL)
 	// Database
 	db, err := gorm.Open(gormpostgres.Open(cfg.DB.DSN), &gorm.Config{})
 	if err != nil {

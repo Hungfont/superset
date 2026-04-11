@@ -379,7 +379,7 @@ myproject/
 │   └── client/               # Public API client
 ├── api/
 │   └── v1/                   # API definitions (proto, OpenAPI)
-├── testdata/                 # Test fixtures
+├── test/                 # Test fixtures
 ├── go.mod
 ├── go.sum
 └── Makefile
