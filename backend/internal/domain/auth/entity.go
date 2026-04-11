@@ -41,3 +41,15 @@ type RegisterRequest struct {
 	Email     string `json:"email"      binding:"required,email"`
 	Password  string `json:"password"   binding:"required"`
 }
+
+// LoginRequest holds credentials from the login HTTP request.
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// LoginResponse is returned on successful authentication.
+type LoginResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}

@@ -67,7 +67,7 @@ export default function RegisterPage() {
               role="form"
               aria-label="Create account form"
               onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-4"
+              className="flex flex-col gap-4"
             >
               {/* Name row */}
               <div className="grid grid-cols-2 gap-4">
@@ -146,15 +146,18 @@ export default function RegisterPage() {
                           {...field}
                         />
                       </FormControl>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         aria-label={showPassword ? "Hide password" : "Show password"}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 size-8"
                         onClick={() => setShowPassword((v) => !v)}
                         tabIndex={-1}
+                        disabled={isSubmitting}
                       >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
+                        {showPassword ? <EyeOff /> : <Eye />}
+                      </Button>
                     </div>
                     {/* Password strength indicator */}
                     {password && (
@@ -186,15 +189,18 @@ export default function RegisterPage() {
                           {...field}
                         />
                       </FormControl>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 size-8"
                         onClick={() => setShowConfirm((v) => !v)}
                         tabIndex={-1}
+                        disabled={isSubmitting}
                       >
-                        {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
+                        {showConfirm ? <EyeOff /> : <Eye />}
+                      </Button>
                     </div>
                     <FormMessage />
                   </FormItem>
@@ -202,7 +208,7 @@ export default function RegisterPage() {
               />
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting && <Loader2 data-icon="inline-start" className="animate-spin" />}
                 Create Account
               </Button>
             </form>

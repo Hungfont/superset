@@ -7,7 +7,11 @@ import (
 )
 
 // NewRouter wires all routes and returns the configured Gin engine.
-func NewRouter(registerHandler *httpauth.RegisterHandler) *gin.Engine {
+func NewRouter(
+	registerHandler *httpauth.RegisterHandler,
+	verifyHandler *httpauth.VerifyHandler,
+	loginHandler *httpauth.LoginHandler,
+) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
@@ -16,6 +20,8 @@ func NewRouter(registerHandler *httpauth.RegisterHandler) *gin.Engine {
 		authGroup := v1.Group("/auth")
 		{
 			authGroup.POST("/register", registerHandler.Register)
+			authGroup.GET("/verify", verifyHandler.Verify)
+			authGroup.POST("/login", loginHandler.Login)
 		}
 	}
 

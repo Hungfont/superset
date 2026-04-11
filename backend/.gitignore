@@ -22,3 +22,6 @@
 /.idea  
 vendor
 tidy
+# Environment files
+.env
+.env.local

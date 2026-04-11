@@ -8,6 +8,17 @@ type Config struct {
 	DB    DBConfig
 	SMTP  SMTPConfig
 	App   AppConfig
+	Redis RedisConfig
+	JWT   JWTConfig
+}
+
+type RedisConfig struct {
+	URL string
+}
+
+type JWTConfig struct {
+	PrivateKeyPEM string
+	PublicKeyPEM  string
 }
 
 type DBConfig struct {
@@ -42,6 +53,13 @@ func Load() Config {
 		App: AppConfig{
 			BaseURL: getEnv("APP_BASE_URL", "http://localhost:3000"),
 			Port:    getEnv("APP_PORT", "8080"),
+		},
+		Redis: RedisConfig{
+			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
+		},
+		JWT: JWTConfig{
+			PrivateKeyPEM: getEnv("JWT_PRIVATE_KEY", ""),
+			PublicKeyPEM:  getEnv("JWT_PUBLIC_KEY", ""),
 		},
 	}
 }

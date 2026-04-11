@@ -143,10 +143,10 @@ Detect the project type from config files (`package.json`, `Cargo.toml`, `go.mod
 
 **Node.js / TypeScript** (has `package.json`):
 ```bash
-bun typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null  # Type check
-bun run lint                                                    # Lint
-bun test                                                        # Tests
-bun run build                                                   # Build
+npm typecheck 2>/dev/null || npx tsc --noEmit 2>/dev/null  # Type check
+npm run lint                                                    # Lint
+npm test                                                        # Tests
+npm run build                                                   # Build
 ```
 
 **Rust** (has `Cargo.toml`):
