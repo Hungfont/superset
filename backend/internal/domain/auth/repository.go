@@ -38,6 +38,23 @@ type LoginRepository interface {
 	UpdateLastLogin(ctx context.Context, userID uint, loginCount int, lastLogin time.Time) error
 }
 
+// UserRepository handles user lookups for the JWT middleware.
+type UserRepository interface {
+	// FindByID returns the user with the given ID, or nil if not found.
+	FindByID(ctx context.Context, id uint) (*User, error)
+}
+
+// JWTRepository manages JWT blacklist and user cache in Redis.
+type JWTRepository interface {
+	// IsBlacklisted returns true if the given jti has been revoked.
+	IsBlacklisted(ctx context.Context, jti string) (bool, error)
+	// GetCachedUser returns the cached UserContext for the given user ID.
+	// Returns nil, nil when the key is absent (cache miss).
+	GetCachedUser(ctx context.Context, userID uint) (*UserContext, error)
+	// SetCachedUser stores a UserContext in Redis with a 5-minute TTL.
+	SetCachedUser(ctx context.Context, userID uint, u *UserContext) error
+}
+
 // RateLimitRepository manages rate limiting and account lockout state in Redis.
 type RateLimitRepository interface {
 	// IncrLoginAttempt increments the per-IP rate limit counter and returns the new count.

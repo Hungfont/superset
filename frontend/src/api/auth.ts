@@ -12,6 +12,10 @@ export interface LoginResponse {
   refresh_token: string;
 }
 
+export interface RefreshResponse {
+  access_token: string;
+}
+
 export interface LoginError extends Error {
   status: number;
   locked_until?: string;
@@ -46,5 +50,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(data),
       credentials: "include", // send/receive HttpOnly cookie
+    }),
+
+  refresh: (): Promise<RefreshResponse> =>
+    request("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "include", // HttpOnly refresh token cookie
     }),
 };

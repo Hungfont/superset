@@ -63,14 +63,8 @@ type: project
 
 ## [CURRENT-SESSION] Todos — 2026-04-11
 
-- [ ] Fix C-1: Add .env to .gitignore (credentials leak)
-- [ ] Fix C-2: Remove refresh_token from JSON body in login_handler.go, add user info to response instead
-- [ ] Fix C-3: Return user info from server instead of decoding JWT client-side in useLogin.ts
-- [ ] Fix C-4: Add security headers middleware to router.go
-- [ ] Fix C-5: Set SameSite=Strict on refresh cookie using http.SetCookie
-- [ ] Fix H-2/H-6: Make INCR+EXPIRE atomic using Redis pipeline in rate_repo.go
-- [ ] Fix H-7: Use errors.Is for gorm.ErrRecordNotFound in login_repo.go
-- [ ] Fix H-8/M-4: Handle SetLockout and ResetFailedLogin errors explicitly in login_service.go
-- [ ] Fix go-reviewer criticals: ErrAlreadyActivated, Expire errors, TTL -1/-2, GetLockoutExpiry GET, UpdateLastLogin non-blocking
-- [ ] Fix L-4: Propagate locked_until from API error body in auth.ts
-- [ ] Run all tests to verify nothing regressed
+- [x] Phase 1: Research - đọc sequence diagrams và auth-related files
+- [x] Phase 2: Planning - tạo implementation plan
+- [x] Phase 3: TDD - viết tests trước khi implement
+- [ ] Phase 4: Implement - xóa GuestRoute, thêm redirect vào LoginPage, cập nhật App.tsx
+- [ ] Phase 5: Review - code-reviewer + security-reviewer

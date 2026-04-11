@@ -12,13 +12,26 @@ vi.mock("@/api/auth", () => ({
 }));
 
 // Prevent Zustand authStore from leaking state between tests
+vi.mock("@/lib/api/client", () => ({
+  isTokenExpired: vi.fn().mockReturnValue(false),
+}));
+
+const mockAuthState = {
+  user: null as { id: number; username: string; email: string } | null,
+  accessToken: null as string | null,
+  isAuthenticated: false,
+  setAuth: vi.fn(),
+  clearAuth: vi.fn(),
+};
+
 vi.mock("@/stores/authStore", () => ({
-  useAuthStore: vi.fn((selector) =>
-    selector({ user: null, accessToken: null, isAuthenticated: false, setAuth: vi.fn(), clearAuth: vi.fn() })
+  useAuthStore: vi.fn((selector: (s: typeof mockAuthState) => unknown) =>
+    selector(mockAuthState)
   ),
 }));
 
 import { authApi } from "@/api/auth";
+import { isTokenExpired } from "@/lib/api/client";
 
 function renderPage(route = "/login") {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
@@ -46,6 +59,11 @@ describe("LoginPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset auth state to unauthenticated between tests
+    mockAuthState.user = null;
+    mockAuthState.accessToken = null;
+    mockAuthState.isAuthenticated = false;
+    vi.mocked(isTokenExpired).mockReturnValue(false);
   });
 
   it("renders username and password fields and sign-in button", () => {
@@ -135,5 +153,42 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/home page/i)).toBeInTheDocument();
     });
+  });
+
+  // ── Already-authenticated redirect ────────────────────────────────────────
+
+  it("redirects to / immediately when user already has a valid (non-expired) session", () => {
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.accessToken = "some-token";
+    mockAuthState.user = { id: 1, username: "johndoe", email: "john@example.com" };
+    vi.mocked(isTokenExpired).mockReturnValue(false);
+
+    renderPage();
+
+    expect(screen.getByText(/home page/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/username or email/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the login form when user is authenticated but token is expired", () => {
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.accessToken = "expired-token";
+    mockAuthState.user = { id: 1, username: "johndoe", email: "john@example.com" };
+    vi.mocked(isTokenExpired).mockReturnValue(true);
+
+    renderPage();
+
+    expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
+    expect(screen.queryByText(/home page/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the login form when user is not authenticated", () => {
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.accessToken = null;
+    mockAuthState.user = null;
+
+    renderPage();
+
+    expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
+    expect(screen.queryByText(/home page/i)).not.toBeInTheDocument();
   });
 });

@@ -53,3 +53,11 @@ type LoginResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
+
+// UserContext is injected into Gin context by the JWT middleware.
+type UserContext struct {
+	ID       uint
+	Username string
+	Email    string
+	Active   bool
+}

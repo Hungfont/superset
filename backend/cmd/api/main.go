@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"log"
@@ -60,11 +61,26 @@ func main() {
 		log.Fatalf("failed to parse RSA private key: %v", err)
 	}
 
+	pubBlock, _ := pem.Decode([]byte(cfg.JWT.PublicKeyPEM))
+	if pubBlock == nil {
+		log.Fatal("failed to parse JWT_PUBLIC_KEY PEM")
+	}
+	pubKeyAny, err := x509.ParsePKIXPublicKey(pubBlock.Bytes)
+	if err != nil {
+		log.Fatalf("failed to parse RSA public key: %v", err)
+	}
+	pubKey, ok := pubKeyAny.(*rsa.PublicKey)
+	if !ok {
+		log.Fatal("JWT_PUBLIC_KEY is not an RSA public key")
+	}
+
 	// Wire dependencies
 	registerRepo := repopostgres.NewRegisterUserRepository(db)
 	verifyRepo := repopostgres.NewVerifyRepository(db)
 	loginRepo := repopostgres.NewLoginRepository(db)
+	userRepo := repopostgres.NewUserRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
+	jwtRepo := reporedis.NewJWTRepository(redisClient)
 
 	mailer := email.NewSMTPSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
 
@@ -76,7 +92,7 @@ func main() {
 	verifyHandler := httpauth.NewVerifyHandler(verifySvc, cfg.App.BaseURL)
 	loginHandler := httpauth.NewLoginHandler(loginSvc)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler)
+	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, pubKey, jwtRepo, userRepo)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

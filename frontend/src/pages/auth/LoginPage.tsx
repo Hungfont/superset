@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -7,6 +7,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { loginSchema, type LoginFormValues } from "@/lib/validations/login";
 import { useLogin } from "@/hooks/useLogin";
 import type { LoginError } from "@/api/auth";
+import { useAuthStore } from "@/stores/authStore";
+import { isTokenExpired } from "@/lib/api/client";
 
 import {
   Card,
@@ -48,14 +50,31 @@ function formatCountdown(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** Validates that a redirect target is a safe same-origin relative path. */
+function safePath(raw: string | null | undefined): string {
+  if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  return "/";
+}
+
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const [showPassword, setShowPassword] = useState(false);
   const [lockoutMs, setLockoutMs] = useState<number | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
   const isActivated = searchParams.get("activated") === "true";
-  const from = searchParams.get("from");
+  const fromAlert = searchParams.get("from");
+
+  // Synchronously redirect users who already have an active session.
+  // Allow through when token is absent or expired — ProtectedRoute will have
+  // already called clearAuth() when a refresh attempt failed.
+  if (isAuthenticated && accessToken && !isTokenExpired(accessToken)) {
+    const stateFrom = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+    return <Navigate to={safePath(stateFrom)} replace />;
+  }
 
   const savedUsername = safeLocalStorage()?.getItem("rememberedUsername") ?? "";
 
@@ -111,7 +130,7 @@ export default function LoginPage() {
 
         <CardContent className="flex flex-col gap-4">
           {/* Redirected from protected route */}
-          {from && !isActivated && (
+          {fromAlert && !isActivated && (
             <Alert>
               <AlertDescription>Sign in to continue.</AlertDescription>
             </Alert>

@@ -9,3 +9,10 @@ var (
 	ErrAccountInactive    = errors.New("account inactive")
 	ErrRateLimited        = errors.New("rate limit exceeded")
 )
+
+// Sentinel errors for JWT middleware.
+var (
+	ErrTokenMissing  = errors.New("token missing")
+	ErrTokenInvalid  = errors.New("token invalid")
+	ErrTokenRevoked  = errors.New("token revoked")
+)

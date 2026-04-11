@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	domain "superset/auth-service/internal/domain/auth"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -142,6 +144,7 @@ func (s *LoginService) generateAccessToken(user *domain.User) (string, error) {
 		"sub":   fmt.Sprintf("%d", user.ID),
 		"email": user.Email,
 		"uname": user.Username,
+		"jti":   uuid.NewString(),
 		"iat":   now.Unix(),
 		"exp":   now.Add(accessTokenExpiry).Unix(),
 	}
