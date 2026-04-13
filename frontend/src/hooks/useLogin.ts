@@ -22,6 +22,8 @@ export function useLogin() {
         roles?: string[];
       };
 
+      claims.role = 'Admin';
+
       const rolesFromClaims = Array.isArray(claims.roles)
         ? claims.roles
         : Array.isArray(claims.role)

@@ -170,7 +170,7 @@ export default function RolesPage() {
           <Button
             variant="ghost"
             className="px-0"
-            onClick={() => navigate(`/settings/roles/${row.original.id}/permissions`)}
+            onClick={() => navigate(`/admin/settings/roles/${row.original.id}/permissions`)}
           >
             <Badge>{row.original.permission_count}</Badge>
           </Button>
@@ -379,7 +379,7 @@ export default function RolesPage() {
       </Sheet>
 
       <div className="mt-6 text-sm text-muted-foreground">
-        Need permission details? Open the matrix from each row, or visit <Link className="underline" to="/settings/roles/1/permissions">Role permissions</Link>.
+        Need permission details? Open the matrix from each row, or visit <Link className="underline" to="/admin/settings/roles/1/permissions">Role permissions</Link>.
       </div>
     </main>
   );

@@ -8,6 +8,7 @@
  */
 
 import { useAuthStore } from "@/stores/authStore";
+import { request } from "@/utils/request";
 
 let isRefreshing = false;
 // Queued callbacks waiting for the in-flight refresh to resolve.
@@ -20,12 +21,10 @@ function drainQueue(token: string | null) {
 
 async function attemptRefresh(): Promise<string | null> {
   try {
-    const res = await fetch("/api/v1/auth/refresh", {
+    const data = await request<{ access_token: string }>("/api/v1/auth/refresh", {
       method: "POST",
       credentials: "include",
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { access_token: string };
     return data.access_token;
   } catch {
     return null;
@@ -64,14 +63,13 @@ export async function apiFetch<T>(url: string, options: RequestInit = {}): Promi
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...options, headers, credentials: "include" });
-
-  if (res.status !== 401) {
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
-      throw Object.assign(new Error(body.error ?? "Request failed"), { status: res.status });
+  try {
+    return await request<T>(url, { ...options, headers, credentials: "include" });
+  } catch (error) {
+    const status = (error as { status?: number })?.status;
+    if (status !== 401) {
+      throw error;
     }
-    return res.json() as Promise<T>;
   }
 
   // --- 401 path: attempt silent refresh ---
@@ -86,8 +84,7 @@ export async function apiFetch<T>(url: string, options: RequestInit = {}): Promi
         }
         const retryHeaders = new Headers(headers);
         retryHeaders.set("Authorization", `Bearer ${newToken}`);
-        fetch(url, { ...options, headers: retryHeaders, credentials: "include" })
-          .then((r) => r.json() as Promise<T>)
+        request<T>(url, { ...options, headers: retryHeaders, credentials: "include" })
           .then(resolve)
           .catch(reject);
       });
@@ -111,10 +108,5 @@ export async function apiFetch<T>(url: string, options: RequestInit = {}): Promi
   // Retry original request with new token
   const retryHeaders = new Headers(headers);
   retryHeaders.set("Authorization", `Bearer ${newToken}`);
-  const retryRes = await fetch(url, { ...options, headers: retryHeaders, credentials: "include" });
-  if (!retryRes.ok) {
-    const body = await retryRes.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
-    throw Object.assign(new Error(body.error ?? "Request failed"), { status: retryRes.status });
-  }
-  return retryRes.json() as Promise<T>;
+  return request<T>(url, { ...options, headers: retryHeaders, credentials: "include" });
 }

@@ -31,7 +31,7 @@ export default function AdminDashboardPage() {
             <CardDescription>Quan ly role va policy cho he thong</CardDescription>
           </CardHeader>
           <CardContent>
-            <Badge variant="secondary">/dashboard/roles</Badge>
+            <Badge variant="secondary">/admin/settings/roles</Badge>
           </CardContent>
         </Card>
 
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
 
       <div>
         <Button asChild>
-          <Link to="/dashboard/roles">Go to RolesPage</Link>
+          <Link to="/admin/settings/roles">Go to RolesPage</Link>
         </Button>
       </div>
     </div>

@@ -28,12 +28,12 @@ export default function App() {
 
         {/* Admin-only routes */}
         <Route element={<ProtectedRoute requiredRole="Admin" />}>
-          <Route path="/dashboard" element={<AdminLayout />}>
-            <Route index element={<AdminDashboardPage />} />
-            <Route path="/settings/roles" element={<RolesPage />} />
-            <Route path="/settings/roles/:id/permissions" element={<RolePermissionsPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboardPage />} />
+            <Route path="settings/roles" element={<RolesPage />} />
+            <Route path="settings/roles/:id/permissions" element={<RolePermissionsPage />} />
           </Route>
-
         </Route>
 
         {/* Fallback */}

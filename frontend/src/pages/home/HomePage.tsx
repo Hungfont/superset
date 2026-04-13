@@ -16,7 +16,7 @@ export default function HomePage() {
       <div className="flex flex-col gap-2 sm:flex-row">
         {isAdmin ? (
           <Button asChild variant="outline">
-            <Link to="/dashboard">Go to Admin Dashboard</Link>
+            <Link to="/admin/dashboard">Go to Admin Dashboard</Link>
           </Button>
         ) : null}
         <Button onClick={() => logout(false)} disabled={isPending}>

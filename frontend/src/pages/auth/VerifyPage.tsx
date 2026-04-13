@@ -7,21 +7,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { authApi } from "@/api/auth";
 
 const HASH_REGEX = /^[0-9a-f]{64}$/i;
 const REDIRECT_SECONDS = 3;
 
-interface VerifyErrorResponse {
-  error: string;
-}
-
-async function verifyEmail(hash: string): Promise<void> {
-  const res = await fetch(`/api/v1/auth/verify?hash=${encodeURIComponent(hash)}`);
-  if (!res.ok) {
-    const body: VerifyErrorResponse = await res.json().catch(() => ({ error: "Unexpected error" }));
-    throw Object.assign(new Error(body.error), { status: res.status });
-  }
-}
 
 function resolveErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -44,7 +34,7 @@ export default function VerifyPage() {
 
   const { isLoading, isSuccess, isError, error } = useQuery({
     queryKey: ["email-verify", hash],
-    queryFn: () => verifyEmail(hash),
+    queryFn: () => authApi.verifyEmail(hash),
     enabled: !isMalformed && hash !== "",
     retry: false,
   });

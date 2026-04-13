@@ -1,5 +1,6 @@
 import type { RegisterFormValues } from "@/lib/validations/register";
 import type { LoginFormValues } from "@/lib/validations/login";
+import { request } from "@/utils/request";
 
 export type RegisterPayload = Omit<RegisterFormValues, "confirmPassword">;
 
@@ -12,26 +13,13 @@ export interface LoginResponse {
   refresh_token: string;
 }
 
+export interface RefreshResponse {
+  access_token: string;
+}
+
 export interface LoginError extends Error {
   status: number;
   locked_until?: string;
-}
-
-export interface ApiError {
-  error: string;
-  locked_until?: string;
-}
-
-async function request<T>(url: string, options: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: "Unknown error" }))) as ApiError;
-    throw Object.assign(new Error(body.error ?? "Request failed"), { status: res.status });
-  }
-  return res.json() as Promise<T>;
 }
 
 export const authApi = {
@@ -48,22 +36,28 @@ export const authApi = {
       credentials: "include", // send/receive HttpOnly cookie
     }),
 
+  refresh: (): Promise<RefreshResponse> =>
+    request("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    }),
+
+  verifyEmail: (hash: string): Promise<{ message?: string }> =>
+    request(`/api/v1/auth/verify?hash=${encodeURIComponent(hash)}`, {
+      method: "GET",
+    }),
+
   logout: async (all = false, accessToken?: string | null): Promise<void> => {
     const headers: HeadersInit = {};
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
     }
 
-    const res = await fetch(all ? "/api/v1/auth/logout?all=true" : "/api/v1/auth/logout", {
+    await request<Record<string, never>>(all ? "/api/v1/auth/logout?all=true" : "/api/v1/auth/logout", {
       method: "POST",
       credentials: "include",
       headers,
     });
-
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({ error: "Unknown error" }))) as ApiError;
-      throw Object.assign(new Error(body.error ?? "Request failed"), { status: res.status });
-    }
   },
 
 };

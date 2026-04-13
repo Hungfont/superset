@@ -29,6 +29,8 @@ export function ProtectedRoute({ requiredRole }: ProtectedRouteProps) {
       (role) => role.toLowerCase() === requiredRole.toLowerCase(),
     );
 
+    console.log("User roles:", userRoles, "Required role:", requiredRole, "Match:", isRoleMatched);
+
     if (!isRoleMatched) {
       return <Navigate to="/" replace />;
     }

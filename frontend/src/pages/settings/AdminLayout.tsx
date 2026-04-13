@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 
 const adminNavItems = [
   {
-    to: "/dashboard",
+    to: "/admin/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
     end: true,
   },
   {
-    to: "/dashboard/roles",
+    to: "/admin/settings/roles",
     label: "Roles",
     icon: ShieldCheck,
     end: false,

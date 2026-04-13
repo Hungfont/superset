@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { authApi } from "@/api/auth";
 
 const REFRESH_BEFORE_EXPIRY_MS = 60_000;
 
@@ -41,12 +42,7 @@ export function useTokenRefresh() {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/v1/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("refresh failed");
-        const data = (await res.json()) as { access_token: string };
+        const data = await authApi.refresh();
         setAccessToken(data.access_token);
       } catch {
         clearAuth();
