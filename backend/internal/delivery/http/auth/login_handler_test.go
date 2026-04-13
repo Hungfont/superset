@@ -60,7 +60,15 @@ func (f *fakeRateRepo) SetLockout(_ context.Context, _ string) (time.Time, error
 func (f *fakeRateRepo) GetLockoutExpiry(_ context.Context, _ string) (time.Time, error) {
 	return f.lockExpiry, nil
 }
-func (f *fakeRateRepo) StoreRefreshToken(_ context.Context, _ string, _ uint) error { return nil }
+
+type fakeRefreshRepo struct{}
+
+func (f *fakeRefreshRepo) Store(_ context.Context, _ string, _ uint) error { return nil }
+func (f *fakeRefreshRepo) GetUserID(_ context.Context, _ string) (uint, bool, error) {
+	return 0, false, nil
+}
+func (f *fakeRefreshRepo) Delete(_ context.Context, _ string) (bool, error) { return true, nil }
+func (f *fakeRefreshRepo) DeleteAllForUser(_ context.Context, _ uint) error  { return nil }
 
 // --- helpers ---
 
@@ -74,7 +82,7 @@ func newTestKey(t *testing.T) *rsa.PrivateKey {
 }
 
 func newLoginRouter(loginRepo domain.LoginRepository, rateRepo domain.RateLimitRepository, key *rsa.PrivateKey) *gin.Engine {
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 	h := httpauth.NewLoginHandler(svc)
 	r := gin.New()
 	r.POST("/api/v1/auth/login", h.Login)

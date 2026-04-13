@@ -73,9 +73,18 @@ func (f *fakeRateLimitRepo) GetLockoutExpiry(_ context.Context, _ string) (time.
 	return f.lockoutExpiry, nil
 }
 
-func (f *fakeRateLimitRepo) StoreRefreshToken(_ context.Context, _ string, _ uint) error {
-	return nil
+type fakeRefreshRepo struct {
+	storeErr error
 }
+
+func (f *fakeRefreshRepo) Store(_ context.Context, _ string, _ uint) error {
+	return f.storeErr
+}
+func (f *fakeRefreshRepo) GetUserID(_ context.Context, _ string) (uint, bool, error) {
+	return 0, false, nil
+}
+func (f *fakeRefreshRepo) Delete(_ context.Context, _ string) (bool, error) { return true, nil }
+func (f *fakeRefreshRepo) DeleteAllForUser(_ context.Context, _ uint) error  { return nil }
 
 // --- helpers ---
 
@@ -109,7 +118,7 @@ func TestLoginService_HappyPath(t *testing.T) {
 	key := generateTestKey(t)
 	loginRepo := &fakeLoginRepo{user: activeUser()}
 	rateRepo := &fakeRateLimitRepo{}
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	resp, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",
@@ -134,7 +143,7 @@ func TestLoginService_UserNotFound_ReturnsInvalidCredentials(t *testing.T) {
 	key := generateTestKey(t)
 	loginRepo := &fakeLoginRepo{user: nil}
 	rateRepo := &fakeRateLimitRepo{}
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "nobody",
@@ -150,7 +159,7 @@ func TestLoginService_WrongPassword_ReturnsInvalidCredentials(t *testing.T) {
 	key := generateTestKey(t)
 	loginRepo := &fakeLoginRepo{user: activeUser()}
 	rateRepo := &fakeRateLimitRepo{}
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",
@@ -168,7 +177,7 @@ func TestLoginService_InactiveAccount_ReturnsForbidden(t *testing.T) {
 	u.Active = false
 	loginRepo := &fakeLoginRepo{user: u}
 	rateRepo := &fakeRateLimitRepo{}
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",
@@ -187,7 +196,7 @@ func TestLoginService_AlreadyLockedAccount_ReturnsLocked(t *testing.T) {
 		failedCount:   5,
 		lockoutExpiry: time.Now().Add(10 * time.Minute),
 	}
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",
@@ -204,7 +213,7 @@ func TestLoginService_FifthFailure_TriggersLockout(t *testing.T) {
 	key := generateTestKey(t)
 	loginRepo := &fakeLoginRepo{user: activeUser()}
 	rateRepo := &fakeRateLimitRepo{failedCount: 4} // 4 prior failures; this attempt is the 5th
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",
@@ -221,7 +230,7 @@ func TestLoginService_RateLimitExceeded_ReturnsRateLimited(t *testing.T) {
 	key := generateTestKey(t)
 	loginRepo := &fakeLoginRepo{user: activeUser()}
 	rateRepo := &fakeRateLimitRepo{loginAttemptCount: 20} // already at 20; next incr → 21
-	svc := svcauth.NewLoginService(loginRepo, rateRepo, key)
+	svc := svcauth.NewLoginService(loginRepo, rateRepo, &fakeRefreshRepo{}, key)
 
 	_, err := svc.Login(context.Background(), "127.0.0.1", domain.LoginRequest{
 		Username: "johndoe",

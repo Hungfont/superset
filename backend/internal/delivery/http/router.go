@@ -15,6 +15,7 @@ func NewRouter(
 	registerHandler *httpauth.RegisterHandler,
 	verifyHandler *httpauth.VerifyHandler,
 	loginHandler *httpauth.LoginHandler,
+	refreshHandler *httpauth.RefreshHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -29,6 +30,7 @@ func NewRouter(
 			authGroup.POST("/register", registerHandler.Register)
 			authGroup.GET("/verify", verifyHandler.Verify)
 			authGroup.POST("/login", loginHandler.Login)
+			authGroup.POST("/refresh", refreshHandler.Refresh)
 		}
 
 		// Protected routes require a valid JWT.

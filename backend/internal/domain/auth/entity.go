@@ -54,6 +54,12 @@ type LoginResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// RefreshRequest holds the refresh token submitted by the client.
+// The token is read from the HttpOnly cookie set at login.
+type RefreshRequest struct {
+	Token string // populated from cookie "refresh_token"
+}
+
 // UserContext is injected into Gin context by the JWT middleware.
 type UserContext struct {
 	ID       uint

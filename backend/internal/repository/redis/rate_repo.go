@@ -90,10 +90,3 @@ func (r *rateLimitRepo) GetLockoutExpiry(ctx context.Context, username string) (
 	return time.Now().Add(ttl), nil
 }
 
-func (r *rateLimitRepo) StoreRefreshToken(ctx context.Context, token string, userID uint) error {
-	key := "refresh:" + token
-	if err := r.client.Set(ctx, key, userID, refreshTTL).Err(); err != nil {
-		return fmt.Errorf("storing refresh token: %w", err)
-	}
-	return nil
-}

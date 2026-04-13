@@ -37,20 +37,23 @@ func (e ErrLocked) Is(target error) bool {
 
 // LoginService handles the login business logic.
 type LoginService struct {
-	loginRepo domain.LoginRepository
-	rateRepo  domain.RateLimitRepository
-	privKey   *rsa.PrivateKey
+	loginRepo   domain.LoginRepository
+	rateRepo    domain.RateLimitRepository
+	refreshRepo domain.RefreshRepository
+	privKey     *rsa.PrivateKey
 }
 
 func NewLoginService(
 	loginRepo domain.LoginRepository,
 	rateRepo domain.RateLimitRepository,
+	refreshRepo domain.RefreshRepository,
 	privKey *rsa.PrivateKey,
 ) *LoginService {
 	return &LoginService{
-		loginRepo: loginRepo,
-		rateRepo:  rateRepo,
-		privKey:   privKey,
+		loginRepo:   loginRepo,
+		rateRepo:    rateRepo,
+		refreshRepo: refreshRepo,
+		privKey:     privKey,
 	}
 }
 
@@ -109,7 +112,7 @@ func (s *LoginService) Login(ctx context.Context, ip string, req domain.LoginReq
 	}
 
 	// 9. Store refresh token in Redis
-	if err := s.rateRepo.StoreRefreshToken(ctx, refreshToken, user.ID); err != nil {
+	if err := s.refreshRepo.Store(ctx, refreshToken, user.ID); err != nil {
 		return domain.LoginResponse{}, fmt.Errorf("storing refresh token: %w", err)
 	}
 

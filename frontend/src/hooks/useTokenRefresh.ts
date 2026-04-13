@@ -35,8 +35,9 @@ export function useTokenRefresh() {
     const exp = parseExp(accessToken);
     if (exp === null) return;
 
-    const msUntilRefresh = exp * 1000 - Date.now() - REFRESH_BEFORE_EXPIRY_MS;
-    if (msUntilRefresh <= 0) return;
+    // Use 0 when the token is already expired or inside the 60-second window
+    // so the refresh fires on the next tick rather than silently doing nothing.
+    const msUntilRefresh = Math.max(0, exp * 1000 - Date.now() - REFRESH_BEFORE_EXPIRY_MS);
 
     const timer = setTimeout(async () => {
       try {

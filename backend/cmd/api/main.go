@@ -81,18 +81,21 @@ func main() {
 	userRepo := repopostgres.NewUserRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
+	refreshRepo := reporedis.NewRefreshRepository(redisClient)
 
 	mailer := email.NewSMTPSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
 
 	registerSvc := svcauth.NewRegisterService(registerRepo, mailer, cfg.App.BaseURL)
 	verifySvc := svcauth.NewVerifyService(verifyRepo)
-	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, privKey)
+	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, refreshRepo, privKey)
+	refreshSvc := svcauth.NewRefreshService(refreshRepo, userRepo, privKey)
 
 	registerHandler := httpauth.NewRegisterHandler(registerSvc)
 	verifyHandler := httpauth.NewVerifyHandler(verifySvc, cfg.App.BaseURL)
 	loginHandler := httpauth.NewLoginHandler(loginSvc)
+	refreshHandler := httpauth.NewRefreshHandler(refreshSvc)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, pubKey, jwtRepo, userRepo)
+	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, pubKey, jwtRepo, userRepo)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

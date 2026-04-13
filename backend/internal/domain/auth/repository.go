@@ -71,6 +71,23 @@ type RateLimitRepository interface {
 	SetLockout(ctx context.Context, username string) (time.Time, error)
 	// GetLockoutExpiry returns the lockout expiry time, or zero time if not locked.
 	GetLockoutExpiry(ctx context.Context, username string) (time.Time, error)
-	// StoreRefreshToken persists a refresh token mapped to userID with a 7-day TTL.
-	StoreRefreshToken(ctx context.Context, token string, userID uint) error
+}
+
+// RefreshRepository manages refresh token lifecycle in Redis.
+// Each token is stored as "refresh:{token}" → userID.
+// A secondary set "user_tokens:{userID}" tracks all active tokens per user,
+// enabling full session revocation on reuse-attack detection.
+type RefreshRepository interface {
+	// Store persists a refresh token mapped to userID (7-day TTL) and
+	// registers it in the per-user token set.
+	Store(ctx context.Context, token string, userID uint) error
+	// GetUserID returns the userID for the given token.
+	// Returns found=false when the token is absent (expired or unknown).
+	GetUserID(ctx context.Context, token string) (userID uint, found bool, err error)
+	// Delete removes a single refresh token.
+	// Returns deleted=true when the key existed and was removed.
+	Delete(ctx context.Context, token string) (deleted bool, err error)
+	// DeleteAllForUser revokes every active refresh token belonging to userID.
+	// Used to terminate all sessions after a reuse-attack is detected.
+	DeleteAllForUser(ctx context.Context, userID uint) error
 }

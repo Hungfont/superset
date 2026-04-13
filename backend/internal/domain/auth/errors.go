@@ -15,4 +15,5 @@ var (
 	ErrTokenMissing  = errors.New("token missing")
 	ErrTokenInvalid  = errors.New("token invalid")
 	ErrTokenRevoked  = errors.New("token revoked")
+	ErrTokenReused   = errors.New("refresh token reuse detected")
 )
