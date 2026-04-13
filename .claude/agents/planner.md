@@ -24,7 +24,7 @@ You are an expert planning specialist focused on creating comprehensive, actiona
 - List assumptions and constraints
 
 ### 2. Architecture Review
-- Analyze existing codebase structure
+- Analyze `docs/CODEMAPS/INDEX.md` to know about existing codebase structure
 - Identify affected components
 - Review similar implementations
 - Consider reusable patterns

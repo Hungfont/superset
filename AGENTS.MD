@@ -18,10 +18,12 @@ This is a **production-ready AI coding plugin** providing specialized agents, sk
 |-------|---------|-------------|
 | planner | Implementation planning | Complex features, refactoring |
 | architect | System design and scalability | Architectural decisions |
+| doc-updater | Documentation and codemaps | Updating docs |
 | tdd-guide | Test-driven development | New features, bug fixes |
 | code-reviewer | Code quality and maintainability | After writing/modifying code |
 | go-reviewer | Go code review | Go projects |
-
+| loop-operator | Autonomous loop execution | Run loops safely, monitor stalls, intervene |
+| harness-optimizer | Harness config tuning | Reliability, cost, throughput |
 ## Agent Orchestration
 
 Use agents proactively without user prompt:
@@ -82,22 +84,6 @@ Test types (all required):
 3. Refactor (IMPROVE) — verify coverage 80%+
 
 Troubleshoot failures: check test isolation → verify mocks → fix implementation (not tests, unless tests are wrong).
-
-## Implementation Log
-
-`.claude/memory/implementation-log.md` is the persistent task log written and maintained by the `tdd-guide` agent. It mirrors the session TodoWrite list and survives across conversations.
-
-**Read this file when:**
-- User asks "what's done so far?" / "what's left?" / "verify completed tasks" for any feature
-- Starting a TDD session on a feature that may have been partially implemented — check for an existing entry before creating tasks
-- Resuming work after a context reset or new conversation — use the log to reconstruct progress state
-- `planner` agent is scoping a feature — cross-check against the log to avoid re-planning completed steps
-- `code-reviewer` agent is reviewing — use the log to understand which tasks were recently implemented
-- User asks to verify, audit, or report on implementation status of any requirement ID (e.g. AUTH-001)
-
-**Do NOT read it when:**
-- The feature or requirement ID has no prior entry in the log
-- The task is entirely new with no prior TDD session
 
 ## Workflow Surface Policy
 

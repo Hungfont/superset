@@ -2,6 +2,7 @@
 
 ## Available Agents
 
+
 Located in `~/.claude/agents/`:
 
 | Agent | Purpose | When to Use |
@@ -10,6 +11,7 @@ Located in `~/.claude/agents/`:
 | architect | System design | Architectural decisions |
 | tdd-guide | Test-driven development | New features, bug fixes |
 | code-reviewer | Code review | After writing code |
+| doc-updater | Documentation | Updating docs |
 ## Immediate Agent Usage
 
 No user prompt needed:
@@ -17,6 +19,8 @@ No user prompt needed:
 2. Code just written/modified - Use **code-reviewer** agent
 3. Bug fix or new feature - Use **tdd-guide** agent
 4. Architectural decision - Use **architect** agent
+5. Documentation update - Use **doc-updater** agent
+
 
 ## Parallel Task Execution
 
@@ -41,3 +45,4 @@ For complex problems, use split role sub-agents:
 - Security expert
 - Consistency reviewer
 - Redundancy checker
+- Doc updater

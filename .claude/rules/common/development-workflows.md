@@ -20,3 +20,9 @@ The Feature Implementation Workflow describes the development pipeline: research
    - Use **code-reviewer** agent immediately after writing code
    - Address CRITICAL and HIGH issues
    - Fix MEDIUM issues when possible
+
+4. **Documentation Update**
+   - Use **doc-updater** agent after code is reviewed and stable
+   - Run `/update-codemaps` to regenerate `docs/CODEMAPS/*`
+   - Update relevant READMEs and guides affected by the change
+   - Keep sequence diagrams in `docs/sequences/*` in sync with new flows
