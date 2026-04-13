@@ -1,0 +1,40 @@
+Generated: 2026-04-13
+Scope: docs/CODEMAPS refresh
+Files scanned: 120 (backend + frontend source trees)
+
+Files modified:
+- docs/CODEMAPS/architecture.md
+- docs/CODEMAPS/backend.md
+- docs/CODEMAPS/frontend.md
+- docs/CODEMAPS/data.md
+- docs/CODEMAPS/dependencies.md
+
+Diff impact (approx from git numstat):
+- architecture.md: 52 additions, 27 deletions (~65% touched) [>30%]
+- backend.md: 52 additions, 49 deletions (~102% touched) [>30%]
+- data.md: 38 additions, 50 deletions (~88% touched) [>30%]
+- dependencies.md: 53 additions, 52 deletions (~105% touched) [>30%]
+- frontend.md: 66 additions, 46 deletions (~112% touched) [>30%]
+
+Architecture changes detected:
+- Backend now includes explicit RBAC role CRUD routes:
+  GET/POST /api/v1/roles and PUT/DELETE /api/v1/roles/:id
+- Middleware and flow mapping updated to include JWT-protected role management.
+- Data model map updated with ab_role and role cache namespace.
+- Frontend route tree updated with admin nested routes:
+  /admin/dashboard, /admin/settings/roles, /admin/settings/roles/:id/permissions
+- Frontend flow updated to reflect ProtectedRoute role-gating and QueryClient bootstrap.
+
+New dependencies detected (in codemap coverage):
+- Frontend runtime dependencies now explicitly captured: react-router-dom, @tanstack/react-query, @tanstack/react-table, react-hook-form, @hookform/resolvers, lucide-react, Radix packages.
+- No net-new backend core dependency versions introduced by this codemap update (documentation refresh only).
+
+Files added/removed since last codemap scan:
+- Added report file: .reports/codemap-diff.txt
+- No codemap files removed.
+
+Staleness warnings (90+ days):
+- None for docs/CODEMAPS baseline commit context (latest commit date observed: 2026-04-13).
+
+Notes:
+- Large (>30%) deltas are expected because codemaps were normalized to current route/data/dependency structure and rewritten into token-lean format with consistent metadata headers.

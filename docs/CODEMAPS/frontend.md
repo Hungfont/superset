@@ -1,56 +1,76 @@
-<!-- Generated: 2026-04-13 | Files scanned: ~15 | Token estimate: ~400 -->
+<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~640 -->
 
 # Frontend Codemap
 
-**Entry Point:** `frontend/src/main.tsx` (Vite)  
-**Stack:** React + TypeScript + Tailwind + shadcn/ui + Zustand
+Entry point: `frontend/src/main.tsx`  
+Stack: React 18 + TypeScript + Vite + React Query + React Router + Zustand + Tailwind + shadcn/ui
 
-## Page Tree
+## Route Tree (`src/App.tsx`)
 
 ```
-/            → pages/home/
-/login       → pages/auth/     (login form)
-/register    → pages/register/ (registration form)
+Public
+/login                              -> LoginPage
+/register                           -> RegisterPage
+/register/success                   -> RegisterSuccessPage
+/auth/verify                        -> VerifyPage
+
+Protected
+/                                   -> HomePage
+
+Admin-only (ProtectedRoute requiredRole="Admin")
+/admin                              -> AdminLayout
+/admin/dashboard                    -> AdminDashboardPage
+/admin/settings/roles               -> RolesPage
+/admin/settings/roles/:id/permissions -> RolePermissionsPage
+
+Fallback
+* -> redirect /login
+```
+
+## Component/Flow Map
+
+```
+main.tsx
+  -> QueryClientProvider
+    -> App
+      -> ProtectedRoute (auth + role gate)
+      -> pages/*
+      -> Toaster
+```
+
+## State and API
+
+```
+stores/authStore.ts
+  - auth/session state
+  - login/logout/setSession style actions
+
+hooks/useLogin.ts
+hooks/useRegister.ts
+hooks/useLogout.ts
+hooks/useTokenRefresh.ts
+  - orchestrate API calls, redirects, and toasts
+
+api/auth.ts + api/roles.ts + utils/request.ts
+  - backend calls and request helpers
 ```
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `src/api/auth.ts` | Raw API calls: register, login, refresh |
-| `src/lib/api/client.ts` | Axios/fetch client, base URL, interceptors |
-| `src/stores/authStore.ts` | Zustand auth state (user, tokens, actions) |
-| `src/hooks/useLogin.ts` | Login mutation — calls API, updates store |
-| `src/hooks/useRegister.ts` | Register mutation |
-| `src/hooks/useTokenRefresh.ts` | Silent token refresh on expiry |
-| `src/hooks/use-toast.ts` | Toast notification hook (shadcn) |
-| `src/lib/validations/login.ts` | Zod schema for login form |
-| `src/lib/validations/register.ts` | Zod schema for register form |
-| `src/lib/utils.ts` | Tailwind `cn()` utility |
-| `src/components/ui/` | shadcn/ui component library |
-| `src/test/setup.ts` | Vitest test environment setup |
+- `frontend/src/App.tsx`: route definitions and access controls.
+- `frontend/src/main.tsx`: React Query client configuration and bootstrap.
+- `frontend/src/components/ProtectedRoute.tsx`: route guard.
+- `frontend/src/pages/auth/*`: login + verification views.
+- `frontend/src/pages/register/*`: registration + success flow.
+- `frontend/src/pages/settings/*`: admin dashboard and role management views.
+- `frontend/src/stores/authStore.ts`: shared auth state.
+- `frontend/src/test/setup.ts`: Vitest DOM setup.
 
-## State Management
+## Build/Test Config
 
 ```
-authStore (Zustand)
-  ├── user: UserContext | null
-  ├── accessToken: string | null
-  ├── login(credentials) → calls API → sets tokens + user
-  ├── logout() → clears state
-  └── refresh() → useTokenRefresh → rotates access token
+vite.config.ts      build + dev config
+tailwind.config.js  utility class scan + theme settings
+components.json     shadcn component registry
+package.json        scripts: dev/build/test/test:coverage
 ```
-
-## Config Files
-
-| File | Purpose |
-|------|---------|
-| `vite.config.ts` | Build config, dev proxy |
-| `tailwind.config.js` | Theme, content paths |
-| `components.json` | shadcn registry config |
-| `tsconfig.json` | TS strict mode |
-
-## Related
-
-- [architecture.md](architecture.md) — API endpoints consumed
-- [dependencies.md](dependencies.md) — npm packages

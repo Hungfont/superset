@@ -1,62 +1,50 @@
-<!-- Generated: 2026-04-13 | Files scanned: ~5 | Token estimate: ~350 -->
+<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~560 -->
 
 # Data Codemap
 
-## PostgreSQL Tables
+## Postgres Entities (AutoMigrate)
 
-### `ab_register_user` — pending email verification
+Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/api/main.go`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uint PK | auto-increment |
-| first_name | string | not null |
-| last_name | string | not null |
-| username | string | unique index |
-| email | string | unique index |
-| password | string | bcrypt hash |
-| registration_hash | string | unique, used in verify link |
-| created_at | timestamp | auto |
+### `ab_register_user`
 
-### `ab_user` — activated accounts
+- Purpose: pending registrations before email verification.
+- Key columns: `id`, `first_name`, `last_name`, `username` (unique), `email` (unique), `password` (bcrypt), `registration_hash` (unique), `created_at`.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uint PK | auto-increment |
-| first_name | string | not null |
-| last_name | string | not null |
-| username | string | unique index |
-| email | string | unique index |
-| password | string | bcrypt hash |
-| active | bool | default true |
-| login_count | int | default 0 |
-| last_login | timestamp | nullable |
-| created_on | timestamp | auto |
-| changed_on | timestamp | auto-update |
+### `ab_user`
 
-**Migration:** GORM AutoMigrate in `main.go` at startup.
+- Purpose: activated user accounts.
+- Key columns: `id`, `first_name`, `last_name`, `username` (unique), `email` (unique), `password`, `active`, `login_count`, `last_login`, `created_on`, `changed_on`.
+
+### `ab_role`
+
+- Purpose: RBAC role catalog.
+- Key columns: `id`, `name` (unique).
 
 ## Redis Key Spaces
 
-| Key pattern | Store | Purpose |
-|-------------|-------|---------|
-| `jwt:blocklist:<jti>` | `redis/jwt_repo.go` | Revoked access tokens |
-| `refresh:<token>` | `redis/refresh_repo.go` | Active refresh tokens → user ID |
-| `rate:<username>` | `redis/rate_repo.go` | Login attempt counter (rate limiting) |
+- `jwt:blocklist:<jti>`: revoked access-token JTIs.
+- `refresh:<token>`: refresh token session mapping.
+- `rate:<username>`: login throttling counter.
+- `role:list` (cache namespace): cached role list payloads.
 
-## Domain Entities
+## Data Flow Summary
 
-Source: `backend/internal/domain/auth/entity.go`
+```
+register -> ab_register_user
+verify   -> move/activate into ab_user
+login    -> read ab_user + write refresh/rate keys
+logout   -> write jwt:blocklist + delete refresh session
+roles    -> read/write ab_role + cache role list in Redis
+```
 
-- `RegisterUser` — pre-verification record
-- `User` — active account
-- `UserContext` — injected by JWT middleware into Gin context
-- `LoginResponse` — `{access_token, refresh_token}`
+## Domain Types Used in API
 
-## Extended Schema Docs
+- `RegisterRequest`, `LoginRequest`, `RefreshRequest`, `LogoutRequest`
+- `UserContext` (middleware-injected actor)
+- `Role`, `UpsertRoleRequest`, `RoleListItem`
 
-See [docs/db/](../db/) for full schema documentation across all planned services.
+## Extended Docs
 
-## Related
-
-- [backend.md](backend.md) — repository implementations
-- [architecture.md](architecture.md) — infra overview
+- Service-level DB docs: `docs/db/`
+- Backend repository map: `docs/CODEMAPS/backend.md`

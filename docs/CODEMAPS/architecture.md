@@ -1,43 +1,68 @@
-<!-- Generated: 2026-04-13 | Files scanned: ~60 | Token estimate: ~400 -->
+<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~520 -->
 
 # Architecture
 
-## System Boundaries
+## System Overview
 
 ```
-Browser
-  └── React/TS (Vite + Tailwind)
-        └── REST → Go Auth Service (:PORT)
-                      ├── PostgreSQL  (user storage)
-                      └── Redis       (JWT blocklist, refresh tokens, rate limits)
+Browser (React + Vite)
+  -> Frontend router/guards (ProtectedRoute)
+    -> REST API /api/v1/*
+      -> Go service (Gin)
+        -> App services (auth, role)
+          -> Postgres (users, register_users, roles)
+          -> Redis (jwt blocklist, refresh sessions, role cache, rate limits)
+          -> SMTP (verification email)
 ```
 
-## Request Flow
+## Primary Request Flows
 
 ```
-Client
-  → POST /api/v1/auth/register  → RegisterHandler → RegisterService → PostgreSQL + SMTP
-  → GET  /api/v1/auth/verify    → VerifyHandler   → VerifyService  → PostgreSQL
-  → POST /api/v1/auth/login     → LoginHandler    → LoginService   → PostgreSQL + Redis
-  → POST /api/v1/auth/refresh   → RefreshHandler  → RefreshService → Redis + PostgreSQL
-  → [protected] /api/v1/*       → JWTMiddleware   → validates RS256 JWT via Redis blocklist
+Register:
+POST /api/v1/auth/register
+  -> RegisterHandler -> RegisterService -> RegisterUserRepository + SMTPSender
+
+Verify:
+GET /api/v1/auth/verify
+  -> VerifyHandler -> VerifyService -> VerifyRepository
+
+Login/Session:
+POST /api/v1/auth/login
+  -> LoginHandler -> LoginService -> LoginRepository + RateLimitRepository + RefreshRepository
+POST /api/v1/auth/refresh
+  -> RefreshHandler -> RefreshService -> RefreshRepository + UserRepository
+POST /api/v1/auth/logout
+  -> LogoutHandler -> LogoutService -> JWTRepository + RefreshRepository
+
+Protected RBAC:
+GET/POST/PUT/DELETE /api/v1/roles...
+  -> JWTMiddleware -> RoleHandler -> RoleService -> RoleRepository + RoleCacheRepository
 ```
 
-## Layer Stack (backend)
+## Backend Layer Map
 
 ```
-cmd/api/main.go          — wires all deps, starts server
-delivery/http/router.go  — Gin route registration
-delivery/http/auth/      — HTTP handlers (input parsing, response shaping)
-delivery/http/middleware/ — JWT auth middleware
-app/auth/                — business logic (services)
-repository/postgres/     — GORM-backed DB access
-repository/redis/        — Redis-backed token/rate stores
-domain/auth/             — entities, interfaces, errors (no deps)
+cmd/api/main.go                     bootstrap, config, DI wiring
+internal/delivery/http/router.go    route groups + middleware hookup
+internal/delivery/http/auth/*       request/response adapters
+internal/delivery/http/middleware/* JWT validation + context injection
+internal/app/auth/*                 business workflows
+internal/domain/auth/*              entities + interfaces + contracts
+internal/repository/postgres/*      durable persistence
+internal/repository/redis/*         cache/session/blocklist/rate storage
 ```
 
-## Sequence Diagrams
+## Frontend Structure
 
-See [docs/diagram/sequence/](../diagram/sequence/) for detailed flows:
-- Authentication & Session Management
-- Registration & Email Verification
+```
+src/main.tsx   React root + QueryClientProvider
+src/App.tsx    public routes + protected routes + admin routes
+src/stores/*   auth state
+src/hooks/*    login/register/logout/refresh workflow hooks
+src/pages/*    auth, home, admin/settings views
+```
+
+## Reference Docs
+
+- Sequence diagrams: `docs/diagram/sequence/`
+- Data details: `docs/db/`
