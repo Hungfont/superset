@@ -89,13 +89,15 @@ func main() {
 	verifySvc := svcauth.NewVerifyService(verifyRepo)
 	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, refreshRepo, privKey)
 	refreshSvc := svcauth.NewRefreshService(refreshRepo, userRepo, privKey)
+	logoutSvc := svcauth.NewLogoutService(jwtRepo, refreshRepo)
 
 	registerHandler := httpauth.NewRegisterHandler(registerSvc)
 	verifyHandler := httpauth.NewVerifyHandler(verifySvc, cfg.App.BaseURL)
 	loginHandler := httpauth.NewLoginHandler(loginSvc)
 	refreshHandler := httpauth.NewRefreshHandler(refreshSvc)
+	logoutHandler := httpauth.NewLogoutHandler(logoutSvc, pubKey)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, pubKey, jwtRepo, userRepo)
+	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, pubKey, jwtRepo, userRepo)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

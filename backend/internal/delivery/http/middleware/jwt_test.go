@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	domain "superset/auth-service/internal/domain/auth"
 	"superset/auth-service/internal/delivery/http/middleware"
+	domain "superset/auth-service/internal/domain/auth"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -36,6 +36,10 @@ func newFakeJWTRepo() *fakeJWTRepo {
 
 func (f *fakeJWTRepo) IsBlacklisted(_ context.Context, jti string) (bool, error) {
 	return f.blacklisted[jti], nil
+}
+
+func (f *fakeJWTRepo) BlacklistJTI(_ context.Context, _ string, _ time.Duration) error {
+	return nil
 }
 
 func (f *fakeJWTRepo) GetCachedUser(_ context.Context, userID uint) (*domain.UserContext, error) {

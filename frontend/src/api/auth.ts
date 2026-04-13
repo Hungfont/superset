@@ -48,4 +48,22 @@ export const authApi = {
       credentials: "include", // send/receive HttpOnly cookie
     }),
 
+  logout: async (all = false, accessToken?: string | null): Promise<void> => {
+    const headers: HeadersInit = {};
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    const res = await fetch(all ? "/api/v1/auth/logout?all=true" : "/api/v1/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      headers,
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({ error: "Unknown error" }))) as ApiError;
+      throw Object.assign(new Error(body.error ?? "Request failed"), { status: res.status });
+    }
+  },
+
 };

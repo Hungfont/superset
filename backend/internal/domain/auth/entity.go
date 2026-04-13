@@ -18,17 +18,17 @@ func (RegisterUser) TableName() string { return "ab_register_user" }
 
 // User maps to ab_user — activated accounts.
 type User struct {
-	ID          uint      `gorm:"primaryKey;autoIncrement"`
-	FirstName   string    `gorm:"column:first_name;not null"`
-	LastName    string    `gorm:"column:last_name;not null"`
-	Username    string    `gorm:"column:username;uniqueIndex;not null"`
-	Email       string    `gorm:"column:email;uniqueIndex;not null"`
-	Password    string    `gorm:"column:password;not null"`
-	Active      bool      `gorm:"column:active;default:true"`
-	LoginCount  int       `gorm:"column:login_count;default:0"`
-	LastLogin   *time.Time `gorm:"column:last_login"`
-	CreatedOn   time.Time `gorm:"column:created_on;autoCreateTime"`
-	ChangedOn   time.Time `gorm:"column:changed_on;autoUpdateTime"`
+	ID         uint       `gorm:"primaryKey;autoIncrement"`
+	FirstName  string     `gorm:"column:first_name;not null"`
+	LastName   string     `gorm:"column:last_name;not null"`
+	Username   string     `gorm:"column:username;uniqueIndex;not null"`
+	Email      string     `gorm:"column:email;uniqueIndex;not null"`
+	Password   string     `gorm:"column:password;not null"`
+	Active     bool       `gorm:"column:active;default:true"`
+	LoginCount int        `gorm:"column:login_count;default:0"`
+	LastLogin  *time.Time `gorm:"column:last_login"`
+	CreatedOn  time.Time  `gorm:"column:created_on;autoCreateTime"`
+	ChangedOn  time.Time  `gorm:"column:changed_on;autoUpdateTime"`
 }
 
 func (User) TableName() string { return "ab_user" }
@@ -58,6 +58,15 @@ type LoginResponse struct {
 // The token is read from the HttpOnly cookie set at login.
 type RefreshRequest struct {
 	Token string // populated from cookie "refresh_token"
+}
+
+// LogoutRequest carries normalized data needed for logout and revocation.
+type LogoutRequest struct {
+	UserID               uint
+	JTI                  string
+	AccessTokenExpiresAt time.Time
+	RefreshToken         string
+	LogoutAll            bool
 }
 
 // UserContext is injected into Gin context by the JWT middleware.

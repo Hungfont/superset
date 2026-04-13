@@ -30,6 +30,16 @@ func (r *jwtRepo) IsBlacklisted(ctx context.Context, jti string) (bool, error) {
 	return exists > 0, nil
 }
 
+func (r *jwtRepo) BlacklistJTI(ctx context.Context, jti string, ttl time.Duration) error {
+	if jti == "" || ttl <= 0 {
+		return nil
+	}
+	if err := r.client.Set(ctx, "jwt:blacklist:"+jti, "1", ttl).Err(); err != nil {
+		return fmt.Errorf("blacklisting jwt jti: %w", err)
+	}
+	return nil
+}
+
 func (r *jwtRepo) GetCachedUser(ctx context.Context, userID uint) (*domain.UserContext, error) {
 	key := fmt.Sprintf("user:%d", userID)
 	data, err := r.client.Get(ctx, key).Bytes()

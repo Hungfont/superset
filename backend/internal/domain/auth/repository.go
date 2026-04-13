@@ -48,6 +48,8 @@ type UserRepository interface {
 type JWTRepository interface {
 	// IsBlacklisted returns true if the given jti has been revoked.
 	IsBlacklisted(ctx context.Context, jti string) (bool, error)
+	// BlacklistJTI stores the jti as revoked for the provided TTL.
+	BlacklistJTI(ctx context.Context, jti string, ttl time.Duration) error
 	// GetCachedUser returns the cached UserContext for the given user ID.
 	// Returns nil, nil when the key is absent (cache miss).
 	GetCachedUser(ctx context.Context, userID uint) (*UserContext, error)
