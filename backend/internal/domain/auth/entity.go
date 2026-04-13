@@ -76,3 +76,25 @@ type UserContext struct {
 	Email    string
 	Active   bool
 }
+
+// Role maps to ab_role.
+type Role struct {
+	ID   uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name string `gorm:"column:name;uniqueIndex;not null" json:"name"`
+}
+
+func (Role) TableName() string { return "ab_role" }
+
+// UpsertRoleRequest is used by create/update role endpoints.
+type UpsertRoleRequest struct {
+	Name string `json:"name" binding:"required,max=64"`
+}
+
+// RoleListItem is returned by GET /api/v1/roles with aggregate counts.
+type RoleListItem struct {
+	ID              uint   `json:"id"`
+	Name            string `json:"name"`
+	UserCount       int64  `json:"user_count"`
+	PermissionCount int64  `json:"permission_count"`
+	BuiltIn         bool   `json:"built_in"`
+}

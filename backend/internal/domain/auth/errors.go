@@ -12,8 +12,17 @@ var (
 
 // Sentinel errors for JWT middleware.
 var (
-	ErrTokenMissing  = errors.New("token missing")
-	ErrTokenInvalid  = errors.New("token invalid")
-	ErrTokenRevoked  = errors.New("token revoked")
-	ErrTokenReused   = errors.New("refresh token reuse detected")
+	ErrTokenMissing = errors.New("token missing")
+	ErrTokenInvalid = errors.New("token invalid")
+	ErrTokenRevoked = errors.New("token revoked")
+	ErrTokenReused  = errors.New("refresh token reuse detected")
+)
+
+// Sentinel errors for role management.
+var (
+	ErrForbidden    = errors.New("forbidden")
+	ErrBuiltInRole  = errors.New("built-in role cannot be modified")
+	ErrRoleHasUsers = errors.New("role has assigned users")
+	ErrRoleNotFound = errors.New("role not found")
+	ErrInvalidRole  = errors.New("invalid role")
 )

@@ -6,6 +6,11 @@
       "sourceType": "github",
       "computedHash": "8df9775505ca517ba69a5a2ca2a32333f8ed0cf936dbf60c1d411f13b628cfc6"
     },
+    "neon-postgres": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "574cf4b7c901ebc7d88d34e2c3e3d08fdec127bd0047f888de148ff0af787d4e"
+    },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",

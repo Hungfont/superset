@@ -9,7 +9,7 @@ If codebase context is needed before planning or implementation, use docs/CODEMA
 Agent definitions are located in .github/agents/.
 
 Codebase context discovery source of truth: docs/CODEMAPS/**
-
+db schema discovery: docs/db/db-overview.md
 ## Available Agents
 
 | Agent | Purpose | When to Use |

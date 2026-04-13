@@ -14,9 +14,29 @@ export function useLogin() {
     onSuccess: (data) => {
       // Decode minimal claims from the JWT without a library (header.payload.sig)
       const payload = data.access_token.split(".")[1];
-      const claims = JSON.parse(atob(payload)) as { sub: string; uname: string; email: string };
+      const claims = JSON.parse(atob(payload)) as {
+        sub: string;
+        uname: string;
+        email: string;
+        role?: string | string[];
+        roles?: string[];
+      };
+
+      const rolesFromClaims = Array.isArray(claims.roles)
+        ? claims.roles
+        : Array.isArray(claims.role)
+          ? claims.role
+          : typeof claims.role === "string"
+            ? [claims.role]
+            : [];
+
       setAuth(
-        { id: Number(claims.sub), username: claims.uname, email: claims.email },
+        {
+          id: Number(claims.sub),
+          username: claims.uname,
+          email: claims.email,
+          roles: rolesFromClaims,
+        },
         data.access_token,
       );
       // Redirect back to the page the user originally requested, or "/".

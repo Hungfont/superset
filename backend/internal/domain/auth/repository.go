@@ -93,3 +93,26 @@ type RefreshRepository interface {
 	// Used to terminate all sessions after a reuse-attack is detected.
 	DeleteAllForUser(ctx context.Context, userID uint) error
 }
+
+// RoleRepository manages role CRUD, guards, and aggregate queries.
+type RoleRepository interface {
+	// IsAdmin reports whether the given user has Admin role.
+	IsAdmin(ctx context.Context, userID uint) (bool, error)
+	// ListWithCounts returns roles with assigned user and permission counts.
+	ListWithCounts(ctx context.Context) ([]RoleListItem, error)
+	// Create inserts a new role.
+	Create(ctx context.Context, role *Role) error
+	// UpdateName updates role name and returns the updated role.
+	UpdateName(ctx context.Context, roleID uint, name string) (*Role, error)
+	// CountUsersByRole returns number of users assigned to role.
+	CountUsersByRole(ctx context.Context, roleID uint) (int64, error)
+	// IsBuiltInRole reports whether role is built-in and cannot be deleted.
+	IsBuiltInRole(ctx context.Context, roleID uint) (bool, error)
+	// Delete removes a role by id.
+	Delete(ctx context.Context, roleID uint) error
+}
+
+// RoleCacheRepository manages role-related cache invalidation.
+type RoleCacheRepository interface {
+	BustRBAC(ctx context.Context) error
+}

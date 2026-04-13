@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Auto-migrate
-	if err := db.AutoMigrate(&auth.RegisterUser{}, &auth.User{}); err != nil {
+	if err := db.AutoMigrate(&auth.RegisterUser{}, &auth.User{}, &auth.Role{}); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
 
@@ -79,9 +79,11 @@ func main() {
 	verifyRepo := repopostgres.NewVerifyRepository(db)
 	loginRepo := repopostgres.NewLoginRepository(db)
 	userRepo := repopostgres.NewUserRepository(db)
+	roleRepo := repopostgres.NewRoleRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
 	refreshRepo := reporedis.NewRefreshRepository(redisClient)
+	roleCacheRepo := reporedis.NewRoleCacheRepository(redisClient)
 
 	mailer := email.NewSMTPSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
 
@@ -90,14 +92,16 @@ func main() {
 	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, refreshRepo, privKey)
 	refreshSvc := svcauth.NewRefreshService(refreshRepo, userRepo, privKey)
 	logoutSvc := svcauth.NewLogoutService(jwtRepo, refreshRepo)
+	roleSvc := svcauth.NewRoleService(roleRepo, roleCacheRepo)
 
 	registerHandler := httpauth.NewRegisterHandler(registerSvc)
 	verifyHandler := httpauth.NewVerifyHandler(verifySvc, cfg.App.BaseURL)
 	loginHandler := httpauth.NewLoginHandler(loginSvc)
 	refreshHandler := httpauth.NewRefreshHandler(refreshSvc)
 	logoutHandler := httpauth.NewLogoutHandler(logoutSvc, pubKey)
+	roleHandler := httpauth.NewRoleHandler(roleSvc)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, pubKey, jwtRepo, userRepo)
+	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, roleHandler, pubKey, jwtRepo, userRepo)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

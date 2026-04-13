@@ -17,6 +17,7 @@ func NewRouter(
 	loginHandler *httpauth.LoginHandler,
 	refreshHandler *httpauth.RefreshHandler,
 	logoutHandler *httpauth.LogoutHandler,
+	roleHandler *httpauth.RoleHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -39,8 +40,10 @@ func NewRouter(
 		protected := v1.Group("/")
 		protected.Use(middleware.JWTMiddleware(pubKey, jwtRepo, userRepo))
 		{
-			// Future protected routes are registered here.
-			// Example: protected.GET("/me", profileHandler.Me)
+			protected.GET("/roles", roleHandler.List)
+			protected.POST("/roles", roleHandler.Create)
+			protected.PUT("/roles/:id", roleHandler.Update)
+			protected.DELETE("/roles/:id", roleHandler.Delete)
 		}
 	}
 

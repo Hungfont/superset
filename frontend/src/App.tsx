@@ -4,6 +4,10 @@ import RegisterSuccessPage from "@/pages/register/RegisterSuccessPage";
 import VerifyPage from "@/pages/auth/VerifyPage";
 import LoginPage from "@/pages/auth/LoginPage";
 import HomePage from "@/pages/home/HomePage";
+import RolesPage from "@/pages/settings/RolesPage";
+import RolePermissionsPage from "@/pages/settings/RolePermissionsPage";
+import AdminLayout from "@/pages/settings/AdminLayout";
+import AdminDashboardPage from "@/pages/settings/AdminDashboardPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
 
@@ -20,6 +24,16 @@ export default function App() {
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
+        </Route>
+
+        {/* Admin-only routes */}
+        <Route element={<ProtectedRoute requiredRole="Admin" />}>
+          <Route path="/dashboard" element={<AdminLayout />}>
+            <Route index element={<AdminDashboardPage />} />
+            <Route path="/settings/roles" element={<RolesPage />} />
+            <Route path="/settings/roles/:id/permissions" element={<RolePermissionsPage />} />
+          </Route>
+
         </Route>
 
         {/* Fallback */}
