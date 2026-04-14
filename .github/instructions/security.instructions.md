@@ -2,19 +2,30 @@
 description: "Use when code touches authentication, user input, persistence, APIs, or sensitive data. Enforces secure defaults, secret hygiene, and incident response steps."
 name: "Security Guidelines"
 ---
-# Security Guidelines
+## Mandatory Security Checks
 
-- Never hardcode secrets, tokens, or credentials.
-- Validate and sanitize all untrusted input.
-- Use parameterized queries and avoid string-built SQL.
-- Prevent XSS and CSRF in user-facing and state-changing flows.
-- Enforce authentication and authorization checks consistently.
-- Apply rate limiting on externally reachable endpoints.
-- Ensure error messages do not expose sensitive internals.
+Before ANY commit:
+- [ ] No hardcoded secrets (API keys, passwords, tokens)
+- [ ] All user inputs validated
+- [ ] SQL injection prevention (parameterized queries)
+- [ ] XSS prevention (sanitized HTML)
+- [ ] CSRF protection enabled
+- [ ] Authentication/authorization verified
+- [ ] Rate limiting on all endpoints
+- [ ] Error messages don't leak sensitive data
 
-# Security Response Protocol
+## Secret Management
 
-1. Stop when a critical vulnerability is discovered.
-2. Remediate the issue before continuing feature work.
-3. Rotate exposed secrets immediately.
-4. Audit adjacent code paths for similar weaknesses.
+- NEVER hardcode secrets in source code
+- ALWAYS use environment variables or a secret manager
+- Validate that required secrets are present at startup
+- Rotate any secrets that may have been exposed
+
+## Security Response Protocol
+
+If security issue found:
+1. STOP immediately
+2. Use **security-reviewer** agent
+3. Fix CRITICAL issues before continuing
+4. Rotate any exposed secrets
+5. Review entire codebase for similar issues

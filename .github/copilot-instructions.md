@@ -20,6 +20,8 @@ db schema discovery: docs/db/db-overview.md
 | code-reviewer | Code review | After writing code |
 | security-reviewer | Security review | Auth, input handling, APIs, persistence, sensitive data |
 | go-reviewer | Go code review | Any Go code changes |
+| typescript-reviewer | Typescript code review | frontend projects |
+| integrate-reviewer | integrate frontend and backend code review | frontend and backend projects |
 | doc-updater | Documentation | Updating docs |
 | loop-operator | Autonomous loop operation | Running and monitoring autonomous loops |
 | harness-optimizer | Harness tuning | Reliability, cost, and throughput tuning |
@@ -28,12 +30,11 @@ db schema discovery: docs/db/db-overview.md
 
 No user prompt needed:
 1. Complex feature requests - Use **planner** agent
-2. Code just written/modified - Use **code-reviewer** agent
-3. Bug fix or new feature - Use **tdd-guide** agent
-4. Architectural decision - Use **architect** agent
+2. Bug fix or new feature - Use **tdd-guide** agent
+3. Architectural decision - Use **architect** agent
+4. Code just written/modified - Use **code-reviewer** agent
 5. Security-sensitive code - Use **security-reviewer** agent
-6. Go code changes - Use **go-reviewer** agent
-7. Documentation update - Use **doc-updater** agent
+8. Documentation update - Use **doc-updater** agent
 
 ## Requirement Delivery Flow
 

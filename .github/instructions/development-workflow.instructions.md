@@ -4,18 +4,29 @@ name: "Development Workflow"
 ---
 # Development Workflow
 
-- Start with a concrete implementation plan before coding.
-- Break work into phases, dependencies, and risks.
-- Use a test-driven cycle: RED, GREEN, IMPROVE.
-- Run code review immediately after implementation.
-- Resolve CRITICAL and HIGH findings before considering work complete.
-- Update impacted docs and codemaps after code is stable.
+The Feature Implementation Workflow describes the development pipeline: research, planning, TDD, code review, and then committing to git.
 
-# Execution Sequence
+## Feature Implementation Workflow
+1. **Plan First**
+   - Use **planner** agent to create implementation plan
+   - Generate planning docs before coding: PRD, architecture, system_design, tech_doc, task_list
+   - Identify dependencies and risks
+   - Break down into phases
 
-1. Plan work and expected outcomes.
-2. Write failing tests first.
-3. Implement minimal code to pass tests.
-4. Refactor for clarity and maintainability.
-5. Perform code review and apply fixes.
-6. Update documentation and sequence references where needed.
+2. **TDD Approach**
+   - Use **tdd-guide** agent
+   - Write tests first (RED)
+   - Implement to pass tests (GREEN)
+   - Refactor (IMPROVE)
+   - Verify 80%+ coverage
+
+3. **Code Review**
+   - Use **code-reviewer** agent immediately after writing code
+   - Address CRITICAL and HIGH issues
+   - Fix MEDIUM issues when possible
+
+4. **Documentation Update**
+   - Use **doc-updater** agent after code is reviewed and stable
+   - Run `/update-codemaps` to regenerate `docs/CODEMAPS/*`
+   - Update relevant READMEs and guides affected by the change
+   - Keep sequence diagrams in `docs/sequences/*` in sync with new flows

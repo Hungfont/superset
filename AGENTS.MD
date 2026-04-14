@@ -22,18 +22,21 @@ This is a **production-ready AI coding plugin** providing specialized agents, sk
 | tdd-guide | Test-driven development | New features, bug fixes |
 | code-reviewer | Code quality and maintainability | After writing/modifying code |
 | go-reviewer | Go code review | Go projects |
+| typescript-reviewer | Typescript code review | frontend projects |
+| integrate-reviewer | integrate frontend and backend code review | frontend and backend projects |
 | loop-operator | Autonomous loop execution | Run loops safely, monitor stalls, intervene |
 | harness-optimizer | Harness config tuning | Reliability, cost, throughput |
-## Agent Orchestration
 
+## Agent Orchestration
 Use agents proactively without user prompt:
 - Complex feature requests → **planner**
-- Code just written/modified → **code-reviewer**
 - Bug fix or new feature → **tdd-guide**
 - Architectural decision → **architect**
+- Code just written/modified → **code-reviewer**
 - Security-sensitive code → **security-reviewer**
 - Autonomous loops / loop monitoring → **loop-operator**
 - Harness config reliability and cost → **harness-optimizer**
+- Documentation update - Use **doc-updater** agent
 
 Use parallel execution for independent operations — launch multiple agents simultaneously.
 
