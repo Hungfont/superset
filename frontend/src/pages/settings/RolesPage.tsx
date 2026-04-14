@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -56,26 +57,37 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useLoading } from "@/hooks/useLoading";
 import { useToast } from "@/hooks/use-toast";
 
 const roleFormSchema = z.object({
-  name: z.string().min(1, "Name is required").max(64, "Max 64 chars"),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required")
+    .max(64, "Max 64 chars"),
 });
 
 type RoleFormValues = z.infer<typeof roleFormSchema>;
 
+const DEFAULT_ROLE_FORM_VALUES: RoleFormValues = {
+  name: "",
+};
+
 export default function RolesPage() {
   const queryClient = useQueryClient();
   const { success, error: notifyError } = useToast();
+  const { isLoading, withLoading } = useLoading();
 
-  const [isUpsertOpen, setIsUpsertOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isUsersSheetOpen, setIsUsersSheetOpen] = useState(false);
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [usersSheetRole, setUsersSheetRole] = useState<Role | null>(null);
 
   const form = useForm<RoleFormValues>({
     resolver: zodResolver(roleFormSchema),
-    defaultValues: { name: "" },
+    defaultValues: DEFAULT_ROLE_FORM_VALUES,
   });
 
   const rolesQuery = useQuery({
@@ -105,8 +117,6 @@ export default function RolesPage() {
       notifyError("Create failed", { description: error.message });
     },
     onSuccess: () => {
-      setIsUpsertOpen(false);
-      form.reset();
       success("Role created");
     },
     onSettled: () => {
@@ -116,15 +126,34 @@ export default function RolesPage() {
 
   const updateRoleMutation = useMutation({
     mutationFn: ({ id, name }: { id: number; name: string }) => rolesApi.updateRole(id, { name }),
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ["roles"] });
+      const previousRoles = queryClient.getQueryData<Role[]>(["roles"]) ?? [];
+      queryClient.setQueryData<Role[]>(
+        ["roles"],
+        previousRoles.map((role) =>
+          role.id === payload.id
+            ? {
+                ...role,
+                name: payload.name,
+              }
+            : role,
+        ),
+      );
+      return { previousRoles };
+    },
+    onError: (error, _payload, context) => {
+      if (context?.previousRoles) {
+        queryClient.setQueryData(["roles"], context.previousRoles);
+      }
+      notifyError("Update failed", { description: error.message });
+    },
     onSuccess: () => {
-      setIsUpsertOpen(false);
-      setSelectedRole(null);
-      form.reset();
       success("Role updated");
       queryClient.invalidateQueries({ queryKey: ["roles"] });
     },
-    onError: (error) => {
-      notifyError("Update failed", { description: error.message });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
     },
   });
 
@@ -146,8 +175,6 @@ export default function RolesPage() {
       notifyError("Delete failed", { description: error.message });
     },
     onSuccess: () => {
-      setIsDeleteOpen(false);
-      setSelectedRole(null);
       success("Role deleted");
     },
     onSettled: () => {
@@ -156,6 +183,85 @@ export default function RolesPage() {
   });
 
   const roles = rolesQuery.data ?? [];
+
+  const openCreateDialog = useCallback(() => {
+    setDialogMode("create");
+    setSelectedRole(null);
+    form.reset(DEFAULT_ROLE_FORM_VALUES);
+    setIsRoleDialogOpen(true);
+  }, [form]);
+
+  const openEditDialog = useCallback(
+    (role: Role) => {
+      setDialogMode("edit");
+      setSelectedRole(role);
+      form.reset({ name: role.name });
+      setIsRoleDialogOpen(true);
+    },
+    [form],
+  );
+
+  const closeRoleDialog = useCallback(
+    (open: boolean) => {
+      setIsRoleDialogOpen(open);
+      if (!open) {
+        setSelectedRole(null);
+        form.reset(DEFAULT_ROLE_FORM_VALUES);
+      }
+    },
+    [form],
+  );
+
+  const openDeleteDialog = useCallback((role: Role) => {
+    setSelectedRole(role);
+    setIsDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteDialogChange = useCallback((open: boolean) => {
+    setIsDeleteDialogOpen(open);
+    if (!open) {
+      setSelectedRole(null);
+    }
+  }, []);
+
+  const handleDeleteRole = useCallback(async () => {
+    if (!selectedRole) {
+      return;
+    }
+
+    try {
+      await withLoading("delete", async () => {
+        await deleteRoleMutation.mutateAsync(selectedRole.id);
+      });
+      handleDeleteDialogChange(false);
+    } catch {
+      return;
+    }
+  }, [deleteRoleMutation, handleDeleteDialogChange, selectedRole, withLoading]);
+
+  const submitRoleForm = form.handleSubmit(async (values) => {
+    try {
+      if (dialogMode === "edit" && selectedRole) {
+        await withLoading("update", async () => {
+          await updateRoleMutation.mutateAsync({
+            id: selectedRole.id,
+            name: values.name,
+          });
+        });
+      } else {
+        await withLoading("create", async () => {
+          await createRoleMutation.mutateAsync({ name: values.name });
+        });
+      }
+
+      closeRoleDialog(false);
+    } catch {
+      return;
+    }
+  });
+
+  const isRoleMutationLoading = isLoading("create") || isLoading("update");
+  const isDeleteLoading = isLoading("delete");
 
   const columns = useMemo<ColumnDef<Role>[]>(
     () => [
@@ -168,8 +274,7 @@ export default function RolesPage() {
             variant="ghost"
             className="px-0"
             onClick={() => {
-              setSelectedRole(row.original);
-              setIsUsersSheetOpen(true);
+              setUsersSheetRole(row.original);
             }}
           >
             <Badge variant="secondary">{row.original.user_count}</Badge>
@@ -194,13 +299,12 @@ export default function RolesPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={() => {
-                  setSelectedRole(row.original);
-                  form.reset({ name: row.original.name });
-                  setIsUpsertOpen(true);
+                  openEditDialog(row.original);
                 }}
               >
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {row.original.built_in ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -215,8 +319,7 @@ export default function RolesPage() {
               ) : (
                 <DropdownMenuItem
                   onClick={() => {
-                    setSelectedRole(row.original);
-                    setIsDeleteOpen(true);
+                    openDeleteDialog(row.original);
                   }}
                 >
                   Delete
@@ -227,7 +330,7 @@ export default function RolesPage() {
         ),
       },
     ],
-    [form],
+    [openDeleteDialog, openEditDialog],
   );
 
   const table = useReactTable({
@@ -236,23 +339,6 @@ export default function RolesPage() {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const isEditMode = selectedRole !== null && isUpsertOpen;
-
-  const handleOpenCreate = () => {
-    setSelectedRole(null);
-    form.reset({ name: "" });
-    setIsUpsertOpen(true);
-  };
-
-  const handleSubmitRole = (values: RoleFormValues) => {
-    const trimmedName = values.name.trim();
-    if (isEditMode && selectedRole) {
-      updateRoleMutation.mutate({ id: selectedRole.id, name: trimmedName });
-      return;
-    }
-    createRoleMutation.mutate({ name: trimmedName });
-  };
-
   return (
     <main className="mx-auto w-full max-w-5xl p-6">
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -260,7 +346,7 @@ export default function RolesPage() {
           <h1 className="text-2xl font-semibold">AUTH-007 Role CRUD Management</h1>
           <p className="text-sm text-muted-foreground">Create, update, and delete RBAC roles.</p>
         </div>
-        <Button onClick={handleOpenCreate}>
+        <Button onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" />
           New Role
         </Button>
@@ -319,24 +405,19 @@ export default function RolesPage() {
         </div>
       )}
 
-      <Dialog
-        open={isUpsertOpen}
-        onOpenChange={(open) => {
-          setIsUpsertOpen(open);
-          if (!open) {
-            form.reset();
-          }
-        }}
-      >
-        <DialogContent>
+      <Dialog open={isRoleDialogOpen} onOpenChange={closeRoleDialog}>
+        <DialogContent aria-labelledby="role-dialog-title">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit Role" : "Create Role"}</DialogTitle>
+            <DialogTitle id="role-dialog-title">{dialogMode === "create" ? "Create role" : "Edit role"}</DialogTitle>
             <DialogDescription>
-              {isEditMode ? "Update role name." : "Create a new role for RBAC assignments."}
+              {dialogMode === "create"
+                ? "Add a new role for RBAC access control."
+                : "Update the role name."}
             </DialogDescription>
           </DialogHeader>
+
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmitRole)} className="mt-4 flex flex-col gap-3">
+            <form className="space-y-4" onSubmit={submitRoleForm}>
               <FormField
                 control={form.control}
                 name="name"
@@ -350,12 +431,20 @@ export default function RolesPage() {
                   </FormItem>
                 )}
               />
+
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsUpsertOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    closeRoleDialog(false);
+                  }}
+                  disabled={isRoleMutationLoading}
+                >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createRoleMutation.isPending || updateRoleMutation.isPending}>
-                  {isEditMode ? "Save" : "Create"}
+                <Button type="submit" disabled={isRoleMutationLoading}>
+                  {dialogMode === "create" ? "Create" : "Save"}
                 </Button>
               </DialogFooter>
             </form>
@@ -363,28 +452,28 @@ export default function RolesPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete role <strong>{selectedRole?.name}</strong>?
+              Delete role {selectedRole ? `\"${selectedRole.name}\"` : ""}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               This cannot be undone.
               {selectedRole && selectedRole.user_count > 0 ? (
-                <span className="mt-2 block text-destructive">
-                  This role still has {selectedRole.user_count} assigned users and will return a conflict.
+                <span className="block pt-2 font-medium text-foreground">
+                  {selectedRole.user_count} assigned users will block deletion.
                 </span>
               ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleteLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (selectedRole) {
-                  deleteRoleMutation.mutate(selectedRole.id);
-                }
+              disabled={isDeleteLoading}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteRole();
               }}
             >
               Delete
@@ -393,12 +482,21 @@ export default function RolesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Sheet open={isUsersSheetOpen} onOpenChange={setIsUsersSheetOpen}>
+      <Sheet
+        open={Boolean(usersSheetRole)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUsersSheetRole(null);
+          }
+        }}
+      >
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Users in {selectedRole?.name}</SheetTitle>
+            <SheetTitle>{usersSheetRole ? `${usersSheetRole.name} users` : "Role users"}</SheetTitle>
             <SheetDescription>
-              User list API for roles is not available yet. This panel is ready for integration.
+              {usersSheetRole
+                ? `${usersSheetRole.user_count} assigned users`
+                : "No role selected."}
             </SheetDescription>
           </SheetHeader>
         </SheetContent>
