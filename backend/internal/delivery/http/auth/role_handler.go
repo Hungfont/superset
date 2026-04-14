@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RoleHandler handles /api/v1/roles endpoints.
+// RoleHandler handles /api/v1/admin/roles endpoints.
 type RoleHandler struct {
 	svc *svcauth.RoleService
 }

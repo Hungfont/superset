@@ -90,7 +90,7 @@ type UpsertRoleRequest struct {
 	Name string `json:"name" binding:"required,max=64"`
 }
 
-// RoleListItem is returned by GET /api/v1/roles with aggregate counts.
+// RoleListItem is returned by GET /api/v1/admin/roles with aggregate counts.
 type RoleListItem struct {
 	ID              uint   `json:"id"`
 	Name            string `json:"name"`

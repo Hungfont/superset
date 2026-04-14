@@ -23,7 +23,7 @@ function renderWithRouter(initialPath: string, authenticated: boolean, roles: st
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<div>Dashboard</div>} />
         </Route>
-        <Route element={<ProtectedRoute requiredRole="Admin" />}>
+        <Route element={<ProtectedRoute />}>
           <Route path="/admin" element={<div>Admin Area</div>} />
         </Route>
       </Routes>
@@ -43,14 +43,8 @@ describe("ProtectedRoute", () => {
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
-  it("renders admin route when user has Admin role", () => {
-    renderWithRouter("/admin", true, ["Admin"]);
-    expect(screen.getByText("Admin Area")).toBeInTheDocument();
-  });
-
-  it("redirects to home when user lacks Admin role", () => {
+  it("renders admin route when user is authenticated", () => {
     renderWithRouter("/admin", true, ["Gamma"]);
-    expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.queryByText("Admin Area")).not.toBeInTheDocument();
+    expect(screen.getByText("Admin Area")).toBeInTheDocument();
   });
 });

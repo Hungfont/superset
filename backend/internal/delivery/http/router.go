@@ -21,6 +21,7 @@ func NewRouter(
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
+	roleRepo domain.RoleRepository,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -40,10 +41,14 @@ func NewRouter(
 		protected := v1.Group("/")
 		protected.Use(middleware.JWTMiddleware(pubKey, jwtRepo, userRepo))
 		{
-			protected.GET("/roles", roleHandler.List)
-			protected.POST("/roles", roleHandler.Create)
-			protected.PUT("/roles/:id", roleHandler.Update)
-			protected.DELETE("/roles/:id", roleHandler.Delete)
+			admin := protected.Group("/admin")
+			admin.Use(middleware.AuthorizeAdminRole(roleRepo))
+			{
+				admin.GET("/roles", roleHandler.List)
+				admin.POST("/roles", roleHandler.Create)
+				admin.PUT("/roles/:id", roleHandler.Update)
+				admin.DELETE("/roles/:id", roleHandler.Delete)
+			}
 		}
 	}
 

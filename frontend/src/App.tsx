@@ -26,8 +26,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
         </Route>
 
-        {/* Admin-only routes */}
-        <Route element={<ProtectedRoute requiredRole="Admin" />}>
+        {/* Admin routes (authorization enforced by backend APIs) */}
+        <Route element={<ProtectedRoute />}>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />

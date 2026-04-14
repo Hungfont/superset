@@ -10,7 +10,7 @@ describe("rolesApi", () => {
     vi.restoreAllMocks();
   });
 
-  it("fetches GET /api/v1/roles", async () => {
+  it("fetches GET /api/v1/admin/roles", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: [{ id: 1, name: "Admin", user_count: 1, permission_count: 10, built_in: true }] }),
@@ -21,13 +21,13 @@ describe("rolesApi", () => {
 
     expect(fetchMock).toHaveBeenCalled();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/roles");
+    expect(url).toBe("/api/v1/admin/roles");
     expect(init.method).toBe("GET");
     expect(init.credentials).toBe("include");
     expect(roles[0]?.permission_count).toBe(10);
   });
 
-  it("creates role via POST /api/v1/roles", async () => {
+  it("creates role via POST /api/v1/admin/roles", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: { id: 2, name: "Analyst" } }),
@@ -37,7 +37,7 @@ describe("rolesApi", () => {
     const role = await rolesApi.createRole({ name: "Analyst" });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/roles");
+    expect(url).toBe("/api/v1/admin/roles");
     expect(init.method).toBe("POST");
     expect(init.body).toBe(JSON.stringify({ name: "Analyst" }));
     expect(role.name).toBe("Analyst");

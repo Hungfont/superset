@@ -21,7 +21,7 @@ export const rolesApi = {
   async getRoles(): Promise<Role[]> {
     const accessToken = useAuthStore.getState().accessToken;
     const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-    const body = await request<ApiEnvelope<Role[]>>("/api/v1/roles", {
+    const body = await request<ApiEnvelope<Role[]>>("/api/v1/admin/roles", {
       method: "GET",
       credentials: "include",
       headers,
@@ -35,7 +35,7 @@ export const rolesApi = {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     };
-    const body = await request<ApiEnvelope<Role>>("/api/v1/roles", {
+    const body = await request<ApiEnvelope<Role>>("/api/v1/admin/roles", {
       method: "POST",
       credentials: "include",
       headers,
@@ -50,7 +50,7 @@ export const rolesApi = {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     };
-    const body = await request<ApiEnvelope<Role>>(`/api/v1/roles/${roleId}`, {
+    const body = await request<ApiEnvelope<Role>>(`/api/v1/admin/roles/${roleId}`, {
       method: "PUT",
       credentials: "include",
       headers,
@@ -62,7 +62,7 @@ export const rolesApi = {
   async deleteRole(roleId: number): Promise<void> {
     const accessToken = useAuthStore.getState().accessToken;
     const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-    await request<{ data?: unknown }>(`/api/v1/roles/${roleId}`, {
+    await request<{ data?: unknown }>(`/api/v1/admin/roles/${roleId}`, {
       method: "DELETE",
       credentials: "include",
       headers,

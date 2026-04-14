@@ -101,7 +101,7 @@ func main() {
 	logoutHandler := httpauth.NewLogoutHandler(logoutSvc, pubKey)
 	roleHandler := httpauth.NewRoleHandler(roleSvc)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, roleHandler, pubKey, jwtRepo, userRepo)
+	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, roleHandler, pubKey, jwtRepo, userRepo, roleRepo)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

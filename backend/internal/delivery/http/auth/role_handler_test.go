@@ -63,10 +63,11 @@ func newRoleRouter(repo *handlerRoleRepo) *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
-	v1.GET("/roles", h.List)
-	v1.POST("/roles", h.Create)
-	v1.PUT("/roles/:id", h.Update)
-	v1.DELETE("/roles/:id", h.Delete)
+	admin := v1.Group("/admin")
+	admin.GET("/roles", h.List)
+	admin.POST("/roles", h.Create)
+	admin.PUT("/roles/:id", h.Update)
+	admin.DELETE("/roles/:id", h.Delete)
 	return r
 }
 
@@ -75,7 +76,7 @@ func TestRoleHandler_PostReturns201(t *testing.T) {
 	payload := []byte(`{"name":"Analyst"}`)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/roles", bytes.NewReader(payload))
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/roles", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
@@ -88,7 +89,7 @@ func TestRoleHandler_DeleteWithUsersReturns409(t *testing.T) {
 	r := newRoleRouter(&handlerRoleRepo{isAdmin: true, userCountByRole: map[uint]int64{7: 1}})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/roles/7", nil)
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/roles/7", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusConflict {
@@ -100,7 +101,7 @@ func TestRoleHandler_DeleteBuiltInReturns403(t *testing.T) {
 	r := newRoleRouter(&handlerRoleRepo{isAdmin: true, builtInByRole: map[uint]bool{3: true}})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/roles/3", nil)
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/roles/3", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
@@ -114,7 +115,7 @@ func TestRoleHandler_GetListWithCounts(t *testing.T) {
 	}}})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/roles", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/roles", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
