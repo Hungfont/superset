@@ -34,11 +34,18 @@ No user prompt needed:
 3. Architectural decision - Use **architect** agent
 4. Code just written/modified - Use **code-reviewer** agent
 5. Security-sensitive code - Use **security-reviewer** agent
+6. Harness reliability/cost tuning - Use **harness-optimizer** agent
+7. Loop execution monitoring/stall control - Use **loop-operator** agent
 8. Documentation update - Use **doc-updater** agent
 
 ## Requirement Delivery Flow
 
 Use this sequence when implementing requirements.
+
+### Phase 0: Harness Optimization Gate
+- Call **harness-optimizer** before execution.
+- Tune model routing, step prompts, eval rules, and context handoff between stages.
+- Add quality checks for weak spots (example: ensure TDD tests fail for the right reason before implementation).
 
 ### Phase 1: Intake Requirement
 - Main agent reads requirement files in docs/requirement/ and current code context.
@@ -47,24 +54,60 @@ Use this sequence when implementing requirements.
 ### Phase 2: Architecture Gate
 - Call **architect** to validate the plan against HLD and sequence docs in docs/diagram/.
 
-### Phase 3: TDD Gate
+### Phase 3: Runtime Loop Setup
+- Call **loop-operator** to wrap runtime execution.
+- Run the delivery pipeline as a monitored loop with checkpoints and end-of-loop eval.
+
+### Phase 4: TDD Gate
 - Call **tdd-guide** to produce RED-GREEN-IMPROVE test planning for backend/frontend scope.
 - Run tests and coverage for changed areas.
 
-### Phase 4: Implement
+### Phase 5: Implement
 - Main agent executes code changes according to the locked plan.
 
-### Phase 5: Parallel Review
+### Phase 6: Parallel Review
 - Run in parallel where independent:
 	- **code-reviewer** for quality and regression risk.
 	- **security-reviewer** for trust boundaries and vulnerabilities.
 	- **go-reviewer** when Go files are modified.
 
-### Phase 6: Docs and Codemap
+### Phase 7: Docs and Codemap
 - Call **doc-updater** to update impacted codemaps, README sections, and sequence documentation.
 
-### Phase 7: Final Verification
+### Phase 8: Eval and Loop Decision
 - Run final validation and close merge-readiness checklist.
+- **loop-operator** determines whether to continue the loop or stop.
+
+## Runtime Checkpoints
+
+Enforce checkpoint validation between stages:
+- plan checkpoint: requirement clarity and dependency completeness
+- tdd checkpoint: tests are meaningful and valid RED state is observed
+- code review checkpoint: issue severity/count improves between loops
+- docs checkpoint: docs/codemaps are consistent with actual behavior
+
+If repeated failures are detected:
+1. **loop-operator** pauses the loop.
+2. Call **harness-optimizer** to adjust harness-level config (routing, eval, prompts, context).
+3. Resume only after optimizer changes are applied.
+
+## Orchestration Rule
+
+Do not insert **harness-optimizer** or **loop-operator** as normal middle steps inside plan/tdd/review/docs.
+
+Use this structure:
+
+```text
+[harness-optimizer]
+	↓
+optimized pipeline
+	↓
+[loop-operator]
+	↓
+plan → tdd → review → docs → eval
+	↓
+    loop or stop
+```
 
 ## Parallel Task Execution
 
