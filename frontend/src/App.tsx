@@ -8,7 +8,7 @@ import RolesPage from "@/pages/settings/RolesPage";
 import AdminLayout from "@/pages/settings/AdminLayout";
 import AdminDashboardPage from "@/pages/settings/AdminDashboardPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function App() {
   return (

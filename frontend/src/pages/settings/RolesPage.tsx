@@ -66,7 +66,7 @@ type RoleFormValues = z.infer<typeof roleFormSchema>;
 
 export default function RolesPage() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { success, error: notifyError } = useToast();
 
   const [isUpsertOpen, setIsUpsertOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -102,12 +102,12 @@ export default function RolesPage() {
       if (context?.previousRoles) {
         queryClient.setQueryData(["roles"], context.previousRoles);
       }
-      toast({ title: "Create failed", description: error.message, variant: "destructive" });
+      notifyError("Create failed", { description: error.message });
     },
     onSuccess: () => {
       setIsUpsertOpen(false);
       form.reset();
-      toast({ title: "Role created" });
+      success("Role created");
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["roles"] });
@@ -120,11 +120,11 @@ export default function RolesPage() {
       setIsUpsertOpen(false);
       setSelectedRole(null);
       form.reset();
-      toast({ title: "Role updated" });
+      success("Role updated");
       queryClient.invalidateQueries({ queryKey: ["roles"] });
     },
     onError: (error) => {
-      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+      notifyError("Update failed", { description: error.message });
     },
   });
 
@@ -143,12 +143,12 @@ export default function RolesPage() {
       if (context?.previousRoles) {
         queryClient.setQueryData(["roles"], context.previousRoles);
       }
-      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      notifyError("Delete failed", { description: error.message });
     },
     onSuccess: () => {
       setIsDeleteOpen(false);
       setSelectedRole(null);
-      toast({ title: "Role deleted" });
+      success("Role deleted");
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["roles"] });

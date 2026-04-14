@@ -6,8 +6,8 @@
 
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/stores/authStore";
 import { authApi } from "@/api/auth";
 
 const REFRESH_BEFORE_EXPIRY_MS = 60_000;
@@ -28,7 +28,7 @@ export function useTokenRefresh() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const setRefreshTimer = useAuthStore((s) => s.setRefreshTimer);
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { error: notifyError } = useToast();
 
   useEffect(() => {
     if (!accessToken) return;
@@ -46,11 +46,8 @@ export function useTokenRefresh() {
         setAccessToken(data.access_token);
       } catch {
         clearAuth();
-        toast({
-          title: "Session expired",
+        notifyError("Session expired", {
           description: "Your session expired. Please sign in again.",
-          variant: "destructive",
-          // role="alert" is set by the shadcn Toast component automatically
         });
         navigate("/login");
       }
@@ -62,5 +59,5 @@ export function useTokenRefresh() {
       clearTimeout(timer);
       setRefreshTimer(null);
     };
-  }, [accessToken, clearAuth, navigate, setAccessToken, setRefreshTimer, toast]);
+  }, [accessToken, clearAuth, navigate, notifyError, setAccessToken, setRefreshTimer]);
 }

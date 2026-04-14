@@ -118,8 +118,10 @@ const roles = rolesQuery.data ?? []
 
 ```tsx
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useToast } from '@/hooks/use-toast'
 
 const queryClient = useQueryClient()
+const { success, error } = useToast()
 
 const createMutation = useMutation({
   mutationFn: rolesApi.createRole,
@@ -132,10 +134,10 @@ const createMutation = useMutation({
   },
   onError: (_err, _payload, context) => {
     if (context?.previous) queryClient.setQueryData(['roles'], context.previous)
-    toast({ title: 'Failed', variant: 'destructive' })
+    error('Failed')
   },
   onSuccess: () => {
-    toast({ title: 'Created' })
+    success('Created')
   },
   onSettled: () => {
     queryClient.invalidateQueries({ queryKey: ['roles'] })
@@ -166,19 +168,21 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-// 1. Define schema as object (not string/number directly)
-const schema = z.object({
-  name: z.string().min(1, 'Name is required').max(64, 'Max 64 chars'),
-  email: z.string().email('Enter a valid email'),
-})
-
-type FormValues = z.infer<typeof schema>
 
 export function ExampleForm({ onSubmit }: { onSubmit: (v: FormValues) => void }) {
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { name: '', email: '' },
-  })
+// 1. registerSchema defines validation rules and error messages in lib/validation.ts
+  const form = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      first_name: "",
+      last_name: "",
+      username: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
+
 
   return (
     <Form {...form}>
@@ -389,6 +393,33 @@ export function ProtectedRoute() {
 
 ## Custom Hooks
 
+### useToast (shadcn Sonner wrapper)
+
+```tsx
+import { useToast } from '@/hooks/use-toast'
+
+export function ExampleActions() {
+  const { success, error } = useToast()
+
+  const handleSave = async () => {
+    try {
+      await saveRole()
+      success('Role saved')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      error('Save failed', { description: message })
+    }
+  }
+
+  return <Button onClick={handleSave}>Save</Button>
+}
+```
+
+**Rules:**
+- Use `useToast()` in components and custom hooks instead of importing `toast` from `sonner` directly.
+- Use semantic methods: `success`, `error`, `info`, `warning`.
+- Keep page-level failures in `Alert`; use toasts for mutation feedback.
+
 ### useToggle
 
 ```tsx
@@ -511,13 +542,15 @@ export function VirtualList<T>({ items, renderItem }: { items: T[]; renderItem: 
 ### Mutation Error via Toast
 
 ```tsx
+const { success, error } = useToast()
+
 useMutation({
   mutationFn: rolesApi.deleteRole,
-  onError: (error) => {
-    toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
+  onError: (mutationError) => {
+    error('Delete failed', { description: mutationError.message })
   },
   onSuccess: () => {
-    toast({ title: 'Role deleted' })
+    success('Role deleted')
   },
 })
 ```

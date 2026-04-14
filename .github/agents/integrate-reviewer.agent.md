@@ -16,7 +16,7 @@ When invoked:
    - If conflicts/non-mergeable state exist, stop and report conflicts must be resolved first.
 3. Run project checks before commenting:
    - Backend: go test ./... from backend if backend files changed.
-   - Frontend TypeScript: bun run typecheck (or npm/pnpm/yarn equivalent) from frontend when ts/js files changed.
+   - Frontend TypeScript: bun run typecheck (or bun/npm/pnpm/yarn equivalent) from frontend when ts/js files changed.
    - Frontend lint: run eslint when available for changed frontend areas.
    - If checks fail, stop and report failures first.
 4. Review only modified files plus nearby integration boundaries (API client, handlers/controllers, DTO/schema types, auth middleware, routing, error adapters).

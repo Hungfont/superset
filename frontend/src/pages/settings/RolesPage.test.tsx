@@ -16,9 +16,15 @@ vi.mock("@/api/roles", () => ({
   },
 }));
 
-const toastSpy = vi.fn();
+const { toastSpy } = vi.hoisted(() => ({
+  toastSpy: vi.fn(),
+}));
+
 vi.mock("@/hooks/use-toast", () => ({
-  useToast: () => ({ toast: toastSpy }),
+  useToast: () => ({
+    success: toastSpy,
+    error: toastSpy,
+  }),
 }));
 
 const sampleRoles = [
@@ -38,14 +44,14 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/admin/settings/roles"]}>
         <Routes>
-          <Route path="/admin/settings/roles" element={<Auth007RoleCrud />} />
+          <Route path="/admin/settings/roles" element={<RolesPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("Auth007RoleCrud", () => {
+describe("RolesPage", () => {
   const user = userEvent.setup();
 
   beforeEach(() => {
@@ -154,9 +160,7 @@ describe("Auth007RoleCrud", () => {
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
 
     await waitFor(() => {
-      expect(toastSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Delete failed", variant: "destructive" }),
-      );
+      expect(toastSpy).toHaveBeenCalledWith("Delete failed", expect.objectContaining({ description: "role has assigned users" }));
     });
   });
 

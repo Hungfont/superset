@@ -9,7 +9,7 @@ export function useLogout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const clearAuth = useAuthStore((s) => s.clearAuth);
-  const { toast } = useToast();
+  const { success, error: notifyError } = useToast();
 
   return useMutation<void, Error, boolean>({
     mutationFn: (all = false) => authApi.logout(all, useAuthStore.getState().accessToken),
@@ -17,17 +17,11 @@ export function useLogout() {
       clearAuth();
       queryClient.clear();
       navigate("/login", { replace: true });
-      toast({
-        title: all ? "Signed out from all devices" : "Signed out",
-      });
+      success(all ? "Signed out from all devices" : "Signed out");
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Unable to sign out";
-      toast({
-        title: "Sign out failed",
-        description: message,
-        variant: "destructive",
-      });
+      notifyError("Sign out failed", { description: message });
     },
   });
 }
