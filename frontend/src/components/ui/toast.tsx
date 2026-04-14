@@ -46,8 +46,6 @@ const Toast = React.forwardRef<
   return (
     <ToastPrimitives.Root
       ref={ref}
-      // Radix UI maps type="foreground" → role="alert" for urgent announcements.
-      // Destructive toasts (e.g. session expiry) must interrupt screen readers immediately.
       type={variant === "destructive" ? "foreground" : "background"}
       className={cn(toastVariants({ variant }), className)}
       {...props}
