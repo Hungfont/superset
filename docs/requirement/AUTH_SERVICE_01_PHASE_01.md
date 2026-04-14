@@ -410,7 +410,7 @@ admin/settings/roles
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**                                   | **API / Route**                                                                                       |
 | ----------------- | ------------ | --------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/permissions · GET/POST /api/v1/view-menus · GET/POST/DELETE /api/v1/permission-views |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/permissions · GET/POST /api/v1/admin/view-menus · GET/POST/DELETE /api/v1/admin/permission-views |
 
 | **⚙️ Backend - Description**
 - Admin CRUD for permission actions, view menus, and their combinations (permission_views). Permission_views are seeded at startup. Delete guarded by role assignment count.
@@ -425,7 +425,7 @@ admin/settings/roles
 **⚠️ Error Responses**
 - 409 - Duplicate or in-use. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/permissions
+admin/settings/permissions
 **🧩 shadcn/ui Components**
 - Tabs + TabsList + TabsTrigger + TabsContent - "Permissions" &#124; "View Menus" &#124; "Permission Matrix"
 - DataTable - list permissions and view menus in their respective tabs
@@ -453,7 +453,7 @@ admin/settings/roles
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**           | **API / Route**                                                                                                          |
 | ----------------- | ------------ | --------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission_view_role | PUT /api/v1/roles/:id/permissions · POST /api/v1/roles/:id/permissions/add · DELETE /api/v1/roles/:id/permissions/:pv_id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission_view_role | PUT /api/v1/admin/roles/:id/permissions · POST /api/v1/admin/roles/:id/permissions/add · DELETE /api/v1/admin/roles/:id/permissions/:pv_id |
 
 | **⚙️ Backend - Description**
 - Replace-all permission assignment to a role. Also additive add and single revoke. After any change, bust RBAC Redis cache for all users with this role.
@@ -502,7 +502,7 @@ admin/settings/roles
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                           |
 | ----------------- | ------------ | --------- | ------------- | --------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user_role  | PUT /api/v1/users/:id/roles · GET /api/v1/users/:id/roles |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_user_role  | PUT /api/v1/admin/users/:id/roles · GET /api/v1/admin/users/:id/roles |
 
 | **⚙️ Backend - Description**
 - Replace-all role assignment to a user (Admin only). Must keep at least 1 role. Invalidate RBAC cache for user.

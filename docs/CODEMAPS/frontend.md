@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~640 -->
+<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~640 -->
 
 # Frontend Codemap
 
@@ -17,11 +17,10 @@ Public
 Protected
 /                                   -> HomePage
 
-Admin-only (ProtectedRoute requiredRole="Admin")
+Admin area (session-protected in frontend; role enforced by backend APIs)
 /admin                              -> AdminLayout
 /admin/dashboard                    -> AdminDashboardPage
-/admin/settings/roles               -> RolesPage
-/admin/settings/roles/:id/permissions -> RolePermissionsPage
+/admin/settings/roles               -> Auth007RoleCrud
 
 Fallback
 * -> redirect /login
@@ -62,7 +61,8 @@ api/auth.ts + api/roles.ts + utils/request.ts
 - `frontend/src/components/ProtectedRoute.tsx`: route guard.
 - `frontend/src/pages/auth/*`: login + verification views.
 - `frontend/src/pages/register/*`: registration + success flow.
-- `frontend/src/pages/settings/*`: admin dashboard and role management views.
+- `frontend/src/pages/settings/Auth007RoleCrud.tsx`: AUTH-007 role CRUD screen.
+- `frontend/src/pages/settings/*`: admin dashboard and settings shell.
 - `frontend/src/stores/authStore.ts`: shared auth state.
 - `frontend/src/test/setup.ts`: Vitest DOM setup.
 

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~520 -->
+<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~520 -->
 
 # Architecture
 
@@ -35,7 +35,7 @@ POST /api/v1/auth/logout
   -> LogoutHandler -> LogoutService -> JWTRepository + RefreshRepository
 
 Protected RBAC:
-GET/POST/PUT/DELETE /api/v1/roles...
+GET/POST/PUT/DELETE /api/v1/admin/roles...
   -> JWTMiddleware -> RoleHandler -> RoleService -> RoleRepository + RoleCacheRepository
 ```
 

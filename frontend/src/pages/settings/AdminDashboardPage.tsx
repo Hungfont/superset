@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
 
       <div>
         <Button asChild>
-          <Link to="/admin/settings/roles">Go to RolesPage</Link>
+          <Link to="/admin/settings/roles">Open AUTH-007 Role CRUD</Link>
         </Button>
       </div>
     </div>

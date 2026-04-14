@@ -1,380 +1,484 @@
 ---
 name: frontend-patterns
-description: Frontend development patterns for React, Next.js, state management, performance optimization, and UI best practices.
+description: Frontend development patterns for React 18, TanStack Query v5, React Hook Form + Zod, Zustand, shadcn/ui, TanStack Table v8, and React Router v6.
 origin: ECC
 ---
 
 # Frontend Development Patterns
 
-Modern frontend patterns for React, Next.js, and performant user interfaces.
+Patterns for this project's stack: React 18 + TypeScript · Vite · TanStack Query v5 · React Hook Form + Zod · Zustand · shadcn/ui (Radix UI) · TanStack Table v8 · React Router v6 · Tailwind CSS · Lucide React.
 
 ## When to Activate
 
-- Building React components (composition, props, rendering)
-- Managing state (useState, useReducer, Zustand, Context)
-- Implementing data fetching (SWR, React Query, server components)
+- Building React components (composition, props, controlled dialogs)
+- Managing server state (TanStack Query useQuery / useMutation)
+- Managing client/UI state (Zustand, useState, useReducer)
+- Working with forms (React Hook Form + Zod + shadcn Form components)
+- Building data tables (TanStack Table v8 + shadcn DataTable pattern)
+- Handling routing (React Router v6 nested routes, ProtectedRoute)
 - Optimizing performance (memoization, virtualization, code splitting)
-- Working with forms (validation, controlled inputs, Zod schemas)
-- Handling client-side routing and navigation
-- Building accessible, responsive UI patterns
+- Building accessible UI with shadcn/ui (Dialog, Sheet, AlertDialog)
+
+---
 
 ## Component Patterns
 
 ### Composition Over Inheritance
 
-```typescript
-// PASS: GOOD: Component composition
-interface CardProps {
-  children: React.ReactNode
-  variant?: 'default' | 'outlined'
+Always use `shadcn/ui` primitives. Never build custom styled divs/buttons/inputs.
+
+```tsx
+// CORRECT: shadcn composition
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+
+interface RoleCardProps {
+  name: string
+  userCount: number
+  onEdit: () => void
 }
 
-export function Card({ children, variant = 'default' }: CardProps) {
-  return <div className={`card card-${variant}`}>{children}</div>
-}
-
-export function CardHeader({ children }: { children: React.ReactNode }) {
-  return <div className="card-header">{children}</div>
-}
-
-export function CardBody({ children }: { children: React.ReactNode }) {
-  return <div className="card-body">{children}</div>
-}
-
-// Usage
-<Card>
-  <CardHeader>Title</CardHeader>
-  <CardBody>Content</CardBody>
-</Card>
-```
-
-### Compound Components
-
-```typescript
-interface TabsContextValue {
-  activeTab: string
-  setActiveTab: (tab: string) => void
-}
-
-const TabsContext = createContext<TabsContextValue | undefined>(undefined)
-
-export function Tabs({ children, defaultTab }: {
-  children: React.ReactNode
-  defaultTab: string
-}) {
-  const [activeTab, setActiveTab] = useState(defaultTab)
-
+export function RoleCard({ name, userCount, onEdit }: RoleCardProps) {
   return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
-      {children}
-    </TabsContext.Provider>
+    <Card>
+      <CardHeader>{name}</CardHeader>
+      <CardContent>
+        <Badge variant="secondary">{userCount} users</Badge>
+      </CardContent>
+      <CardFooter>
+        <Button variant="outline" onClick={onEdit}>Edit</Button>
+      </CardFooter>
+    </Card>
   )
 }
+```
 
-export function TabList({ children }: { children: React.ReactNode }) {
-  return <div className="tab-list">{children}</div>
-}
+### Controlled Dialog Pattern (shadcn/ui)
 
-export function Tab({ id, children }: { id: string, children: React.ReactNode }) {
-  const context = useContext(TabsContext)
-  if (!context) throw new Error('Tab must be used within Tabs')
+Use controlled `open` + `onOpenChange` — never `DialogTrigger` for programmatic dialogs.
+Always reset form state on close via `onOpenChange`.
+
+```tsx
+import { useState } from 'react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+
+export function ExamplePage() {
+  const [isOpen, setIsOpen] = useState(false)
+  const form = useForm(...)
 
   return (
-    <button
-      className={context.activeTab === id ? 'active' : ''}
-      onClick={() => context.setActiveTab(id)}
-    >
-      {children}
-    </button>
+    <>
+      <Button onClick={() => { form.reset(); setIsOpen(true) }}>Open</Button>
+
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => { setIsOpen(open); if (!open) form.reset() }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>...</DialogTitle>
+            <DialogDescription>...</DialogDescription>
+          </DialogHeader>
+          {/* form body */}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
-
-// Usage
-<Tabs defaultTab="overview">
-  <TabList>
-    <Tab id="overview">Overview</Tab>
-    <Tab id="details">Details</Tab>
-  </TabList>
-</Tabs>
 ```
 
-### Render Props Pattern
+**Pitfall — missing animation classes on DialogOverlay block clicks after close.**
+`DialogOverlay` must have `data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0`.
+Without them, the exit keyframes animate to `opacity: 1` (default), leaving the overlay
+opaque for the full animation duration and blocking pointer events on underlying buttons.
 
-```typescript
-interface DataLoaderProps<T> {
-  url: string
-  children: (data: T | null, loading: boolean, error: Error | null) => React.ReactNode
-}
+---
 
-export function DataLoader<T>({ url, children }: DataLoaderProps<T>) {
-  const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+## Data Fetching — TanStack Query v5
 
-  useEffect(() => {
-    fetch(url)
-      .then(res => res.json())
-      .then(setData)
-      .catch(setError)
-      .finally(() => setLoading(false))
-  }, [url])
+### useQuery — Read
 
-  return <>{children(data, loading, error)}</>
-}
+```tsx
+import { useQuery } from '@tanstack/react-query'
+import { rolesApi, type Role } from '@/api/roles'
 
-// Usage
-<DataLoader<Market[]> url="/api/markets">
-  {(markets, loading, error) => {
-    if (loading) return <Spinner />
-    if (error) return <Error error={error} />
-    return <MarketList markets={markets!} />
-  }}
-</DataLoader>
-```
-
-## Custom Hooks Patterns
-
-### State Management Hook
-
-```typescript
-export function useToggle(initialValue = false): [boolean, () => void] {
-  const [value, setValue] = useState(initialValue)
-
-  const toggle = useCallback(() => {
-    setValue(v => !v)
-  }, [])
-
-  return [value, toggle]
-}
-
-// Usage
-const [isOpen, toggleOpen] = useToggle()
-```
-
-### Async Data Fetching Hook
-
-```typescript
-interface UseQueryOptions<T> {
-  onSuccess?: (data: T) => void
-  onError?: (error: Error) => void
-  enabled?: boolean
-}
-
-export function useQuery<T>(
-  key: string,
-  fetcher: () => Promise<T>,
-  options?: UseQueryOptions<T>
-) {
-  const [data, setData] = useState<T | null>(null)
-  const [error, setError] = useState<Error | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const result = await fetcher()
-      setData(result)
-      options?.onSuccess?.(result)
-    } catch (err) {
-      const error = err as Error
-      setError(error)
-      options?.onError?.(error)
-    } finally {
-      setLoading(false)
-    }
-  }, [fetcher, options])
-
-  useEffect(() => {
-    if (options?.enabled !== false) {
-      refetch()
-    }
-  }, [key, refetch, options?.enabled])
-
-  return { data, error, loading, refetch }
-}
-
-// Usage
-const { data: markets, loading, error, refetch } = useQuery(
-  'markets',
-  () => fetch('/api/markets').then(r => r.json()),
-  {
-    onSuccess: data => console.log('Fetched', data.length, 'markets'),
-    onError: err => console.error('Failed:', err)
-  }
-)
-```
-
-### Debounce Hook
-
-```typescript
-export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => clearTimeout(handler)
-  }, [value, delay])
-
-  return debouncedValue
-}
-
-// Usage
-const [searchQuery, setSearchQuery] = useState('')
-const debouncedQuery = useDebounce(searchQuery, 500)
-
-useEffect(() => {
-  if (debouncedQuery) {
-    performSearch(debouncedQuery)
-  }
-}, [debouncedQuery])
-```
-
-## State Management Patterns
-
-### Context + Reducer Pattern
-
-```typescript
-interface State {
-  markets: Market[]
-  selectedMarket: Market | null
-  loading: boolean
-}
-
-type Action =
-  | { type: 'SET_MARKETS'; payload: Market[] }
-  | { type: 'SELECT_MARKET'; payload: Market }
-  | { type: 'SET_LOADING'; payload: boolean }
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'SET_MARKETS':
-      return { ...state, markets: action.payload }
-    case 'SELECT_MARKET':
-      return { ...state, selectedMarket: action.payload }
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload }
-    default:
-      return state
-  }
-}
-
-const MarketContext = createContext<{
-  state: State
-  dispatch: Dispatch<Action>
-} | undefined>(undefined)
-
-export function MarketProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, {
-    markets: [],
-    selectedMarket: null,
-    loading: false
+export function useRoles() {
+  return useQuery({
+    queryKey: ['roles'],
+    queryFn: rolesApi.getRoles,
   })
-
-  return (
-    <MarketContext.Provider value={{ state, dispatch }}>
-      {children}
-    </MarketContext.Provider>
-  )
 }
 
-export function useMarkets() {
-  const context = useContext(MarketContext)
-  if (!context) throw new Error('useMarkets must be used within MarketProvider')
-  return context
-}
+// In component
+const rolesQuery = useRoles()
+const roles = rolesQuery.data ?? []
 ```
 
-## Performance Optimization
+### useMutation — Write with Optimistic Update
 
-### Memoization
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-```typescript
-// PASS: useMemo for expensive computations
-const sortedMarkets = useMemo(() => {
-  return markets.sort((a, b) => b.volume - a.volume)
-}, [markets])
+const queryClient = useQueryClient()
 
-// PASS: useCallback for functions passed to children
-const handleSearch = useCallback((query: string) => {
-  setSearchQuery(query)
-}, [])
-
-// PASS: React.memo for pure components
-export const MarketCard = React.memo<MarketCardProps>(({ market }) => {
-  return (
-    <div className="market-card">
-      <h3>{market.name}</h3>
-      <p>{market.description}</p>
-    </div>
-  )
+const createMutation = useMutation({
+  mutationFn: rolesApi.createRole,
+  onMutate: async (payload) => {
+    await queryClient.cancelQueries({ queryKey: ['roles'] })
+    const previous = queryClient.getQueryData<Role[]>(['roles']) ?? []
+    const optimistic: Role = { id: -Date.now(), ...payload, user_count: 0, permission_count: 0, built_in: false }
+    queryClient.setQueryData<Role[]>(['roles'], [...previous, optimistic])
+    return { previous }
+  },
+  onError: (_err, _payload, context) => {
+    if (context?.previous) queryClient.setQueryData(['roles'], context.previous)
+    toast({ title: 'Failed', variant: 'destructive' })
+  },
+  onSuccess: () => {
+    toast({ title: 'Created' })
+  },
+  onSettled: () => {
+    queryClient.invalidateQueries({ queryKey: ['roles'] })
+  },
 })
 ```
 
-### Code Splitting & Lazy Loading
+**Rules:**
+- `useQuery` for GET — never fetch inside `useEffect`
+- `useMutation` for POST / PUT / DELETE — never call API directly in handlers
+- `queryKey` arrays are the cache key — be consistent
+- `onMutate` + rollback in `onError` for optimistic updates
+- `onSettled` always invalidates to sync with server
 
-```typescript
-import { lazy, Suspense } from 'react'
+---
 
-// PASS: Lazy load heavy components
-const HeavyChart = lazy(() => import('./HeavyChart'))
-const ThreeJsBackground = lazy(() => import('./ThreeJsBackground'))
+## Forms — React Hook Form + Zod + shadcn Form
 
-export function Dashboard() {
+**MANDATORY pattern** for all forms. Never use manual `useState` for form fields.
+
+```tsx
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import {
+  Form, FormField, FormItem, FormLabel, FormControl, FormMessage,
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+
+// 1. Define schema as object (not string/number directly)
+const schema = z.object({
+  name: z.string().min(1, 'Name is required').max(64, 'Max 64 chars'),
+  email: z.string().email('Enter a valid email'),
+})
+
+type FormValues = z.infer<typeof schema>
+
+export function ExampleForm({ onSubmit }: { onSubmit: (v: FormValues) => void }) {
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: '', email: '' },
+  })
+
   return (
-    <div>
-      <Suspense fallback={<ChartSkeleton />}>
-        <HeavyChart data={data} />
-      </Suspense>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input placeholder="Enter name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" placeholder="you@example.com" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit">Submit</Button>
+      </form>
+    </Form>
+  )
+}
+```
 
-      <Suspense fallback={null}>
-        <ThreeJsBackground />
-      </Suspense>
+### Resetting Form on Dialog Open/Close
+
+```tsx
+// Open for create — reset to empty defaults
+const handleOpenCreate = () => {
+  form.reset({ name: '' })
+  setIsOpen(true)
+}
+
+// Open for edit — populate with existing values
+const handleOpenEdit = (item: Item) => {
+  form.reset({ name: item.name })
+  setSelected(item)
+  setIsOpen(true)
+}
+
+// Dialog onOpenChange — always reset on close
+onOpenChange={(open) => { setIsOpen(open); if (!open) form.reset() }}
+```
+
+**Rules:**
+- Schema must be a `z.object({...})` — not `z.string()` directly
+- `type FormValues = z.infer<typeof schema>` — infer types from schema, never duplicate
+- `FormControl` wires `id`, `aria-describedby`, `aria-invalid` automatically
+- `FormMessage` reads errors from RHF context — no manual error rendering
+- Submit handler receives validated `FormValues` — no `event.preventDefault()` needed
+
+---
+
+## Client State — Zustand
+
+Use Zustand for global UI state that survives navigation (auth, sidebar, user prefs).
+Use `useState` for local component state (dialog open/close, selected row).
+
+```tsx
+import { create } from 'zustand'
+
+interface AuthState {
+  user: User | null
+  accessToken: string | null
+  isAuthenticated: boolean
+  setAuth: (user: User, token: string) => void
+  clearAuth: () => void
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  accessToken: null,
+  isAuthenticated: false,
+  setAuth: (user, accessToken) => set({ user, accessToken, isAuthenticated: true }),
+  clearAuth: () => set({ user: null, accessToken: null, isAuthenticated: false }),
+}))
+
+// In components
+const { user, isAuthenticated } = useAuthStore()
+const setAuth = useAuthStore((s) => s.setAuth)  // subscribe to slice, not whole store
+```
+
+**Rules:**
+- Store access tokens **in memory** (Zustand), never `localStorage`
+- Refresh tokens in HttpOnly cookies only
+- Subscribe to slices (`useAuthStore(s => s.user)`) to avoid unnecessary re-renders
+
+---
+
+## Data Tables — TanStack Table v8
+
+```tsx
+import { useMemo } from 'react'
+import {
+  type ColumnDef, flexRender, getCoreRowModel, useReactTable,
+} from '@tanstack/react-table'
+
+interface Role { id: number; name: string; user_count: number }
+
+export function RolesTable({ roles }: { roles: Role[] }) {
+  const columns = useMemo<ColumnDef<Role>[]>(() => [
+    { accessorKey: 'name', header: 'Name' },
+    {
+      accessorKey: 'user_count',
+      header: 'Users',
+      cell: ({ row }) => <Badge variant="secondary">{row.original.user_count}</Badge>,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={`Actions for ${row.original.name}`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>Edit</DropdownMenuItem>
+            <DropdownMenuItem>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ], [])
+
+  const table = useReactTable({ data: roles, columns, getCoreRowModel: getCoreRowModel() })
+
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/40">
+          {table.getHeaderGroups().map(hg => (
+            <tr key={hg.id}>
+              {hg.headers.map(h => (
+                <th key={h.id} className="px-4 py-3 text-left font-medium">
+                  {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map(row => (
+            <tr key={row.id} className="border-t hover:bg-muted/20">
+              {row.getVisibleCells().map(cell => (
+                <td key={cell.id} className="px-4 py-3">
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
+```
+
+**Rules:**
+- `columns` wrapped in `useMemo` — column defs are stable references
+- Actions column uses `id: 'actions'` (no `accessorKey`) with `aria-label` on trigger
+- `Skeleton` for loading, `Alert` for errors — never block full page
+
+---
+
+## Routing — React Router v6
+
+### Protected Route
+
+```tsx
+import { Navigate, Outlet } from 'react-router-dom'
+import { useAuthStore } from '@/store/auth'
+
+export function ProtectedRoute() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
+}
+```
+
+### Nested Layout
+
+```tsx
+// App.tsx
+<Route element={<ProtectedRoute />}>
+  <Route path="/admin" element={<AdminLayout />}>
+    <Route index element={<Navigate to="dashboard" replace />} />
+    <Route path="dashboard" element={<AdminDashboardPage />} />
+    <Route path="settings/roles" element={<RolesPage />} />
+  </Route>
+</Route>
+```
+
+---
+
+## Custom Hooks
+
+### useToggle
+
+```tsx
+export function useToggle(initial = false): [boolean, () => void] {
+  const [value, setValue] = useState(initial)
+  const toggle = useCallback(() => setValue(v => !v), [])
+  return [value, toggle]
+}
+```
+
+### useDebounce
+
+```tsx
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState<T>(value)
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(id)
+  }, [value, delay])
+
+  return debounced
+}
+
+// Usage: client-side table filter without API calls on every keystroke
+const [search, setSearch] = useState('')
+const debouncedSearch = useDebounce(search, 300)
+const filtered = useMemo(() => rows.filter(r => r.name.includes(debouncedSearch)), [rows, debouncedSearch])
+```
+
+---
+
+## Performance Optimization
+
+### Memoization Rules
+
+```tsx
+// useMemo — expensive derivations, stable column defs, filtered/sorted lists
+const columns = useMemo<ColumnDef<Role>[]>(() => [...], [navigate])
+const sorted = useMemo(() => [...roles].sort((a, b) => a.name.localeCompare(b.name)), [roles])
+
+// useCallback — handlers passed as props to child components
+const handleDelete = useCallback((id: number) => deleteMutation.mutate(id), [deleteMutation])
+
+// React.memo — pure display components that receive stable props
+export const RoleRow = React.memo(function RoleRow({ role }: { role: Role }) {
+  return <tr>...</tr>
+})
+```
+
+**Do not over-memoize.** `useMemo`/`useCallback` have overhead. Only apply when:
+- A computation is measurably expensive, OR
+- Referential stability is needed (column defs, callback props to memoized children)
+
+### Code Splitting
+
+```tsx
+import { lazy, Suspense } from 'react'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const PermissionsMatrix = lazy(() => import('@/pages/settings/PermissionsMatrix'))
+
+<Suspense fallback={<Skeleton className="h-64 w-full" />}>
+  <PermissionsMatrix roleId={id} />
+</Suspense>
 ```
 
 ### Virtualization for Long Lists
 
-```typescript
+```tsx
 import { useVirtualizer } from '@tanstack/react-virtual'
 
-export function VirtualMarketList({ markets }: { markets: Market[] }) {
+export function VirtualList<T>({ items, renderItem }: { items: T[]; renderItem: (item: T) => React.ReactNode }) {
   const parentRef = useRef<HTMLDivElement>(null)
-
   const virtualizer = useVirtualizer({
-    count: markets.length,
+    count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 100,  // Estimated row height
-    overscan: 5  // Extra items to render
+    estimateSize: () => 56,
+    overscan: 5,
   })
 
   return (
-    <div ref={parentRef} style={{ height: '600px', overflow: 'auto' }}>
-      <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          position: 'relative'
-        }}
-      >
-        {virtualizer.getVirtualItems().map(virtualRow => (
+    <div ref={parentRef} className="h-[600px] overflow-auto">
+      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+        {virtualizer.getVirtualItems().map(vRow => (
           <div
-            key={virtualRow.index}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: `${virtualRow.size}px`,
-              transform: `translateY(${virtualRow.start}px)`
-            }}
+            key={vRow.index}
+            style={{ position: 'absolute', top: 0, transform: `translateY(${vRow.start}px)`, width: '100%' }}
           >
-            <MarketCard market={markets[virtualRow.index]} />
+            {renderItem(items[vRow.index])}
           </div>
         ))}
       </div>
@@ -383,260 +487,67 @@ export function VirtualMarketList({ markets }: { markets: Market[] }) {
 }
 ```
 
-## Form Handling Patterns
+---
 
-### Controlled Form with Validation
+## Error Handling Patterns
 
-```typescript
-interface FormData {
-  name: string
-  description: string
-  endDate: string
-}
+### Page-Level Error State
 
-interface FormErrors {
-  name?: string
-  description?: string
-  endDate?: string
-}
-
-export function CreateMarketForm() {
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    description: '',
-    endDate: ''
-  })
-
-  const [errors, setErrors] = useState<FormErrors>({})
-
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {}
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required'
-    } else if (formData.name.length > 200) {
-      newErrors.name = 'Name must be under 200 characters'
-    }
-
-    if (!formData.description.trim()) {
-      newErrors.description = 'Description is required'
-    }
-
-    if (!formData.endDate) {
-      newErrors.endDate = 'End date is required'
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validate()) return
-
-    try {
-      await createMarket(formData)
-      // Success handling
-    } catch (error) {
-      // Error handling
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <input
-        value={formData.name}
-        onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-        placeholder="Market name"
-      />
-      {errors.name && <span className="error">{errors.name}</span>}
-
-      {/* Other fields */}
-
-      <button type="submit">Create Market</button>
-    </form>
-  )
-}
+```tsx
+// useQuery error state — show Alert with Retry, never crash
+{rolesQuery.isError ? (
+  <Alert variant="destructive" role="alert" aria-live="assertive">
+    <AlertTitle>Unable to load roles</AlertTitle>
+    <AlertDescription className="flex items-center justify-between">
+      <span>{rolesQuery.error.message}</span>
+      <Button variant="outline" onClick={() => void rolesQuery.refetch()}>Retry</Button>
+    </AlertDescription>
+  </Alert>
+) : (
+  <RolesTable />
+)}
 ```
 
-## Error Boundary Pattern
+### Mutation Error via Toast
 
-```typescript
-interface ErrorBoundaryState {
-  hasError: boolean
-  error: Error | null
-}
-
-export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  ErrorBoundaryState
-> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error }
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error boundary caught:', error, errorInfo)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="error-fallback">
-          <h2>Something went wrong</h2>
-          <p>{this.state.error?.message}</p>
-          <button onClick={() => this.setState({ hasError: false })}>
-            Try again
-          </button>
-        </div>
-      )
-    }
-
-    return this.props.children
-  }
-}
-
-// Usage
-<ErrorBoundary>
-  <App />
-</ErrorBoundary>
+```tsx
+useMutation({
+  mutationFn: rolesApi.deleteRole,
+  onError: (error) => {
+    toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
+  },
+  onSuccess: () => {
+    toast({ title: 'Role deleted' })
+  },
+})
 ```
 
-## Animation Patterns
+**Rules:**
+- `role="alert" aria-live="assertive"` on page-level error `Alert`
+- Never use `alert()` or `console.error` for user-visible errors
+- Toast (destructive) for mutation errors — inline `Alert` for query errors
+- Always provide a Retry button for failed queries
 
-### Framer Motion Animations
+---
 
-```typescript
-import { motion, AnimatePresence } from 'framer-motion'
+## Compound Components
 
-// PASS: List animations
-export function AnimatedMarketList({ markets }: { markets: Market[] }) {
-  return (
-    <AnimatePresence>
-      {markets.map(market => (
-        <motion.div
-          key={market.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-        >
-          <MarketCard market={market} />
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  )
-}
+Use for complex UI where child components share implicit state (Tabs, Accordion, etc.).
+Prefer shadcn/ui's built-in compound components over custom implementations.
 
-// PASS: Modal animations
-export function Modal({ isOpen, onClose, children }: ModalProps) {
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-          />
-          <motion.div
-            className="modal-content"
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          >
-            {children}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  )
-}
+```tsx
+// Use shadcn Tabs — not a custom Tab implementation
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+
+<Tabs defaultValue="permissions">
+  <TabsList>
+    <TabsTrigger value="permissions">Permissions</TabsTrigger>
+    <TabsTrigger value="users">Users</TabsTrigger>
+  </TabsList>
+  <TabsContent value="permissions"><PermissionsTab /></TabsContent>
+  <TabsContent value="users"><UsersTab /></TabsContent>
+</Tabs>
 ```
 
-## Accessibility Patterns
-
-### Keyboard Navigation
-
-```typescript
-export function Dropdown({ options, onSelect }: DropdownProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        setActiveIndex(i => Math.min(i + 1, options.length - 1))
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        setActiveIndex(i => Math.max(i - 1, 0))
-        break
-      case 'Enter':
-        e.preventDefault()
-        onSelect(options[activeIndex])
-        setIsOpen(false)
-        break
-      case 'Escape':
-        setIsOpen(false)
-        break
-    }
-  }
-
-  return (
-    <div
-      role="combobox"
-      aria-expanded={isOpen}
-      aria-haspopup="listbox"
-      onKeyDown={handleKeyDown}
-    >
-      {/* Dropdown implementation */}
-    </div>
-  )
-}
-```
-
-### Focus Management
-
-```typescript
-export function Modal({ isOpen, onClose, children }: ModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    if (isOpen) {
-      // Save currently focused element
-      previousFocusRef.current = document.activeElement as HTMLElement
-
-      // Focus modal
-      modalRef.current?.focus()
-    } else {
-      // Restore focus when closing
-      previousFocusRef.current?.focus()
-    }
-  }, [isOpen])
-
-  return isOpen ? (
-    <div
-      ref={modalRef}
-      role="dialog"
-      aria-modal="true"
-      tabIndex={-1}
-      onKeyDown={e => e.key === 'Escape' && onClose()}
-    >
-      {children}
-    </div>
-  ) : null
-}
-```
-
-**Remember**: Modern frontend patterns enable maintainable, performant user interfaces. Choose patterns that fit your project complexity.
+Only build custom compound components when no shadcn equivalent exists and the
+pattern is used in 3+ places.

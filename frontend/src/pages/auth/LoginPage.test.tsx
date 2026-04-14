@@ -33,9 +33,8 @@ vi.mock("@/stores/authStore", () => ({
 import { authApi } from "@/api/auth";
 import { isTokenExpired } from "@/lib/api/client";
 
-function renderPage(route = "/login") {
-  const qc = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
-  return render(
+function createLoginPageTree(route: string, qc: QueryClient) {
+  return (
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[route]}>
         <Routes>
@@ -45,6 +44,11 @@ function renderPage(route = "/login") {
       </MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+function renderPage(route = "/login") {
+  const qc = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
+  return render(createLoginPageTree(route, qc));
 }
 
 // Minimal valid JWT for testing (header.payload.sig — not cryptographically valid)
@@ -190,5 +194,27 @@ describe("LoginPage", () => {
 
     expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
     expect(screen.queryByText(/home page/i)).not.toBeInTheDocument();
+  });
+
+  it("does not crash when auth state changes after first render", () => {
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.accessToken = null;
+    mockAuthState.user = null;
+
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: 0 } } });
+    const view = render(createLoginPageTree("/login", qc));
+
+    expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
+
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.accessToken = "some-token";
+    mockAuthState.user = { id: 1, username: "johndoe", email: "john@example.com" };
+    vi.mocked(isTokenExpired).mockReturnValue(false);
+
+    expect(() => {
+      view.rerender(createLoginPageTree("/login", qc));
+    }).not.toThrow();
+
+    expect(screen.getByText(/home page/i)).toBeInTheDocument();
   });
 });

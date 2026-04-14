@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~560 -->
+<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~560 -->
 
 # Data Codemap
 
@@ -23,10 +23,14 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 
 ## Redis Key Spaces
 
-- `jwt:blocklist:<jti>`: revoked access-token JTIs.
-- `refresh:<token>`: refresh token session mapping.
-- `rate:<username>`: login throttling counter.
-- `role:list` (cache namespace): cached role list payloads.
+- `jwt:blacklist:<jti>`: revoked access-token JTIs.
+- `refresh:<token>`: refresh token -> user ID mapping.
+- `user_tokens:<userID>`: set of active refresh tokens for logout-all operations.
+- `user:<userID>`: cached user context for JWT middleware hydration.
+- `rate:login:<ip>`: short-window login attempt throttling counter.
+- `failed_login:<username>`: failed login count for lockout policy.
+- `lockout:<username>`: active lockout marker with TTL.
+- `rbac:*`: RBAC cache namespace invalidated on role changes.
 
 ## Data Flow Summary
 
@@ -34,8 +38,8 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 register -> ab_register_user
 verify   -> move/activate into ab_user
 login    -> read ab_user + write refresh/rate keys
-logout   -> write jwt:blocklist + delete refresh session
-roles    -> read/write ab_role + cache role list in Redis
+logout   -> write jwt:blacklist + delete refresh session
+roles    -> read/write ab_role + invalidate Redis rbac:* namespace
 ```
 
 ## Domain Types Used in API

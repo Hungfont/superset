@@ -67,14 +67,8 @@ export default function LoginPage() {
 
   const isActivated = searchParams.get("activated") === "true";
   const fromAlert = searchParams.get("from");
-
-  // Synchronously redirect users who already have an active session.
-  // Allow through when token is absent or expired — ProtectedRoute will have
-  // already called clearAuth() when a refresh attempt failed.
-  if (isAuthenticated && accessToken && !isTokenExpired(accessToken)) {
-    const stateFrom = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-    return <Navigate to={safePath(stateFrom)} replace />;
-  }
+  const stateFrom = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+  const hasActiveSession = isAuthenticated && accessToken && !isTokenExpired(accessToken);
 
   const savedUsername = safeLocalStorage()?.getItem("rememberedUsername") ?? "";
 
@@ -107,6 +101,11 @@ export default function LoginPage() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [isLocked, loginError]);
+
+  // Redirect only after hooks are initialized to keep hook order stable.
+  if (hasActiveSession) {
+    return <Navigate to={safePath(stateFrom)} replace />;
+  }
 
   function onSubmit(values: LoginFormValues) {
     const storage = safeLocalStorage();

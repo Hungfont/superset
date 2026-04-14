@@ -5,7 +5,6 @@ import VerifyPage from "@/pages/auth/VerifyPage";
 import LoginPage from "@/pages/auth/LoginPage";
 import HomePage from "@/pages/home/HomePage";
 import RolesPage from "@/pages/settings/RolesPage";
-import RolePermissionsPage from "@/pages/settings/RolePermissionsPage";
 import AdminLayout from "@/pages/settings/AdminLayout";
 import AdminDashboardPage from "@/pages/settings/AdminDashboardPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -32,7 +31,6 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="settings/roles" element={<RolesPage />} />
-            <Route path="settings/roles/:id/permissions" element={<RolePermissionsPage />} />
           </Route>
         </Route>
 

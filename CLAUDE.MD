@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
+Codebase context discovery source of truth: `docs/CODEMAPS/INDEX.md`  without any explore codebase command. need to read into docs`docs/CODEMAPS/INDEX.md` to discovery codebase.
 ## Project Overview
 
 This is a **Claude Code plugin** - a collection of production-ready agents, skills, hooks, commands, rules, and MCP configurations. The project provides battle-tested workflows for software development using Claude Code.

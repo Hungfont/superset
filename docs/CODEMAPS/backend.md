@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-13 | Files scanned: 120 | Token estimate: ~680 -->
+<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~680 -->
 
 # Backend Codemap
 
@@ -17,10 +17,10 @@ POST /api/v1/auth/refresh                  -> RefreshHandler.Refresh
 POST /api/v1/auth/logout                   -> LogoutHandler.Logout
 
 Protected (JWTMiddleware)
-GET    /api/v1/roles                       -> RoleHandler.List
-POST   /api/v1/roles                       -> RoleHandler.Create
-PUT    /api/v1/roles/:id                   -> RoleHandler.Update
-DELETE /api/v1/roles/:id                   -> RoleHandler.Delete
+GET    /api/v1/admin/roles                 -> RoleHandler.List
+POST   /api/v1/admin/roles                 -> RoleHandler.Create
+PUT    /api/v1/admin/roles/:id             -> RoleHandler.Update
+DELETE /api/v1/admin/roles/:id             -> RoleHandler.Delete
 ```
 
 ## Middleware Chain
@@ -28,6 +28,7 @@ DELETE /api/v1/roles/:id                   -> RoleHandler.Delete
 ```
 gin.Logger -> gin.Recovery -> route group middleware
 protected routes: JWTMiddleware(pubKey, jwtRepo, userRepo)
+admin routes: AuthorizeAdminRole(roleRepo)
 ```
 
 ## Service to Repository Mapping

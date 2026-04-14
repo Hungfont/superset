@@ -1,20 +1,13 @@
 import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { Link, useNavigate } from "react-router-dom";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { z } from "zod";
 
 import { rolesApi, type Role } from "@/api/roles";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,12 +18,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -39,31 +50,33 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useToast } from "@/hooks/use-toast";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
 
-const roleNameSchema = z.string().min(1, "Name is required").max(64, "Max 64 chars");
+const roleFormSchema = z.object({
+  name: z.string().min(1, "Name is required").max(64, "Max 64 chars"),
+});
 
-interface RoleFormState {
-  name: string;
-  error: string | null;
-}
+type RoleFormValues = z.infer<typeof roleFormSchema>;
 
 export default function RolesPage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isUpsertOpen, setIsUpsertOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isUsersSheetOpen, setIsUsersSheetOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [formState, setFormState] = useState<RoleFormState>({ name: "", error: null });
+
+  const form = useForm<RoleFormValues>({
+    resolver: zodResolver(roleFormSchema),
+    defaultValues: { name: "" },
+  });
 
   const rolesQuery = useQuery({
     queryKey: ["roles"],
@@ -92,8 +105,8 @@ export default function RolesPage() {
       toast({ title: "Create failed", description: error.message, variant: "destructive" });
     },
     onSuccess: () => {
-      setIsCreateOpen(false);
-      setFormState({ name: "", error: null });
+      setIsUpsertOpen(false);
+      form.reset();
       toast({ title: "Role created" });
     },
     onSettled: () => {
@@ -104,9 +117,9 @@ export default function RolesPage() {
   const updateRoleMutation = useMutation({
     mutationFn: ({ id, name }: { id: number; name: string }) => rolesApi.updateRole(id, { name }),
     onSuccess: () => {
-      setIsCreateOpen(false);
+      setIsUpsertOpen(false);
       setSelectedRole(null);
-      setFormState({ name: "", error: null });
+      form.reset();
       toast({ title: "Role updated" });
       queryClient.invalidateQueries({ queryKey: ["roles"] });
     },
@@ -117,12 +130,12 @@ export default function RolesPage() {
 
   const deleteRoleMutation = useMutation({
     mutationFn: rolesApi.deleteRole,
-    onMutate: async (roleId) => {
+    onMutate: async (roleID) => {
       await queryClient.cancelQueries({ queryKey: ["roles"] });
       const previousRoles = queryClient.getQueryData<Role[]>(["roles"]) ?? [];
       queryClient.setQueryData<Role[]>(
         ["roles"],
-        previousRoles.filter((role) => role.id !== roleId),
+        previousRoles.filter((role) => role.id !== roleID),
       );
       return { previousRoles };
     },
@@ -166,15 +179,7 @@ export default function RolesPage() {
       {
         accessorKey: "permission_count",
         header: "Permissions",
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            className="px-0"
-            onClick={() => navigate(`/admin/settings/roles/${row.original.id}/permissions`)}
-          >
-            <Badge>{row.original.permission_count}</Badge>
-          </Button>
-        ),
+        cell: ({ row }) => <Badge>{row.original.permission_count}</Badge>,
       },
       {
         id: "actions",
@@ -190,8 +195,8 @@ export default function RolesPage() {
               <DropdownMenuItem
                 onClick={() => {
                   setSelectedRole(row.original);
-                  setFormState({ name: row.original.name, error: null });
-                  setIsCreateOpen(true);
+                  form.reset({ name: row.original.name });
+                  setIsUpsertOpen(true);
                 }}
               >
                 Edit
@@ -222,7 +227,7 @@ export default function RolesPage() {
         ),
       },
     ],
-    [navigate],
+    [form],
   );
 
   const table = useReactTable({
@@ -231,40 +236,29 @@ export default function RolesPage() {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const isEditMode = selectedRole !== null && isCreateOpen;
+  const isEditMode = selectedRole !== null && isUpsertOpen;
 
   const handleOpenCreate = () => {
     setSelectedRole(null);
-    setFormState({ name: "", error: null });
-    setIsCreateOpen(true);
+    form.reset({ name: "" });
+    setIsUpsertOpen(true);
   };
 
-  const handleSubmitRole = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const parsed = roleNameSchema.safeParse(formState.name.trim());
-    if (!parsed.success) {
-      setFormState((prev) => ({
-        ...prev,
-        error: parsed.error.issues[0]?.message ?? "Invalid name",
-      }));
-      return;
-    }
-
+  const handleSubmitRole = (values: RoleFormValues) => {
+    const trimmedName = values.name.trim();
     if (isEditMode && selectedRole) {
-      updateRoleMutation.mutate({ id: selectedRole.id, name: parsed.data });
+      updateRoleMutation.mutate({ id: selectedRole.id, name: trimmedName });
       return;
     }
-
-    createRoleMutation.mutate({ name: parsed.data });
+    createRoleMutation.mutate({ name: trimmedName });
   };
 
   return (
     <main className="mx-auto w-full max-w-5xl p-6">
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Role Management</h1>
-          <p className="text-sm text-muted-foreground">Create and manage RBAC roles for your workspace.</p>
+          <h1 className="text-2xl font-semibold">AUTH-007 Role CRUD Management</h1>
+          <p className="text-sm text-muted-foreground">Create, update, and delete RBAC roles.</p>
         </div>
         <Button onClick={handleOpenCreate}>
           <Plus className="mr-2 h-4 w-4" />
@@ -272,81 +266,113 @@ export default function RolesPage() {
         </Button>
       </header>
 
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="px-4 py-3 text-left font-medium">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {rolesQuery.isLoading ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  Loading roles...
-                </td>
-              </tr>
-            ) : table.getRowModel().rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  No roles found.
-                </td>
-              </tr>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} tabIndex={0} className="border-t focus-within:bg-muted/30 hover:bg-muted/20">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
+      {rolesQuery.isError ? (
+        <Alert variant="destructive" role="alert" aria-live="assertive">
+          <AlertTitle>Unable to load roles</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{rolesQuery.error.message}</span>
+            <Button type="button" variant="outline" onClick={() => void rolesQuery.refetch()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <div className="overflow-hidden rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th key={header.id} className="px-4 py-3 text-left font-medium">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
                   ))}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </thead>
+            <tbody>
+              {rolesQuery.isLoading ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    Loading roles...
+                  </td>
+                </tr>
+              ) : table.getRowModel().rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    No roles found.
+                  </td>
+                </tr>
+              ) : (
+                table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} tabIndex={0} className="border-t hover:bg-muted/20 focus-within:bg-muted/30">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-4 py-3">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent aria-labelledby="role-dialog-title">
+      <Dialog
+        open={isUpsertOpen}
+        onOpenChange={(open) => {
+          setIsUpsertOpen(open);
+          if (!open) {
+            form.reset();
+          }
+        }}
+      >
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle id="role-dialog-title">{isEditMode ? "Edit Role" : "Create Role"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Role" : "Create Role"}</DialogTitle>
+            <DialogDescription>
+              {isEditMode ? "Update role name." : "Create a new role for RBAC assignments."}
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmitRole} className="mt-4 flex flex-col gap-3">
-            <Input
-              autoFocus
-              placeholder="Role name"
-              value={formState.name}
-              onChange={(event) => setFormState({ name: event.target.value, error: null })}
-              aria-invalid={formState.error !== null}
-            />
-            {formState.error ? <p className="text-sm text-destructive">{formState.error}</p> : null}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createRoleMutation.isPending || updateRoleMutation.isPending}>
-                {isEditMode ? "Save" : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmitRole)} className="mt-4 flex flex-col gap-3">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role name</FormLabel>
+                    <FormControl>
+                      <Input autoFocus placeholder="Role name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsUpsertOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createRoleMutation.isPending || updateRoleMutation.isPending}>
+                  {isEditMode ? "Save" : "Create"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete role <strong>{selectedRole?.name}</strong>?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete role <strong>{selectedRole?.name}</strong>?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               This cannot be undone.
               {selectedRole && selectedRole.user_count > 0 ? (
-                <span className="block mt-2 text-destructive">
+                <span className="mt-2 block text-destructive">
                   This role still has {selectedRole.user_count} assigned users and will return a conflict.
                 </span>
               ) : null}
@@ -377,10 +403,6 @@ export default function RolesPage() {
           </SheetHeader>
         </SheetContent>
       </Sheet>
-
-      <div className="mt-6 text-sm text-muted-foreground">
-        Need permission details? Open the matrix from each row, or visit <Link className="underline" to="/admin/settings/roles/1/permissions">Role permissions</Link>.
-      </div>
     </main>
   );
 }
