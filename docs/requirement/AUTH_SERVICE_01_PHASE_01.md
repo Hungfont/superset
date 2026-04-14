@@ -355,7 +355,7 @@ Triggered from /settings or header dropdown - no dedicated page
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**         | **API / Route**                                       |
 | ----------------- | ------------ | --------- | --------------------- | ----------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_role, ab_user_role | GET/POST /api/v1/roles · PUT/DELETE /api/v1/roles/:id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_role, ab_user_role | GET/POST /api/v1/admin/roles · PUT/DELETE /api/v1/admin/roles/:id |
 
 | **⚙️ Backend - Description**
 - Admin CRUD on roles. Guard: cannot delete built-in roles or roles with assigned users. List includes user_count and permission_count. Cache bust after changes.
@@ -373,7 +373,7 @@ Triggered from /settings or header dropdown - no dedicated page
 - 403 - Non-admin or built-in role.
 - 409 - Role has users. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/roles
+admin/settings/roles
 **🧩 shadcn/ui Components**
 - DataTable (TanStack Table) - columns: Name, Users, Permissions, Actions
 - Button (+ New Role) - opens Dialog

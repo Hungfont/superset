@@ -19,9 +19,6 @@ func NewRoleService(repo domain.RoleRepository, cacheRepo domain.RoleCacheReposi
 }
 
 func (s *RoleService) ListRoles(ctx context.Context, actorUserID uint) ([]domain.RoleListItem, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
 	roles, err := s.repo.ListWithCounts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing roles: %w", err)
@@ -30,10 +27,6 @@ func (s *RoleService) ListRoles(ctx context.Context, actorUserID uint) ([]domain
 }
 
 func (s *RoleService) CreateRole(ctx context.Context, actorUserID uint, req domain.UpsertRoleRequest) (*domain.Role, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
-
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return nil, domain.ErrInvalidRole
@@ -50,10 +43,6 @@ func (s *RoleService) CreateRole(ctx context.Context, actorUserID uint, req doma
 }
 
 func (s *RoleService) UpdateRole(ctx context.Context, actorUserID, roleID uint, req domain.UpsertRoleRequest) (*domain.Role, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
-
 	builtIn, err := s.repo.IsBuiltInRole(ctx, roleID)
 	if err != nil {
 		return nil, fmt.Errorf("checking built-in role: %w", err)
@@ -78,10 +67,6 @@ func (s *RoleService) UpdateRole(ctx context.Context, actorUserID, roleID uint, 
 }
 
 func (s *RoleService) DeleteRole(ctx context.Context, actorUserID, roleID uint) error {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return err
-	}
-
 	builtIn, err := s.repo.IsBuiltInRole(ctx, roleID)
 	if err != nil {
 		return fmt.Errorf("checking built-in role: %w", err)
@@ -103,17 +88,6 @@ func (s *RoleService) DeleteRole(ctx context.Context, actorUserID, roleID uint) 
 	}
 	if err := s.cacheRepo.BustRBAC(ctx); err != nil {
 		return fmt.Errorf("busting rbac cache: %w", err)
-	}
-	return nil
-}
-
-func (s *RoleService) ensureAdmin(ctx context.Context, actorUserID uint) error {
-	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
-	if err != nil {
-		return fmt.Errorf("checking admin role: %w", err)
-	}
-	if !isAdmin {
-		return domain.ErrForbidden
 	}
 	return nil
 }
