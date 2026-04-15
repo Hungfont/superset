@@ -21,6 +21,14 @@ GET    /api/v1/admin/roles                 -> RoleHandler.List
 POST   /api/v1/admin/roles                 -> RoleHandler.Create
 PUT    /api/v1/admin/roles/:id             -> RoleHandler.Update
 DELETE /api/v1/admin/roles/:id             -> RoleHandler.Delete
+
+GET    /api/v1/admin/permissions           -> PermissionHandler.ListPermissions
+POST   /api/v1/admin/permissions           -> PermissionHandler.CreatePermission
+GET    /api/v1/admin/view-menus            -> PermissionHandler.ListViewMenus
+POST   /api/v1/admin/view-menus            -> PermissionHandler.CreateViewMenu
+GET    /api/v1/admin/permission-views      -> PermissionHandler.ListPermissionViews
+POST   /api/v1/admin/permission-views      -> PermissionHandler.CreatePermissionView
+DELETE /api/v1/admin/permission-views/:id  -> PermissionHandler.DeletePermissionView
 ```
 
 ## Middleware Chain
@@ -40,24 +48,26 @@ LoginService    -> LoginRepository + RateLimitRepository + RefreshRepository
 RefreshService  -> RefreshRepository + UserRepository
 LogoutService   -> JWTRepository + RefreshRepository
 RoleService     -> RoleRepository + RoleCacheRepository
+PermissionService -> PermissionRepository + RoleCacheRepository
 ```
 
 ## Key Files
 
 - `backend/cmd/api/main.go`: config load, DB/Redis init, key parsing, DI wiring, server run.
 - `backend/internal/delivery/http/router.go`: `/api/v1` route graph and middleware attachment.
-- `backend/internal/delivery/http/auth/*.go`: auth + role HTTP handlers.
+- `backend/internal/delivery/http/auth/*.go`: auth + role + permission HTTP handlers.
 - `backend/internal/delivery/http/middleware/jwt.go`: bearer token verification and context hydration.
-- `backend/internal/app/auth/*.go`: auth/session/role business logic.
-- `backend/internal/domain/auth/entity.go`: `RegisterUser`, `User`, `Role`, DTOs.
+- `backend/internal/app/auth/*.go`: auth/session/role/permission business logic.
+- `backend/internal/domain/auth/entity.go`: `RegisterUser`, `User`, `Role`, `Permission`, `ViewMenu`, `PermissionView`, DTOs.
 - `backend/internal/domain/auth/repository.go`: repository contracts.
-- `backend/internal/repository/postgres/*.go`: persistent repositories (user/register/verify/login/role).
+- `backend/internal/repository/postgres/*.go`: persistent repositories (user/register/verify/login/role/permission).
 - `backend/internal/repository/redis/*.go`: cache/session/blocklist/rate repositories.
 - `backend/configs/config.go`: env-bound configuration structs.
 
 ## Runtime Boot Sequence
 
 ```
-Load env -> load config -> open Postgres -> AutoMigrate(RegisterUser, User, Role)
--> init Redis client -> parse RSA keys -> construct repos/services/handlers -> start Gin server
+Load env -> load config -> open Postgres -> AutoMigrate(RegisterUser, User, Role, Permission, ViewMenu, PermissionView)
+-> init Redis client -> parse RSA keys -> construct repos/services/handlers
+-> seed default permission-view pairs -> start Gin server
 ```

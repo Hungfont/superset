@@ -20,7 +20,8 @@ Protected
 Admin area (session-protected in frontend; role enforced by backend APIs)
 /admin                              -> AdminLayout
 /admin/dashboard                    -> AdminDashboardPage
-/admin/settings/roles               -> Auth007RoleCrud
+/admin/settings/roles               -> RolesPage
+/admin/settings/permissions         -> PermissionsPage
 
 Fallback
 * -> redirect /login
@@ -50,7 +51,7 @@ hooks/useLogout.ts
 hooks/useTokenRefresh.ts
   - orchestrate API calls, redirects, and toasts
 
-api/auth.ts + api/roles.ts + utils/request.ts
+api/auth.ts + api/roles.ts + api/permissions.ts + utils/request.ts
   - backend calls and request helpers
 ```
 
@@ -61,8 +62,9 @@ api/auth.ts + api/roles.ts + utils/request.ts
 - `frontend/src/components/ProtectedRoute.tsx`: route guard.
 - `frontend/src/pages/auth/*`: login + verification views.
 - `frontend/src/pages/register/*`: registration + success flow.
-- `frontend/src/pages/settings/Auth007RoleCrud.tsx`: AUTH-007 role CRUD screen.
-- `frontend/src/pages/settings/*`: admin dashboard and settings shell.
+- `frontend/src/pages/admin/RolesPage.tsx`: AUTH-007 role CRUD screen.
+- `frontend/src/pages/admin/PermissionsPage.tsx`: AUTH-008 permission/view-menu matrix screen.
+- `frontend/src/pages/admin/*`: admin dashboard and settings shell.
 - `frontend/src/stores/authStore.ts`: shared auth state.
 - `frontend/src/test/setup.ts`: Vitest DOM setup.
 

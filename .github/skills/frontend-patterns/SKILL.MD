@@ -27,6 +27,16 @@ Patterns for this project's stack: React 18 + TypeScript · Vite · TanStack Que
 
 Always use `shadcn/ui` primitives. Never build custom styled divs/buttons/inputs.
 
+### Shared UI Primitives (`src/components/ui`)
+
+Treat `src/components/ui` as the project’s shared primitive layer.
+
+- Reuse existing primitives from `src/components/ui` before creating new wrappers.
+- If a primitive is available from shadcn/ui, generate or replace it through the shadcn workflow instead of hand-rolling a local variant.
+- Keep exported component names and composition patterns aligned with shadcn conventions so pages can swap primitives without changing calling code.
+- Prefer composing pages and features from these primitives rather than styling bespoke elements directly in page components.
+- When a primitive needs browser-specific behavior, centralize the compatibility fix in the shared component or test setup instead of patching each consumer.
+
 ```tsx
 // CORRECT: shadcn composition
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'
@@ -66,13 +76,26 @@ export function ExamplePage() {
   const [isOpen, setIsOpen] = useState(false)
   const form = useForm(...)
 
+  // Open for create — reset to empty defaults
+  const handleOpenCreate = () => {
+    form.reset({ name: '' })
+    setIsOpen(true)
+  }
+
+  const onOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      form.reset()  // also reset on close to clear any unsaved changes
+    }
+  }
+
   return (
     <>
-      <Button onClick={() => { form.reset(); setIsOpen(true) }}>Open</Button>
+      <Button onClick={handleOpenCreate}>Open</Button>
 
       <Dialog
         open={isOpen}
-        onOpenChange={(open) => { setIsOpen(open); if (!open) form.reset() }}
+        onOpenChange={onOpenChange}
       >
         <DialogContent>
           <DialogHeader>
@@ -154,33 +177,72 @@ const createMutation = useMutation({
 
 ---
 
+## API Client Patterns — `src/api`
+
+Keep API access in `src/api` modules. Use a shared request wrapper, typed response envelopes, and a namespaced API object for related endpoints.
+
+**Common pattern:**
+- Define a small `ApiEnvelope<T>` type when the backend wraps payloads in `{ data }`.
+- Read the access token from `useAuthStore.getState()` inside a helper such as `getAuthHeaders()`.
+- Add `Content-Type: application/json` only for write requests that send a JSON body.
+- Export typed payload and entity interfaces from the API module so callers do not re-declare them.
+- Group related methods under a single object such as `permissionsApi`, `rolesApi`, or `authApi`,etc.
+- Return `body.data` from the request wrapper so page components and hooks work with plain typed data.
+
+```ts
+interface ApiEnvelope<T> {
+  data: T
+}
+
+function getAuthHeaders(contentType = false): HeadersInit {
+  const accessToken = useAuthStore.getState().accessToken
+  return {
+    ...(contentType ? { 'Content-Type': 'application/json' } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  }
+}
+
+export const permissionsApi = {
+  async getPermissions(): Promise<Permission[]> {
+    const body = await request<ApiEnvelope<Permission[]>>('/api/v1/admin/permissions', {
+      method: 'GET',
+      credentials: 'include',
+      headers: getAuthHeaders(),
+    })
+    return body.data
+  },
+}
+```
+
+**Rules:**
+- Keep all API calls inside `src/api` modules, not in pages or components
+- Use a shared request helper for response handling and error normalization
+- Prefer one API object per domain so tests and imports stay predictable
+- Keep payload and response interfaces near the API methods that use them
+
+---
+
 ## Forms — React Hook Form + Zod + shadcn Form
 
 **MANDATORY pattern** for all forms. Never use manual `useState` for form fields.
 
+Define each `zodSchema` and other schema validations in `src/lib/validation/` and export the matching `type` via `z.infer<typeof schema>` from the same file. Page and feature components must import the schema and inferred type; they must not declare Zod schemas or duplicate form types inline.
+
 ```tsx
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import {
   Form, FormField, FormItem, FormLabel, FormControl, FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { exampleSchema, type ExampleFormValues, DEFAULT_FORM_VALUES } from '@/lib/validation/example'
 
 
-export function ExampleForm({ onSubmit }: { onSubmit: (v: FormValues) => void }) {
-// 1. registerSchema defines validation rules and error messages in lib/validation.ts
-  const form = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: {
-      first_name: "",
-      last_name: "",
-      username: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-    },
+export function ExampleForm({ onSubmit }: { onSubmit: (v: ExampleFormValues) => void }) {
+  const form = useForm<ExampleFormValues>({
+    resolver: zodResolver(exampleSchema),
+    defaultValues: DEFAULT_FORM_VALUES,
   });
 
 
@@ -236,13 +298,21 @@ const handleOpenEdit = (item: Item) => {
   setIsOpen(true)
 }
 
+const onOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (!open) {
+      form.reset()  // also reset on close to clear any unsaved changes
+    }
+  }
+
+
 // Dialog onOpenChange — always reset on close
-onOpenChange={(open) => { setIsOpen(open); if (!open) form.reset() }}
+onOpenChange={onOpenChange}
 ```
 
 **Rules:**
-- Schema must be a `z.object({...})` — not `z.string()` directly
-- `type FormValues = z.infer<typeof schema>` — infer types from schema, never duplicate
+- Schema and `type FormValues = z.infer<typeof schema>` must live in `src/lib/validation/` next to each other
+- Page components must import `schema` and inferred types; they must not define Zod objects inline
 - `FormControl` wires `id`, `aria-describedby`, `aria-invalid` automatically
 - `FormMessage` reads errors from RHF context — no manual error rendering
 - Submit handler receives validated `FormValues` — no `event.preventDefault()` needed

@@ -410,7 +410,7 @@ admin/settings/roles
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**                                   | **API / Route**                                                                                       |
 | ----------------- | ------------ | --------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/permissions · GET/POST /api/v1/admin/view-menus · GET/POST/DELETE /api/v1/admin/permission-views |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/admin/permissions · GET/POST /api/v1/admin/view-menus · GET/POST/DELETE /api/v1/admin/permission-views |
 
 | **⚙️ Backend - Description**
 - Admin CRUD for permission actions, view menus, and their combinations (permission_views). Permission_views are seeded at startup. Delete guarded by role assignment count.
@@ -440,12 +440,12 @@ admin/settings/permissions
 - useMutation for create/delete permission_view pairs
 **✨ UX Behaviors**
 - Permission Matrix tab: grid with view_menus as columns, permissions as rows, checkboxes at intersections.
-- Check a cell → POST /permission-views. Uncheck → DELETE /permission-views/:id.
+- Check a cell → POST /api/v1/admin/permission-views. Uncheck → DELETE /api/v1/admin/permission-views/:id.
 - Bulk save: "Save Changes" Button collects all diff → single batch API call.
 - Command search filters the grid rows/columns in real-time.
 **🌐 API Calls (TanStack Query)**
 1. useQuery(["permission-views"])
-2. useMutation({ mutationFn: (pair)=>fetch("/api/v1/permission-views",{method:"POST",...}) }) |
+2. useMutation({ mutationFn: (pair)=>fetch("/api/v1/admin/permission-views",{method:"POST",...}) }) |
 | --- | --- | --- |
 
 

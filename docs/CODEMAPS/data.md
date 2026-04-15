@@ -21,6 +21,26 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 - Purpose: RBAC role catalog.
 - Key columns: `id`, `name` (unique).
 
+### `ab_permission`
+
+- Purpose: RBAC action catalog (for example: `can_read`, `can_write`).
+- Key columns: `id`, `name` (unique).
+
+### `ab_view_menu`
+
+- Purpose: RBAC resource/menu catalog (for example: `Dashboard`, `Chart`).
+- Key columns: `id`, `name` (unique).
+
+### `ab_permission_view`
+
+- Purpose: permission-to-view mapping matrix used by role assignments.
+- Key columns: `id`, `permission_id`, `view_menu_id`, unique composite (`permission_id`, `view_menu_id`).
+
+### `ab_permission_view_role`
+
+- Purpose: role-to-permission_view join table used for assignment checks.
+- Key columns: `role_id`, `permission_view_id`.
+
 ## Redis Key Spaces
 
 - `jwt:blacklist:<jti>`: revoked access-token JTIs.
@@ -40,6 +60,8 @@ verify   -> move/activate into ab_user
 login    -> read ab_user + write refresh/rate keys
 logout   -> write jwt:blacklist + delete refresh session
 roles    -> read/write ab_role + invalidate Redis rbac:* namespace
+permissions/view-menus -> read/write ab_permission + ab_view_menu + invalidate Redis rbac:* namespace
+permission-views -> read/write ab_permission_view, check ab_permission_view_role usage, invalidate Redis rbac:* namespace
 ```
 
 ## Domain Types Used in API
@@ -47,6 +69,8 @@ roles    -> read/write ab_role + invalidate Redis rbac:* namespace
 - `RegisterRequest`, `LoginRequest`, `RefreshRequest`, `LogoutRequest`
 - `UserContext` (middleware-injected actor)
 - `Role`, `UpsertRoleRequest`, `RoleListItem`
+- `Permission`, `ViewMenu`, `PermissionView`
+- `UpsertPermissionRequest`, `UpsertViewMenuRequest`, `CreatePermissionViewRequest`
 
 ## Extended Docs
 

@@ -98,3 +98,53 @@ type RoleListItem struct {
 	PermissionCount int64  `json:"permission_count"`
 	BuiltIn         bool   `json:"built_in"`
 }
+
+// Permission maps to ab_permission.
+type Permission struct {
+	ID   uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name string `gorm:"column:name;uniqueIndex;not null" json:"name"`
+}
+
+func (Permission) TableName() string { return "ab_permission" }
+
+// ViewMenu maps to ab_view_menu.
+type ViewMenu struct {
+	ID   uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name string `gorm:"column:name;uniqueIndex;not null" json:"name"`
+}
+
+func (ViewMenu) TableName() string { return "ab_view_menu" }
+
+// PermissionView maps to ab_permission_view.
+type PermissionView struct {
+	ID           uint `gorm:"primaryKey;autoIncrement" json:"id"`
+	PermissionID uint `gorm:"column:permission_id;not null;uniqueIndex:idx_perm_view,priority:1" json:"permission_id"`
+	ViewMenuID   uint `gorm:"column:view_menu_id;not null;uniqueIndex:idx_perm_view,priority:2" json:"view_menu_id"`
+
+	PermissionName string `gorm:"-" json:"permission_name,omitempty"`
+	ViewMenuName   string `gorm:"-" json:"view_menu_name,omitempty"`
+}
+
+func (PermissionView) TableName() string { return "ab_permission_view" }
+
+// UpsertPermissionRequest is used by create permission endpoint.
+type UpsertPermissionRequest struct {
+	Name string `json:"name" binding:"required,max=128"`
+}
+
+// UpsertViewMenuRequest is used by create view menu endpoint.
+type UpsertViewMenuRequest struct {
+	Name string `json:"name" binding:"required,max=128"`
+}
+
+// CreatePermissionViewRequest is used by create permission-view endpoint.
+type CreatePermissionViewRequest struct {
+	PermissionID uint `json:"permission_id" binding:"required"`
+	ViewMenuID   uint `json:"view_menu_id" binding:"required"`
+}
+
+// PermissionViewSeed is used during startup to seed default permission views.
+type PermissionViewSeed struct {
+	PermissionName string
+	ViewMenuName   string
+}

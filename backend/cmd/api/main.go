@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -37,7 +38,14 @@ func main() {
 	}
 
 	// Auto-migrate
-	if err := db.AutoMigrate(&auth.RegisterUser{}, &auth.User{}, &auth.Role{}); err != nil {
+	if err := db.AutoMigrate(
+		&auth.RegisterUser{},
+		&auth.User{},
+		&auth.Role{},
+		&auth.Permission{},
+		&auth.ViewMenu{},
+		&auth.PermissionView{},
+	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
 
@@ -80,6 +88,7 @@ func main() {
 	loginRepo := repopostgres.NewLoginRepository(db)
 	userRepo := repopostgres.NewUserRepository(db)
 	roleRepo := repopostgres.NewRoleRepository(db)
+	permissionRepo := repopostgres.NewPermissionRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
 	refreshRepo := reporedis.NewRefreshRepository(redisClient)
@@ -93,6 +102,10 @@ func main() {
 	refreshSvc := svcauth.NewRefreshService(refreshRepo, userRepo, privKey)
 	logoutSvc := svcauth.NewLogoutService(jwtRepo, refreshRepo)
 	roleSvc := svcauth.NewRoleService(roleRepo, roleCacheRepo)
+	permissionSvc := svcauth.NewPermissionService(permissionRepo, roleCacheRepo)
+	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
+		log.Fatalf("failed to seed permission views: %v", err)
+	}
 
 	registerHandler := httpauth.NewRegisterHandler(registerSvc)
 	verifyHandler := httpauth.NewVerifyHandler(verifySvc, cfg.App.BaseURL)
@@ -100,8 +113,21 @@ func main() {
 	refreshHandler := httpauth.NewRefreshHandler(refreshSvc)
 	logoutHandler := httpauth.NewLogoutHandler(logoutSvc, pubKey)
 	roleHandler := httpauth.NewRoleHandler(roleSvc)
+	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 
-	router := delivery.NewRouter(registerHandler, verifyHandler, loginHandler, refreshHandler, logoutHandler, roleHandler, pubKey, jwtRepo, userRepo, roleRepo)
+	router := delivery.NewRouter(
+		registerHandler,
+		verifyHandler,
+		loginHandler,
+		refreshHandler,
+		logoutHandler,
+		roleHandler,
+		permissionHandler,
+		pubKey,
+		jwtRepo,
+		userRepo,
+		roleRepo,
+	)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
 	if err := router.Run(":" + cfg.App.Port); err != nil {

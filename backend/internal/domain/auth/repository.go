@@ -116,3 +116,19 @@ type RoleRepository interface {
 type RoleCacheRepository interface {
 	BustRBAC(ctx context.Context) error
 }
+
+// PermissionRepository manages permission, view-menu, and permission-view CRUD.
+type PermissionRepository interface {
+	ListPermissions(ctx context.Context) ([]Permission, error)
+	CreatePermission(ctx context.Context, permission *Permission) error
+
+	ListViewMenus(ctx context.Context) ([]ViewMenu, error)
+	CreateViewMenu(ctx context.Context, viewMenu *ViewMenu) error
+
+	ListPermissionViews(ctx context.Context) ([]PermissionView, error)
+	CreatePermissionView(ctx context.Context, permissionView *PermissionView) error
+	CountRoleAssignmentsByPermissionView(ctx context.Context, permissionViewID uint) (int64, error)
+	DeletePermissionView(ctx context.Context, permissionViewID uint) error
+
+	SeedPermissionViews(ctx context.Context, seeds []PermissionViewSeed) error
+}

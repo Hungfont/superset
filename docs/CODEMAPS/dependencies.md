@@ -28,7 +28,11 @@ App/runtime deps:
 - `react-hook-form` + `@hookform/resolvers` + `zod`.
 - `@tanstack/react-table`.
 - `lucide-react`.
-- Radix primitives (`@radix-ui/*`) with `class-variance-authority`, `clsx`, `tailwind-merge`, `tailwindcss-animate`.
+- `cmdk` (command palette primitives used by admin matrix search).
+- `sonner` (toast notifications).
+- Radix primitives (`@radix-ui/*`) including alert-dialog, avatar, checkbox, dialog, dropdown-menu,
+  label, progress, scroll-area, separator, slot, tabs, tooltip.
+- Styling helpers: `class-variance-authority`, `clsx`, `tailwind-merge`, `tailwindcss-animate`.
 
 Tooling/test deps:
 
@@ -44,7 +48,7 @@ Tooling/test deps:
 
 ## Environment Contract
 
-- `DB_DSN`
+- `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`

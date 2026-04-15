@@ -18,6 +18,7 @@ func NewRouter(
 	refreshHandler *httpauth.RefreshHandler,
 	logoutHandler *httpauth.LogoutHandler,
 	roleHandler *httpauth.RoleHandler,
+	permissionHandler *httpauth.PermissionHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -48,6 +49,16 @@ func NewRouter(
 				admin.POST("/roles", roleHandler.Create)
 				admin.PUT("/roles/:id", roleHandler.Update)
 				admin.DELETE("/roles/:id", roleHandler.Delete)
+
+				admin.GET("/permissions", permissionHandler.ListPermissions)
+				admin.POST("/permissions", permissionHandler.CreatePermission)
+
+				admin.GET("/view-menus", permissionHandler.ListViewMenus)
+				admin.POST("/view-menus", permissionHandler.CreateViewMenu)
+
+				admin.GET("/permission-views", permissionHandler.ListPermissionViews)
+				admin.POST("/permission-views", permissionHandler.CreatePermissionView)
+				admin.DELETE("/permission-views/:id", permissionHandler.DeletePermissionView)
 			}
 		}
 	}

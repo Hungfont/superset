@@ -9,8 +9,8 @@ Browser (React + Vite)
   -> Frontend router/guards (ProtectedRoute)
     -> REST API /api/v1/*
       -> Go service (Gin)
-        -> App services (auth, role)
-          -> Postgres (users, register_users, roles)
+        -> App services (auth, role, permission)
+          -> Postgres (users, register_users, roles, permissions, view_menus, permission_views)
           -> Redis (jwt blocklist, refresh sessions, role cache, rate limits)
           -> SMTP (verification email)
 ```
@@ -37,6 +37,12 @@ POST /api/v1/auth/logout
 Protected RBAC:
 GET/POST/PUT/DELETE /api/v1/admin/roles...
   -> JWTMiddleware -> RoleHandler -> RoleService -> RoleRepository + RoleCacheRepository
+
+Permission Management:
+GET/POST /api/v1/admin/permissions
+GET/POST /api/v1/admin/view-menus
+GET/POST/DELETE /api/v1/admin/permission-views
+  -> JWTMiddleware -> PermissionHandler -> PermissionService -> PermissionRepository + RoleCacheRepository
 ```
 
 ## Backend Layer Map
@@ -59,7 +65,7 @@ src/main.tsx   React root + QueryClientProvider
 src/App.tsx    public routes + protected routes + admin routes
 src/stores/*   auth state
 src/hooks/*    login/register/logout/refresh workflow hooks
-src/pages/*    auth, home, admin/settings views
+src/pages/*    auth, home, and admin views (dashboard/roles/permissions)
 ```
 
 ## Reference Docs

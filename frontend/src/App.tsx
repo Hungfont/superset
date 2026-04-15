@@ -4,9 +4,10 @@ import RegisterSuccessPage from "@/pages/register/RegisterSuccessPage";
 import VerifyPage from "@/pages/auth/VerifyPage";
 import LoginPage from "@/pages/auth/LoginPage";
 import HomePage from "@/pages/home/HomePage";
-import RolesPage from "@/pages/settings/RolesPage";
-import AdminLayout from "@/pages/settings/AdminLayout";
-import AdminDashboardPage from "@/pages/settings/AdminDashboardPage";
+import RolesPage from "@/pages/admin/RolesPage";
+import PermissionsPage from "@/pages/admin/PermissionsPage";
+import AdminLayout from "@/pages/admin/AdminLayout";
+import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -31,6 +32,7 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="settings/roles" element={<RolesPage />} />
+            <Route path="settings/permissions" element={<PermissionsPage />} />
           </Route>
         </Route>
 

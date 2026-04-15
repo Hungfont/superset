@@ -26,3 +26,14 @@ var (
 	ErrRoleNotFound = errors.New("role not found")
 	ErrInvalidRole  = errors.New("invalid role")
 )
+
+// Sentinel errors for permission/view-menu management.
+var (
+	ErrInvalidPermission       = errors.New("invalid permission")
+	ErrInvalidViewMenu         = errors.New("invalid view menu")
+	ErrPermissionDuplicate     = errors.New("permission already exists")
+	ErrViewMenuDuplicate       = errors.New("view menu already exists")
+	ErrPermissionViewDuplicate = errors.New("permission view already exists")
+	ErrPermissionViewInUse     = errors.New("permission view is in use")
+	ErrPermissionViewNotFound  = errors.New("permission view not found")
+)
