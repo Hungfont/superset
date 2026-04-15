@@ -21,6 +21,10 @@ GET    /api/v1/admin/roles                 -> RoleHandler.List
 POST   /api/v1/admin/roles                 -> RoleHandler.Create
 PUT    /api/v1/admin/roles/:id             -> RoleHandler.Update
 DELETE /api/v1/admin/roles/:id             -> RoleHandler.Delete
+GET    /api/v1/admin/roles/:id/permissions -> RoleHandler.ListPermissions
+PUT    /api/v1/admin/roles/:id/permissions -> RoleHandler.SetPermissions
+POST   /api/v1/admin/roles/:id/permissions/add -> RoleHandler.AddPermissions
+DELETE /api/v1/admin/roles/:id/permissions/:pv_id -> RoleHandler.RemovePermission
 
 GET    /api/v1/admin/permissions           -> PermissionHandler.ListPermissions
 POST   /api/v1/admin/permissions           -> PermissionHandler.CreatePermission

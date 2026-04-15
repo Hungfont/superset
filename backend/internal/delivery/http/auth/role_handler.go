@@ -105,9 +105,110 @@ func (h *RoleHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": true})
 }
 
+func (h *RoleHandler) ListPermissions(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	roleID, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+
+	permissionViewIDs, err := h.svc.ListRolePermissions(c.Request.Context(), actor.ID, roleID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": domain.RolePermissionsPayload{RoleID: roleID, PermissionViewIDs: permissionViewIDs}})
+}
+
+func (h *RoleHandler) SetPermissions(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	roleID, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+
+	var req domain.UpsertRolePermissionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	permissionViewIDs, err := h.svc.SetRolePermissions(c.Request.Context(), actor.ID, roleID, req.PermissionViewIDs)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": domain.RolePermissionsPayload{RoleID: roleID, PermissionViewIDs: permissionViewIDs}})
+}
+
+func (h *RoleHandler) AddPermissions(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	roleID, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+
+	var req domain.UpsertRolePermissionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	permissionViewIDs, err := h.svc.AddRolePermissions(c.Request.Context(), actor.ID, roleID, req.PermissionViewIDs)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": domain.RolePermissionsPayload{RoleID: roleID, PermissionViewIDs: permissionViewIDs}})
+}
+
+func (h *RoleHandler) RemovePermission(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	roleID, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+
+	permissionViewID, ok := parseRolePermissionViewID(c)
+	if !ok {
+		return
+	}
+
+	permissionViewIDs, err := h.svc.RemoveRolePermission(c.Request.Context(), actor.ID, roleID, permissionViewID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": domain.RolePermissionsPayload{RoleID: roleID, PermissionViewIDs: permissionViewIDs}})
+}
+
 func (h *RoleHandler) handleError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, domain.ErrInvalidRole):
+	case errors.Is(err, domain.ErrInvalidRole), errors.Is(err, domain.ErrInvalidPermissionViewID):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrForbidden), errors.Is(err, domain.ErrBuiltInRole):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
@@ -133,6 +234,15 @@ func parseRoleID(c *gin.Context) (uint, bool) {
 	parsed, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role id"})
+		return 0, false
+	}
+	return uint(parsed), true
+}
+
+func parseRolePermissionViewID(c *gin.Context) (uint, bool) {
+	parsed, err := strconv.ParseUint(c.Param("pv_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid permission view id"})
 		return 0, false
 	}
 	return uint(parsed), true

@@ -142,4 +142,66 @@ describe("rolesApi", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)?.["Authorization"]).toBe("Bearer tok-del-abc");
   });
+
+  it("fetches role permissions via GET /api/v1/admin/roles/:id/permissions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { role_id: 5, permission_view_ids: [1, 2, 3] } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const permissionViewIds = await rolesApi.getRolePermissions(5);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/roles/5/permissions");
+    expect(init.method).toBe("GET");
+    expect(permissionViewIds).toEqual([1, 2, 3]);
+  });
+
+  it("replaces role permissions via PUT /api/v1/admin/roles/:id/permissions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { role_id: 5, permission_view_ids: [2, 4] } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const permissionViewIds = await rolesApi.setRolePermissions(5, [2, 4]);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/roles/5/permissions");
+    expect(init.method).toBe("PUT");
+    expect(init.body).toBe(JSON.stringify({ permission_view_ids: [2, 4] }));
+    expect(permissionViewIds).toEqual([2, 4]);
+  });
+
+  it("adds role permissions via POST /api/v1/admin/roles/:id/permissions/add", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { role_id: 5, permission_view_ids: [1, 2, 3] } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const permissionViewIds = await rolesApi.addRolePermissions(5, [3]);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/roles/5/permissions/add");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ permission_view_ids: [3] }));
+    expect(permissionViewIds).toEqual([1, 2, 3]);
+  });
+
+  it("removes role permission via DELETE /api/v1/admin/roles/:id/permissions/:pv_id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: { role_id: 5, permission_view_ids: [1] } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const permissionViewIds = await rolesApi.removeRolePermission(5, 2);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/roles/5/permissions/2");
+    expect(init.method).toBe("DELETE");
+    expect(permissionViewIds).toEqual([1]);
+  });
 });

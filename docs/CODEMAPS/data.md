@@ -35,6 +35,7 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 
 - Purpose: permission-to-view mapping matrix used by role assignments.
 - Key columns: `id`, `permission_id`, `view_menu_id`, unique composite (`permission_id`, `view_menu_id`).
+- API list enrichment: GET `/api/v1/admin/permission-views` joins `ab_permission` and `ab_view_menu` to return UI display fields `permission_name` and `view_menu_name`.
 
 ### `ab_permission_view_role`
 
@@ -61,7 +62,7 @@ login    -> read ab_user + write refresh/rate keys
 logout   -> write jwt:blacklist + delete refresh session
 roles    -> read/write ab_role + invalidate Redis rbac:* namespace
 permissions/view-menus -> read/write ab_permission + ab_view_menu + invalidate Redis rbac:* namespace
-permission-views -> read/write ab_permission_view, check ab_permission_view_role usage, invalidate Redis rbac:* namespace
+permission-views -> read/write ab_permission_view, join ab_permission + ab_view_menu for display names, check ab_permission_view_role usage, invalidate Redis rbac:* namespace
 ```
 
 ## Domain Types Used in API

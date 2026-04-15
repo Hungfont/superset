@@ -64,6 +64,7 @@ func (r *permissionRepo) ListPermissionViews(ctx context.Context) ([]domain.Perm
 		Scan(&permissionViews).Error; err != nil {
 		return nil, fmt.Errorf("listing permission views: %w", err)
 	}
+
 	return permissionViews, nil
 }
 

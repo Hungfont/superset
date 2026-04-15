@@ -31,6 +31,7 @@ var (
 var (
 	ErrInvalidPermission       = errors.New("invalid permission")
 	ErrInvalidViewMenu         = errors.New("invalid view menu")
+	ErrInvalidPermissionViewID = errors.New("invalid permission view id")
 	ErrPermissionDuplicate     = errors.New("permission already exists")
 	ErrViewMenuDuplicate       = errors.New("view menu already exists")
 	ErrPermissionViewDuplicate = errors.New("permission view already exists")

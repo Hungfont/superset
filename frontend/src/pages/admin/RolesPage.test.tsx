@@ -99,4 +99,13 @@ describe("RolesPage", () => {
 
     expect(deleteButton).toBeDisabled();
   });
+
+  it("navigates to role permission matrix page from permission badge", async () => {
+    renderPage();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /open permission matrix for analyst/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/admin/settings/roles/2/permissions");
+  });
 });

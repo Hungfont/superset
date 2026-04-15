@@ -90,6 +90,17 @@ type UpsertRoleRequest struct {
 	Name string `json:"name" binding:"required,max=64"`
 }
 
+// UpsertRolePermissionsRequest is used by role-permission assignment endpoints.
+type UpsertRolePermissionsRequest struct {
+	PermissionViewIDs []uint `json:"permission_view_ids"`
+}
+
+// RolePermissionsPayload is returned for role-permission assignment queries/mutations.
+type RolePermissionsPayload struct {
+	RoleID            uint   `json:"role_id"`
+	PermissionViewIDs []uint `json:"permission_view_ids"`
+}
+
 // RoleListItem is returned by GET /api/v1/admin/roles with aggregate counts.
 type RoleListItem struct {
 	ID              uint   `json:"id"`
@@ -121,8 +132,8 @@ type PermissionView struct {
 	PermissionID uint `gorm:"column:permission_id;not null;uniqueIndex:idx_perm_view,priority:1" json:"permission_id"`
 	ViewMenuID   uint `gorm:"column:view_menu_id;not null;uniqueIndex:idx_perm_view,priority:2" json:"view_menu_id"`
 
-	PermissionName string `gorm:"-" json:"permission_name,omitempty"`
-	ViewMenuName   string `gorm:"-" json:"view_menu_name,omitempty"`
+	PermissionName string `gorm:"->;-:migration;column:permission_name" json:"permission_name,omitempty"`
+	ViewMenuName   string `gorm:"->;-:migration;column:view_menu_name" json:"view_menu_name,omitempty"`
 }
 
 func (PermissionView) TableName() string { return "ab_permission_view" }

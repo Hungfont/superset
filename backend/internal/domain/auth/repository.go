@@ -110,6 +110,19 @@ type RoleRepository interface {
 	IsBuiltInRole(ctx context.Context, roleID uint) (bool, error)
 	// Delete removes a role by id.
 	Delete(ctx context.Context, roleID uint) error
+	// RoleExists reports whether the role exists.
+	RoleExists(ctx context.Context, roleID uint) (bool, error)
+
+	// ListPermissionViewIDsByRole returns assigned permission_view ids for a role.
+	ListPermissionViewIDsByRole(ctx context.Context, roleID uint) ([]uint, error)
+	// CountExistingPermissionViews returns how many provided permission_view ids exist.
+	CountExistingPermissionViews(ctx context.Context, permissionViewIDs []uint) (int64, error)
+	// ReplacePermissionViews atomically replaces all assigned permission_view ids for a role.
+	ReplacePermissionViews(ctx context.Context, roleID uint, permissionViewIDs []uint) error
+	// AddPermissionViews assigns additional permission_view ids to a role.
+	AddPermissionViews(ctx context.Context, roleID uint, permissionViewIDs []uint) error
+	// RemovePermissionView revokes one permission_view id from a role.
+	RemovePermissionView(ctx context.Context, roleID uint, permissionViewID uint) error
 }
 
 // RoleCacheRepository manages role-related cache invalidation.

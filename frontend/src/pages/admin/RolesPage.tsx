@@ -230,7 +230,7 @@ export default function RolesPage() {
             <Button
               variant="ghost"
               className="h-auto p-0"
-              onClick={() => navigate(`/settings/roles/${role.id}/permissions`)}
+              onClick={() => navigate(`/admin/settings/roles/${role.id}/permissions`)}
               aria-label={`Open permission matrix for ${role.name}`}
             >
               <Badge variant="outline">{role.permission_count} perms</Badge>

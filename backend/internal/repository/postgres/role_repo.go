@@ -9,11 +9,19 @@ import (
 	domain "superset/auth-service/internal/domain/auth"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type roleRepo struct {
 	db *gorm.DB
 }
+
+type permissionViewRoleRow struct {
+	RoleID           uint `gorm:"column:role_id"`
+	PermissionViewID uint `gorm:"column:permission_view_id"`
+}
+
+func (permissionViewRoleRow) TableName() string { return "ab_permission_view_role" }
 
 func NewRoleRepository(db *gorm.DB) domain.RoleRepository {
 	return &roleRepo{db: db}
@@ -120,6 +128,127 @@ func (r *roleRepo) Delete(ctx context.Context, roleID uint) error {
 		return domain.ErrRoleNotFound
 	}
 	return nil
+}
+
+func (r *roleRepo) RoleExists(ctx context.Context, roleID uint) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("ab_role").
+		Where("id = ?", roleID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("checking role exists: %w", err)
+	}
+	return count > 0, nil
+}
+
+func (r *roleRepo) ListPermissionViewIDsByRole(ctx context.Context, roleID uint) ([]uint, error) {
+	ids := make([]uint, 0)
+	err := r.db.WithContext(ctx).
+		Table("ab_permission_view_role").
+		Where("role_id = ?", roleID).
+		Order("permission_view_id ASC").
+		Pluck("permission_view_id", &ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing role permission views: %w", err)
+	}
+	return ids, nil
+}
+
+func (r *roleRepo) CountExistingPermissionViews(ctx context.Context, permissionViewIDs []uint) (int64, error) {
+	uniqueIDs := uniqueUintIDs(permissionViewIDs)
+	if len(uniqueIDs) == 0 {
+		return 0, nil
+	}
+
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("ab_permission_view").
+		Where("id IN ?", uniqueIDs).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("counting permission views: %w", err)
+	}
+	return count, nil
+}
+
+func (r *roleRepo) ReplacePermissionViews(ctx context.Context, roleID uint, permissionViewIDs []uint) error {
+	rows := buildPermissionViewRoleRows(roleID, permissionViewIDs)
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("ab_permission_view_role").Where("role_id = ?", roleID).Delete(&permissionViewRoleRow{}).Error; err != nil {
+			return fmt.Errorf("deleting existing role permission views: %w", err)
+		}
+
+		if len(rows) == 0 {
+			return nil
+		}
+
+		if err := tx.Table("ab_permission_view_role").CreateInBatches(rows, 100).Error; err != nil {
+			return fmt.Errorf("creating role permission views: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("replacing role permission views: %w", err)
+	}
+
+	return nil
+}
+
+func (r *roleRepo) AddPermissionViews(ctx context.Context, roleID uint, permissionViewIDs []uint) error {
+	rows := buildPermissionViewRoleRows(roleID, permissionViewIDs)
+	if len(rows) == 0 {
+		return nil
+	}
+
+	err := r.db.WithContext(ctx).
+		Table("ab_permission_view_role").
+		Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(rows, 100).Error
+	if err != nil {
+		return fmt.Errorf("adding role permission views: %w", err)
+	}
+
+	return nil
+}
+
+func (r *roleRepo) RemovePermissionView(ctx context.Context, roleID uint, permissionViewID uint) error {
+	err := r.db.WithContext(ctx).
+		Table("ab_permission_view_role").
+		Where("role_id = ? AND permission_view_id = ?", roleID, permissionViewID).
+		Delete(&permissionViewRoleRow{}).Error
+	if err != nil {
+		return fmt.Errorf("removing role permission view: %w", err)
+	}
+	return nil
+}
+
+func buildPermissionViewRoleRows(roleID uint, permissionViewIDs []uint) []permissionViewRoleRow {
+	uniqueIDs := uniqueUintIDs(permissionViewIDs)
+	rows := make([]permissionViewRoleRow, 0, len(uniqueIDs))
+	for _, permissionViewID := range uniqueIDs {
+		rows = append(rows, permissionViewRoleRow{RoleID: roleID, PermissionViewID: permissionViewID})
+	}
+	return rows
+}
+
+func uniqueUintIDs(values []uint) []uint {
+	if len(values) == 0 {
+		return []uint{}
+	}
+
+	seen := make(map[uint]struct{}, len(values))
+	unique := make([]uint, 0, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
 }
 
 func isBuiltInRoleName(name string) bool {

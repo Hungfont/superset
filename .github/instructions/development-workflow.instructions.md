@@ -33,7 +33,7 @@ Meta-agent model:
    - Write tests first (RED)
    - Implement to pass tests (GREEN)
    - Refactor (IMPROVE)
-   - Verify 80%+ coverage
+   - Verify 100%+ coverage
 
 5. **Code Review**
    - Use **code-reviewer** agent immediately after writing code

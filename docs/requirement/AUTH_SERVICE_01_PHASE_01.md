@@ -413,15 +413,17 @@ admin/settings/roles
 | **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission, ab_view_menu, ab_permission_view | GET/POST /api/v1/admin/permissions · GET/POST /api/v1/admin/view-menus · GET/POST/DELETE /api/v1/admin/permission-views |
 
 | **⚙️ Backend - Description**
-- Admin CRUD for permission actions, view menus, and their combinations (permission_views). Permission_views are seeded at startup. Delete guarded by role assignment count.
+- Admin CRUD for permission actions, view menus, and their combinations (permission_views). List permission_views returns permission_name and view_menu_name for UI display. Permission_views are seeded at startup. Delete guarded by role assignment count.
 **🔄 Request Flow**
 1. GORM CRUD on ab_permission, ab_view_menu, ab_permission_view with guards
 **⚙️ Go Implementation**
 1. GORM.FirstOrCreate(&ab_permission,ab_permission{Name:name}) for seed
-2. GORM.Where("permission_view_id=?",id).Count on ab_permission_view_role → 409 | **✅ Acceptance Criteria**
+2. List query joins ab_permission_view + ab_permission + ab_view_menu to populate permission_name and view_menu_name
+3. GORM.Where("permission_view_id=?",id).Count on ab_permission_view_role → 409 | **✅ Acceptance Criteria**
 - POST permission → 201.
 - Duplicate perm_view → 409.
 - Delete assigned perm_view → 409.
+- GET permission-views returns display names (permission_name, view_menu_name).
 **⚠️ Error Responses**
 - 409 - Duplicate or in-use. | **🖥️ Frontend Specification**
 **📍 Route & Page**
@@ -453,7 +455,7 @@ admin/settings/permissions
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**           | **API / Route**                                                                                                          |
 | ----------------- | ------------ | --------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission_view_role | PUT /api/v1/admin/roles/:id/permissions · POST /api/v1/admin/roles/:id/permissions/add · DELETE /api/v1/admin/roles/:id/permissions/:pv_id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | ab_permission_view_role | GET /api/v1/admin/roles/:id/permissions · PUT /api/v1/admin/roles/:id/permissions · POST /api/v1/admin/roles/:id/permissions/add · DELETE /api/v1/admin/roles/:id/permissions/:pv_id |
 
 | **⚙️ Backend - Description**
 - Replace-all permission assignment to a role. Also additive add and single revoke. After any change, bust RBAC Redis cache for all users with this role.
@@ -469,7 +471,7 @@ admin/settings/permissions
 - 422 - Invalid permission_view_id.
 - 403 - Non-admin. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/roles/:id/permissions
+/admin/settings/roles/:id/permissions
 **🧩 shadcn/ui Components**
 - Card - page container with role name in CardHeader
 - ScrollArea - scrollable permission list
@@ -494,7 +496,7 @@ admin/settings/permissions
 **🛡️ Client-Side Validation**
 - At least one permission must be assigned - disable Save if Set is empty.
 **🌐 API Calls (TanStack Query)**
-1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/roles/"+roleId+"/permissions",{method:"PUT",body:JSON.stringify({permission_view_ids:ids})}) }) |
+1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/admin/roles/"+roleId+"/permissions",{method:"PUT",body:JSON.stringify({permission_view_ids:ids})}) }) |
 | --- | --- | --- |
 
 
@@ -775,7 +777,7 @@ N/A - org_id is transparent to the frontend
 | AUTH-006 | Logout & Token Revocation                | P0           | ✓ INDEPENDENT | Triggered from /settings or header dropdown - no dedicated page            | POST /api/v1/auth/logout                                                                                                 | Phase 1   |
 | AUTH-007 | Role CRUD Management                     | P0           | ✓ INDEPENDENT | /settings/roles                                                            | GET/POST /api/v1/roles · PUT/DELETE /api/v1/roles/:id                                                                    | Phase 1   |
 | AUTH-008 | Permission & View Menu Management        | P0           | ✓ INDEPENDENT | /settings/permissions                                                      | GET/POST /api/v1/permissions · GET/POST /api/v1/view-menus · GET/POST/DELETE /api/v1/permission-views                    | Phase 1   |
-| AUTH-009 | Assign Permissions to Role (RBAC Matrix) | P0           | ✓ INDEPENDENT | /settings/roles/:id/permissions                                            | PUT /api/v1/roles/:id/permissions · POST /api/v1/roles/:id/permissions/add · DELETE /api/v1/roles/:id/permissions/:pv_id | Phase 1   |
+| AUTH-009 | Assign Permissions to Role (RBAC Matrix) | P0           | ✓ INDEPENDENT | /admin/settings/roles/:id/permissions                                      | GET /api/v1/admin/roles/:id/permissions · PUT /api/v1/admin/roles/:id/permissions · POST /api/v1/admin/roles/:id/permissions/add · DELETE /api/v1/admin/roles/:id/permissions/:pv_id | Phase 1   |
 | AUTH-010 | Assign Roles to User                     | P0           | ✓ INDEPENDENT | /settings/users/:id (user detail page, roles section)                      | PUT /api/v1/users/:id/roles · GET /api/v1/users/:id/roles                                                                | Phase 1   |
 | AUTH-011 | RBAC Permission Check Middleware         | P0           | ✓ INDEPENDENT | N/A - handled via route guards in React Router                             | Internal middleware - wraps all protected endpoints                                                                      | Phase 1   |
 | AUTH-012 | Multi-Tenant Context Injection           | P0           | ⚠ DEPENDENT   | N/A - org_id is transparent to the frontend                                | Internal middleware - all DB queries                                                                                     | Phase 1   |

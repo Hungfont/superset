@@ -42,6 +42,24 @@ func (r *authorizeRoleRepo) IsBuiltInRole(_ context.Context, _ uint) (bool, erro
 
 func (r *authorizeRoleRepo) Delete(_ context.Context, _ uint) error { return nil }
 
+func (r *authorizeRoleRepo) RoleExists(_ context.Context, _ uint) (bool, error) { return true, nil }
+
+func (r *authorizeRoleRepo) ListPermissionViewIDsByRole(_ context.Context, _ uint) ([]uint, error) {
+	return []uint{}, nil
+}
+
+func (r *authorizeRoleRepo) CountExistingPermissionViews(_ context.Context, _ []uint) (int64, error) {
+	return 0, nil
+}
+
+func (r *authorizeRoleRepo) ReplacePermissionViews(_ context.Context, _ uint, _ []uint) error {
+	return nil
+}
+
+func (r *authorizeRoleRepo) AddPermissionViews(_ context.Context, _ uint, _ []uint) error { return nil }
+
+func (r *authorizeRoleRepo) RemovePermissionView(_ context.Context, _ uint, _ uint) error { return nil }
+
 func setupAuthorizeRouter(repo domain.RoleRepository, withActor bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

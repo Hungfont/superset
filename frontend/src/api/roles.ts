@@ -17,55 +17,98 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
+interface RolePermissionsPayload {
+  role_id: number;
+  permission_view_ids: number[];
+}
+
+interface RolePermissionsRequest {
+  permission_view_ids: number[];
+}
+
+function getAuthHeaders(contentType = false): HeadersInit {
+  const accessToken = useAuthStore.getState().accessToken;
+  return {
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
 export const rolesApi = {
   async getRoles(): Promise<Role[]> {
-    const accessToken = useAuthStore.getState().accessToken;
-    const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
     const body = await request<ApiEnvelope<Role[]>>("/api/v1/admin/roles", {
       method: "GET",
       credentials: "include",
-      headers,
+      headers: getAuthHeaders(),
     });
     return body.data;
   },
 
   async createRole(payload: RolePayload): Promise<Role> {
-    const accessToken = useAuthStore.getState().accessToken;
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    };
     const body = await request<ApiEnvelope<Role>>("/api/v1/admin/roles", {
       method: "POST",
       credentials: "include",
-      headers,
+      headers: getAuthHeaders(true),
       body: JSON.stringify(payload),
     });
     return body.data;
   },
 
   async updateRole(roleId: number, payload: RolePayload): Promise<Role> {
-    const accessToken = useAuthStore.getState().accessToken;
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    };
     const body = await request<ApiEnvelope<Role>>(`/api/v1/admin/roles/${roleId}`, {
       method: "PUT",
       credentials: "include",
-      headers,
+      headers: getAuthHeaders(true),
       body: JSON.stringify(payload),
     });
     return body.data;
   },
 
   async deleteRole(roleId: number): Promise<void> {
-    const accessToken = useAuthStore.getState().accessToken;
-    const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
     await request<{ data?: unknown }>(`/api/v1/admin/roles/${roleId}`, {
       method: "DELETE",
       credentials: "include",
-      headers,
+      headers: getAuthHeaders(),
     });
+  },
+
+  async getRolePermissions(roleId: number): Promise<number[]> {
+    const body = await request<ApiEnvelope<RolePermissionsPayload>>(`/api/v1/admin/roles/${roleId}/permissions`, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+    return body.data.permission_view_ids;
+  },
+
+  async setRolePermissions(roleId: number, permissionViewIds: number[]): Promise<number[]> {
+    const payload: RolePermissionsRequest = { permission_view_ids: permissionViewIds };
+    const body = await request<ApiEnvelope<RolePermissionsPayload>>(`/api/v1/admin/roles/${roleId}/permissions`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    return body.data.permission_view_ids;
+  },
+
+  async addRolePermissions(roleId: number, permissionViewIds: number[]): Promise<number[]> {
+    const payload: RolePermissionsRequest = { permission_view_ids: permissionViewIds };
+    const body = await request<ApiEnvelope<RolePermissionsPayload>>(`/api/v1/admin/roles/${roleId}/permissions/add`, {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    return body.data.permission_view_ids;
+  },
+
+  async removeRolePermission(roleId: number, permissionViewId: number): Promise<number[]> {
+    const body = await request<ApiEnvelope<RolePermissionsPayload>>(`/api/v1/admin/roles/${roleId}/permissions/${permissionViewId}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+    return body.data.permission_view_ids;
   },
 };

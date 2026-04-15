@@ -3,6 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,7 +44,13 @@ func (f *handlerPermissionRepo) CreateViewMenu(_ context.Context, viewMenu *doma
 }
 
 func (f *handlerPermissionRepo) ListPermissionViews(_ context.Context) ([]domain.PermissionView, error) {
-	return []domain.PermissionView{{ID: 1, PermissionID: 1, ViewMenuID: 1}}, nil
+	return []domain.PermissionView{{
+		ID:             1,
+		PermissionID:   1,
+		ViewMenuID:     1,
+		PermissionName: "can_read",
+		ViewMenuName:   "Dashboard",
+	}}, nil
 }
 
 func (f *handlerPermissionRepo) CreatePermissionView(_ context.Context, permissionView *domain.PermissionView) error {
@@ -85,6 +92,7 @@ func newPermissionRouter(repo *handlerPermissionRepo) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	admin := v1.Group("/admin")
+	admin.GET("/permission-views", h.ListPermissionViews)
 	admin.POST("/permissions", h.CreatePermission)
 	admin.POST("/permission-views", h.CreatePermissionView)
 	admin.DELETE("/permission-views/:id", h.DeletePermissionView)
@@ -103,6 +111,35 @@ func TestPermissionHandler_PostPermissionReturns201(t *testing.T) {
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPermissionHandler_ListPermissionViewsIncludesNames(t *testing.T) {
+	r := newPermissionRouter(&handlerPermissionRepo{})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/permission-views", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type permissionViewResponse struct {
+		Data []domain.PermissionView `json:"data"`
+	}
+
+	var payload permissionViewResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid json, got %v", err)
+	}
+
+	if len(payload.Data) != 1 {
+		t.Fatalf("expected 1 permission view, got %d", len(payload.Data))
+	}
+
+	if payload.Data[0].PermissionName != "can_read" || payload.Data[0].ViewMenuName != "Dashboard" {
+		t.Fatalf("expected permission/view names for UI, got %+v", payload.Data[0])
 	}
 }
 

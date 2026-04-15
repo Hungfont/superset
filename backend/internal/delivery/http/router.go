@@ -49,6 +49,10 @@ func NewRouter(
 				admin.POST("/roles", roleHandler.Create)
 				admin.PUT("/roles/:id", roleHandler.Update)
 				admin.DELETE("/roles/:id", roleHandler.Delete)
+				admin.GET("/roles/:id/permissions", roleHandler.ListPermissions)
+				admin.PUT("/roles/:id/permissions", roleHandler.SetPermissions)
+				admin.POST("/roles/:id/permissions/add", roleHandler.AddPermissions)
+				admin.DELETE("/roles/:id/permissions/:pv_id", roleHandler.RemovePermission)
 
 				admin.GET("/permissions", permissionHandler.ListPermissions)
 				admin.POST("/permissions", permissionHandler.CreatePermission)

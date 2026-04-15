@@ -21,6 +21,10 @@ type handlerRoleRepo struct {
 	roles           []domain.RoleListItem
 	userCountByRole map[uint]int64
 	builtInByRole   map[uint]bool
+	roleExistsByID  map[uint]bool
+
+	rolePermissionIDs      map[uint][]uint
+	validPermissionViewIDs map[uint]bool
 }
 
 func (f *handlerRoleRepo) IsAdmin(_ context.Context, _ uint) (bool, error) { return f.isAdmin, nil }
@@ -48,6 +52,84 @@ func (f *handlerRoleRepo) IsBuiltInRole(_ context.Context, roleID uint) (bool, e
 }
 func (f *handlerRoleRepo) Delete(_ context.Context, _ uint) error { return nil }
 
+func (f *handlerRoleRepo) RoleExists(_ context.Context, roleID uint) (bool, error) {
+	if f.roleExistsByID == nil {
+		return true, nil
+	}
+	exists, ok := f.roleExistsByID[roleID]
+	if !ok {
+		return false, nil
+	}
+	return exists, nil
+}
+
+func (f *handlerRoleRepo) ListPermissionViewIDsByRole(_ context.Context, roleID uint) ([]uint, error) {
+	if f.rolePermissionIDs == nil {
+		return []uint{}, nil
+	}
+	ids := f.rolePermissionIDs[roleID]
+	cloned := make([]uint, len(ids))
+	copy(cloned, ids)
+	return cloned, nil
+}
+
+func (f *handlerRoleRepo) CountExistingPermissionViews(_ context.Context, permissionViewIDs []uint) (int64, error) {
+	if f.validPermissionViewIDs == nil {
+		return int64(len(permissionViewIDs)), nil
+	}
+	count := int64(0)
+	for _, id := range permissionViewIDs {
+		if f.validPermissionViewIDs[id] {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (f *handlerRoleRepo) ReplacePermissionViews(_ context.Context, roleID uint, permissionViewIDs []uint) error {
+	if f.rolePermissionIDs == nil {
+		f.rolePermissionIDs = map[uint][]uint{}
+	}
+	f.rolePermissionIDs[roleID] = append([]uint{}, permissionViewIDs...)
+	return nil
+}
+
+func (f *handlerRoleRepo) AddPermissionViews(_ context.Context, roleID uint, permissionViewIDs []uint) error {
+	if f.rolePermissionIDs == nil {
+		f.rolePermissionIDs = map[uint][]uint{}
+	}
+	existing := f.rolePermissionIDs[roleID]
+	for _, candidate := range permissionViewIDs {
+		found := false
+		for _, current := range existing {
+			if current == candidate {
+				found = true
+				break
+			}
+		}
+		if !found {
+			existing = append(existing, candidate)
+		}
+	}
+	f.rolePermissionIDs[roleID] = existing
+	return nil
+}
+
+func (f *handlerRoleRepo) RemovePermissionView(_ context.Context, roleID uint, permissionViewID uint) error {
+	if f.rolePermissionIDs == nil {
+		return nil
+	}
+	existing := f.rolePermissionIDs[roleID]
+	filtered := make([]uint, 0, len(existing))
+	for _, id := range existing {
+		if id != permissionViewID {
+			filtered = append(filtered, id)
+		}
+	}
+	f.rolePermissionIDs[roleID] = filtered
+	return nil
+}
+
 type handlerCacheRepo struct{}
 
 func (c *handlerCacheRepo) BustRBAC(_ context.Context) error { return nil }
@@ -68,6 +150,10 @@ func newRoleRouter(repo *handlerRoleRepo) *gin.Engine {
 	admin.POST("/roles", h.Create)
 	admin.PUT("/roles/:id", h.Update)
 	admin.DELETE("/roles/:id", h.Delete)
+	admin.GET("/roles/:id/permissions", h.ListPermissions)
+	admin.PUT("/roles/:id/permissions", h.SetPermissions)
+	admin.POST("/roles/:id/permissions/add", h.AddPermissions)
+	admin.DELETE("/roles/:id/permissions/:pv_id", h.RemovePermission)
 	return r
 }
 
@@ -130,5 +216,54 @@ func TestRoleHandler_GetListWithCounts(t *testing.T) {
 	}
 	if len(body.Data) != 1 || body.Data[0].PermissionCount != 10 {
 		t.Fatalf("expected list with counts, got %+v", body.Data)
+	}
+}
+
+func TestRoleHandler_PutPermissionsReturns422OnInvalidPermissionViewID(t *testing.T) {
+	r := newRoleRouter(&handlerRoleRepo{
+		isAdmin:                true,
+		roleExistsByID:         map[uint]bool{2: true},
+		validPermissionViewIDs: map[uint]bool{1: true},
+	})
+
+	payload := []byte(`{"permission_view_ids":[1,999]}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/admin/roles/2/permissions", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRoleHandler_ListAndMutatePermissions(t *testing.T) {
+	r := newRoleRouter(&handlerRoleRepo{
+		isAdmin:                true,
+		roleExistsByID:         map[uint]bool{5: true},
+		rolePermissionIDs:      map[uint][]uint{5: []uint{1, 2}},
+		validPermissionViewIDs: map[uint]bool{1: true, 2: true, 3: true},
+	})
+
+	listRecorder := httptest.NewRecorder()
+	listReq, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/roles/5/permissions", nil)
+	r.ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 from list, got %d", listRecorder.Code)
+	}
+
+	addRecorder := httptest.NewRecorder()
+	addReq, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/roles/5/permissions/add", bytes.NewReader([]byte(`{"permission_view_ids":[3]}`)))
+	addReq.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(addRecorder, addReq)
+	if addRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 from add, got %d", addRecorder.Code)
+	}
+
+	deleteRecorder := httptest.NewRecorder()
+	deleteReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/roles/5/permissions/2", nil)
+	r.ServeHTTP(deleteRecorder, deleteReq)
+	if deleteRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 from delete, got %d", deleteRecorder.Code)
 	}
 }

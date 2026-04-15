@@ -106,6 +106,30 @@ func TestPermissionService_CreatePermissionReturnsCreatedEntity(t *testing.T) {
 	}
 }
 
+func TestPermissionService_ListPermissionViewsReturnsNamesForUI(t *testing.T) {
+	repo := &fakePermissionRepo{permissionViews: []domain.PermissionView{{
+		ID:             10,
+		PermissionID:   1,
+		ViewMenuID:     2,
+		PermissionName: "can_read",
+		ViewMenuName:   "Dashboard",
+	}}}
+	svc := svcauth.NewPermissionService(repo, &fakePermissionCacheRepo{})
+
+	permissionViews, err := svc.ListPermissionViews(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if len(permissionViews) != 1 {
+		t.Fatalf("expected 1 permission view, got %d", len(permissionViews))
+	}
+
+	if permissionViews[0].PermissionName != "can_read" || permissionViews[0].ViewMenuName != "Dashboard" {
+		t.Fatalf("expected names for UI, got %+v", permissionViews[0])
+	}
+}
+
 func TestPermissionService_CreatePermissionViewDuplicateReturnsConflict(t *testing.T) {
 	repo := &fakePermissionRepo{createPermissionViewErr: domain.ErrPermissionViewDuplicate}
 	svc := svcauth.NewPermissionService(repo, &fakePermissionCacheRepo{})

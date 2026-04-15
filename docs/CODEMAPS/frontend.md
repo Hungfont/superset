@@ -21,6 +21,7 @@ Admin area (session-protected in frontend; role enforced by backend APIs)
 /admin                              -> AdminLayout
 /admin/dashboard                    -> AdminDashboardPage
 /admin/settings/roles               -> RolesPage
+/admin/settings/roles/:id/permissions -> RolePermissionsPage
 /admin/settings/permissions         -> PermissionsPage
 
 Fallback
