@@ -88,6 +88,10 @@ func (f *fakePermissionCacheRepo) BustRBAC(_ context.Context) error {
 	return nil
 }
 
+func (f *fakePermissionCacheRepo) BustRBACForUser(_ context.Context, _ uint) error {
+	return nil
+}
+
 func TestPermissionService_CreatePermissionReturnsCreatedEntity(t *testing.T) {
 	repo := &fakePermissionRepo{}
 	cacheRepo := &fakePermissionCacheRepo{}

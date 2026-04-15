@@ -44,6 +44,27 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id uint) (*User, error)
 }
 
+// UserAdminRepository manages admin user CRUD and role assignment integration.
+type UserAdminRepository interface {
+	// IsAdmin reports whether the given user has Admin role.
+	IsAdmin(ctx context.Context, userID uint) (bool, error)
+	// ListUsers returns users for admin user management.
+	ListUsers(ctx context.Context) ([]UserListItem, error)
+	// GetUserByID returns one user detail by id.
+	GetUserByID(ctx context.Context, userID uint) (*UserDetail, error)
+	// CreateUser inserts one user and returns the new id.
+	CreateUser(ctx context.Context, req CreateUserRequest) (uint, error)
+	// UpdateUser updates user profile fields.
+	UpdateUser(ctx context.Context, userID uint, req UpdateUserRequest) error
+	// DeactivateUser performs soft delete by setting active=false.
+	DeactivateUser(ctx context.Context, userID uint) error
+
+	// CountExistingRoles returns how many provided role ids exist.
+	CountExistingRoles(ctx context.Context, roleIDs []uint) (int64, error)
+	// ReplaceUserRoles atomically replaces all assigned role ids for a user.
+	ReplaceUserRoles(ctx context.Context, userID uint, roleIDs []uint) error
+}
+
 // JWTRepository manages JWT blacklist and user cache in Redis.
 type JWTRepository interface {
 	// IsBlacklisted returns true if the given jti has been revoked.
@@ -125,9 +146,22 @@ type RoleRepository interface {
 	RemovePermissionView(ctx context.Context, roleID uint, permissionViewID uint) error
 }
 
+// UserRoleRepository manages user-role assignment operations.
+type UserRoleRepository interface {
+	// IsAdmin reports whether the given user has Admin role.
+	IsAdmin(ctx context.Context, userID uint) (bool, error)
+	// ListRoleIDsByUser returns assigned role ids for a user.
+	ListRoleIDsByUser(ctx context.Context, userID uint) ([]uint, error)
+	// CountExistingRoles returns how many provided role ids exist.
+	CountExistingRoles(ctx context.Context, roleIDs []uint) (int64, error)
+	// ReplaceUserRoles atomically replaces all assigned role ids for a user.
+	ReplaceUserRoles(ctx context.Context, userID uint, roleIDs []uint) error
+}
+
 // RoleCacheRepository manages role-related cache invalidation.
 type RoleCacheRepository interface {
 	BustRBAC(ctx context.Context) error
+	BustRBACForUser(ctx context.Context, userID uint) error
 }
 
 // PermissionRepository manages permission, view-menu, and permission-view CRUD.

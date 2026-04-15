@@ -520,7 +520,7 @@ admin/settings/permissions
 - 403 - Non-admin.
 - 422 - Empty roles or invalid role_id. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/users/:id (user detail page, roles section)
+/admin/settings/users/:id (user detail page, roles section)
 **🧩 shadcn/ui Components**
 - Sheet (from table row action) or inline section in user detail page
 - Select (multi) - shadcn MultiSelect via Command + Popover pattern for role selection
@@ -539,7 +539,7 @@ admin/settings/permissions
 **🛡️ Client-Side Validation**
 - selectedRoleIds.length >= 1 - client enforced before API call.
 **🌐 API Calls (TanStack Query)**
-1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/users/"+userId+"/roles",{method:"PUT",body:JSON.stringify({role_ids:ids})}) }) |
+1. useMutation({ mutationFn: (ids)=>fetch("/api/v1/admin/users/"+userId+"/roles",{method:"PUT",body:JSON.stringify({role_ids:ids})}) }) |
 | --- | --- | --- |
 
 

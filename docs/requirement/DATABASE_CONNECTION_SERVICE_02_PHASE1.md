@@ -70,7 +70,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**        |
 | ----------------- | ------------ | --------- | ------------- | ---------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | POST /api/v1/databases |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | POST /api/v1/admin/databases |
 
 | **⚙️ Backend - Description**
 - Accept database_name, sqlalchemy_uri, capability flags. Extract + AES-256-GCM encrypt password. Run connection test (strict_test=true default). Persist dbs record. Async audit log.
@@ -126,8 +126,8 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - DB type RadioGroup: aria-label="Select database type".
 - Step indicator: aria-current="step" on active step.
 **🌐 API Calls (TanStack Query)**
-1. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(data)}) })
-2. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases",{method:"POST",body:JSON.stringify(data)}) }) |
+1. useMutation({ mutationFn: (data)=>fetch("/api/v1/admin/databases/test",{method:"POST",body:JSON.stringify(data)}) })
+2. useMutation({ mutationFn: (data)=>fetch("/api/v1/admin/databases",{method:"POST",body:JSON.stringify(data)}) }) |
 | --- | --- | --- |
 
 

@@ -17,7 +17,9 @@ func NewRouter(
 	loginHandler *httpauth.LoginHandler,
 	refreshHandler *httpauth.RefreshHandler,
 	logoutHandler *httpauth.LogoutHandler,
+	userHandler *httpauth.UserHandler,
 	roleHandler *httpauth.RoleHandler,
+	userRoleHandler *httpauth.UserRoleHandler,
 	permissionHandler *httpauth.PermissionHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
@@ -45,6 +47,15 @@ func NewRouter(
 			admin := protected.Group("/admin")
 			admin.Use(middleware.AuthorizeAdminRole(roleRepo))
 			{
+				admin.GET("/users", userHandler.List)
+				admin.GET("/users/:id", userHandler.Get)
+				admin.POST("/users", userHandler.Create)
+				admin.PUT("/users/:id", userHandler.Update)
+				admin.DELETE("/users/:id", userHandler.Delete)
+
+				admin.GET("/users/:id/roles", userRoleHandler.List)
+				admin.PUT("/users/:id/roles", userRoleHandler.Set)
+
 				admin.GET("/roles", roleHandler.List)
 				admin.POST("/roles", roleHandler.Create)
 				admin.PUT("/roles/:id", roleHandler.Update)

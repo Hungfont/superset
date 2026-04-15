@@ -36,3 +36,11 @@ func (r *roleCacheRepo) BustRBAC(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (r *roleCacheRepo) BustRBACForUser(ctx context.Context, userID uint) error {
+	key := fmt.Sprintf("rbac:%d", userID)
+	if err := r.client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("deleting user rbac cache key: %w", err)
+	}
+	return nil
+}

@@ -87,7 +87,9 @@ func main() {
 	verifyRepo := repopostgres.NewVerifyRepository(db)
 	loginRepo := repopostgres.NewLoginRepository(db)
 	userRepo := repopostgres.NewUserRepository(db)
+	userAdminRepo := repopostgres.NewUserAdminRepository(db)
 	roleRepo := repopostgres.NewRoleRepository(db)
+	userRoleRepo := repopostgres.NewUserRoleRepository(db)
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
@@ -101,7 +103,9 @@ func main() {
 	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, refreshRepo, privKey)
 	refreshSvc := svcauth.NewRefreshService(refreshRepo, userRepo, privKey)
 	logoutSvc := svcauth.NewLogoutService(jwtRepo, refreshRepo)
+	userSvc := svcauth.NewUserService(userAdminRepo, roleCacheRepo)
 	roleSvc := svcauth.NewRoleService(roleRepo, roleCacheRepo)
+	userRoleSvc := svcauth.NewUserRoleService(userRoleRepo, roleCacheRepo)
 	permissionSvc := svcauth.NewPermissionService(permissionRepo, roleCacheRepo)
 	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
 		log.Fatalf("failed to seed permission views: %v", err)
@@ -112,7 +116,9 @@ func main() {
 	loginHandler := httpauth.NewLoginHandler(loginSvc)
 	refreshHandler := httpauth.NewRefreshHandler(refreshSvc)
 	logoutHandler := httpauth.NewLogoutHandler(logoutSvc, pubKey)
+	userHandler := httpauth.NewUserHandler(userSvc)
 	roleHandler := httpauth.NewRoleHandler(roleSvc)
+	userRoleHandler := httpauth.NewUserRoleHandler(userRoleSvc)
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 
 	router := delivery.NewRouter(
@@ -121,7 +127,9 @@ func main() {
 		loginHandler,
 		refreshHandler,
 		logoutHandler,
+		userHandler,
 		roleHandler,
+		userRoleHandler,
 		permissionHandler,
 		pubKey,
 		jwtRepo,

@@ -160,6 +160,10 @@ func (f *fakeRoleCacheRepo) BustRBAC(_ context.Context) error {
 	return nil
 }
 
+func (f *fakeRoleCacheRepo) BustRBACForUser(_ context.Context, _ uint) error {
+	return nil
+}
+
 func TestRoleService_ListRoles_NonAdminForbidden(t *testing.T) {
 	repo := &fakeRoleRepo{isAdmin: false}
 	svc := svcauth.NewRoleService(repo, &fakeRoleCacheRepo{})

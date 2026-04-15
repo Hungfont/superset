@@ -80,6 +80,8 @@ type handlerPermissionCacheRepo struct{}
 
 func (h *handlerPermissionCacheRepo) BustRBAC(_ context.Context) error { return nil }
 
+func (h *handlerPermissionCacheRepo) BustRBACForUser(_ context.Context, _ uint) error { return nil }
+
 func newPermissionRouter(repo *handlerPermissionRepo) *gin.Engine {
 	svc := svcauth.NewPermissionService(repo, &handlerPermissionCacheRepo{})
 	h := httpauth.NewPermissionHandler(svc)

@@ -101,6 +101,66 @@ type RolePermissionsPayload struct {
 	PermissionViewIDs []uint `json:"permission_view_ids"`
 }
 
+// UpsertUserRolesRequest is used by user-role assignment endpoints.
+type UpsertUserRolesRequest struct {
+	RoleIDs []uint `json:"role_ids"`
+}
+
+// UserRolesPayload is returned for user-role assignment queries/mutations.
+type UserRolesPayload struct {
+	UserID  uint   `json:"user_id"`
+	RoleIDs []uint `json:"role_ids"`
+}
+
+// CreateUserRequest is used by admin user create endpoint.
+type CreateUserRequest struct {
+	FirstName string `json:"first_name" binding:"required,max=128"`
+	LastName  string `json:"last_name" binding:"required,max=128"`
+	Username  string `json:"username" binding:"required,max=64"`
+	Email     string `json:"email" binding:"required,email,max=256"`
+	Password  string `json:"password" binding:"required"`
+	Active    *bool  `json:"active,omitempty"`
+	RoleIDs   []uint `json:"role_ids" binding:"required"`
+}
+
+// UpdateUserRequest is used by admin user update endpoint.
+type UpdateUserRequest struct {
+	FirstName string `json:"first_name" binding:"required,max=128"`
+	LastName  string `json:"last_name" binding:"required,max=128"`
+	Username  string `json:"username" binding:"required,max=64"`
+	Email     string `json:"email" binding:"required,email,max=256"`
+	Active    bool   `json:"active"`
+	RoleIDs   []uint `json:"role_ids" binding:"required"`
+}
+
+// UserListItem is returned by GET /api/v1/admin/users.
+type UserListItem struct {
+	ID         uint       `json:"id"`
+	FirstName  string     `json:"first_name"`
+	LastName   string     `json:"last_name"`
+	Username   string     `json:"username"`
+	Email      string     `json:"email"`
+	Active     bool       `json:"active"`
+	LoginCount int        `json:"login_count"`
+	LastLogin  *time.Time `json:"last_login,omitempty"`
+	RoleIDs    []uint     `json:"role_ids"`
+}
+
+// UserDetail is returned by user detail and mutation endpoints.
+type UserDetail struct {
+	ID         uint       `json:"id"`
+	FirstName  string     `json:"first_name"`
+	LastName   string     `json:"last_name"`
+	Username   string     `json:"username"`
+	Email      string     `json:"email"`
+	Active     bool       `json:"active"`
+	LoginCount int        `json:"login_count"`
+	LastLogin  *time.Time `json:"last_login,omitempty"`
+	CreatedOn  time.Time  `json:"created_on"`
+	ChangedOn  time.Time  `json:"changed_on"`
+	RoleIDs    []uint     `json:"role_ids"`
+}
+
 // RoleListItem is returned by GET /api/v1/admin/roles with aggregate counts.
 type RoleListItem struct {
 	ID              uint   `json:"id"`

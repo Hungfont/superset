@@ -134,6 +134,8 @@ type handlerCacheRepo struct{}
 
 func (c *handlerCacheRepo) BustRBAC(_ context.Context) error { return nil }
 
+func (c *handlerCacheRepo) BustRBACForUser(_ context.Context, _ uint) error { return nil }
+
 func newRoleRouter(repo *handlerRoleRepo) *gin.Engine {
 	svc := svcauth.NewRoleService(repo, &handlerCacheRepo{})
 	h := httpauth.NewRoleHandler(svc)

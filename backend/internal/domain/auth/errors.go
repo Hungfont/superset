@@ -20,11 +20,14 @@ var (
 
 // Sentinel errors for role management.
 var (
-	ErrForbidden    = errors.New("forbidden")
-	ErrBuiltInRole  = errors.New("built-in role cannot be modified")
-	ErrRoleHasUsers = errors.New("role has assigned users")
-	ErrRoleNotFound = errors.New("role not found")
-	ErrInvalidRole  = errors.New("invalid role")
+	ErrForbidden        = errors.New("forbidden")
+	ErrBuiltInRole      = errors.New("built-in role cannot be modified")
+	ErrRoleHasUsers     = errors.New("role has assigned users")
+	ErrRoleNotFound     = errors.New("role not found")
+	ErrUserNotFound     = errors.New("user not found")
+	ErrInvalidUser      = errors.New("invalid user")
+	ErrInvalidRole      = errors.New("invalid role")
+	ErrUserMustHaveRole = errors.New("user must have at least one role")
 )
 
 // Sentinel errors for permission/view-menu management.

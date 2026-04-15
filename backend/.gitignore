@@ -25,3 +25,4 @@ tidy
 # Environment files
 .env
 .env.local
+/tmp/

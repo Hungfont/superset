@@ -226,7 +226,6 @@ func (s *RoleService) ensureAdmin(ctx context.Context, actorUserID uint) error {
 	// if !isAdmin {
 	// 	return domain.ErrForbidden
 	// }
-	// return nil
 	return nil
 }
 
