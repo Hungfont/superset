@@ -401,8 +401,8 @@ admin/settings/roles
 - Dialog has aria-labelledby pointing to DialogTitle.
 - DataTable rows navigable with keyboard (tabIndex on rows).
 **🌐 API Calls (TanStack Query)**
-1. useQuery({ queryKey:["roles"], queryFn: ()=>fetch("/api/v1/roles").then(r=>r.json()) })
-2. useMutation({ mutationFn: (role)=>fetch("/api/v1/roles",{method:"POST",body:JSON.stringify(role)}) }) |
+1. useQuery({ queryKey:["roles"], queryFn: ()=>fetch("/api/v1/admin/roles").then(r=>r.json()) })
+2. useMutation({ mutationFn: (role)=>fetch("/api/v1/admin/roles",{method:"POST",body:JSON.stringify(role)}) }) |
 | --- | --- | --- |
 
 
