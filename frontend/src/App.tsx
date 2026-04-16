@@ -11,6 +11,8 @@ import UserRolesPage from "@/pages/admin/UserRolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import AdminLayout from "@/pages/admin/AdminLayout";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
+import DatabasesPage from "@/pages/admin/DatabasesPage";
+import CreateDatabasePage from "@/pages/admin/CreateDatabasePage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -38,6 +40,8 @@ export default function App() {
             <Route path="settings/roles/:id/permissions" element={<RolePermissionsPage />} />
             <Route path="settings/users" element={<UsersPage />} />
             <Route path="settings/users/:id" element={<UserRolesPage />} />
+            <Route path="settings/databases" element={<DatabasesPage />} />
+            <Route path="settings/databases/new" element={<CreateDatabasePage />} />
             <Route path="settings/permissions" element={<PermissionsPage />} />
           </Route>
         </Route>

@@ -13,7 +13,7 @@ HLD: [docs/diagram/HLD.md](../diagram/HLD.md)
 | [backend.md](backend.md) | Go auth service — routes, layers, DI wiring |
 | [frontend.md](frontend.md) | React pages, hooks, stores, API client |
 | [data.md](data.md) | DB tables, Redis keys, domain entities |
-| [dependencies.md](dependencies.md) | Go modules, npm packages, external services |
+| [dependencies.md](dependencies.md) | Go modules, bun packages, external services |
 
 ## Current Scope
 

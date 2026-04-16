@@ -22,7 +22,8 @@ type JWTConfig struct {
 }
 
 type DBConfig struct {
-	DSN string
+	DSN                      string
+	CredentialsEncryptionKey string
 }
 
 type SMTPConfig struct {
@@ -41,7 +42,8 @@ type AppConfig struct {
 func Load() Config {
 	return Config{
 		DB: DBConfig{
-			DSN: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/superset?sslmode=disable"),
+			DSN:                      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/superset?sslmode=disable"),
+			CredentialsEncryptionKey: getEnv("DB_CREDENTIALS_ENCRYPTION_KEY", ""),
 		},
 		SMTP: SMTPConfig{
 			Host:     getEnv("SMTP_HOST", "localhost"),

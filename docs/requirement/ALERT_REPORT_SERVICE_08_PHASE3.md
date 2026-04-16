@@ -26,14 +26,14 @@ The frontend provides a unified Alerts & Reports management page where users cre
 | Icons         | Lucide React                         | Consistent icon set                            |
 | Notifications | shadcn Toaster + useToast            | Toast notifications                            |
 | Charts        | Recharts (for reports/alert history) | Report trend charts                            |
-| Cron UI       | cronstrue (npm)                      | Human-readable cron expression display         |
+| Cron UI       | cronstrue (bun)                      | Human-readable cron expression display         |
 | Date/Time     | shadcn Calendar + Popover + date-fns | Date pickers & formatting                      |
 | Backend       | Gin + GORM + Asynq + robfig/cron     | Schedule management & execution pipeline       |
 | Screenshots   | chromedp (headless Chrome)           | Dashboard/chart screenshot capture for PDF/PNG |
 | Email         | gomail (SMTP)                        | HTML email with attachments                    |
 | Slack         | http.Post webhook                    | Slack message delivery                         |
 | Scheduler     | Asynq Scheduler + robfig/cron parser | Cron-based job scheduling with timezone        |
-| FE Cron       | cronstrue (npm library)              | Convert cron string to human-readable text     |
+| FE Cron       | cronstrue (bun library)              | Convert cron string to human-readable text     |
 | FE Charts     | Recharts                             | Execution history trend charts                 |
 
 | **Attribute**      | **Detail**                                                                             |

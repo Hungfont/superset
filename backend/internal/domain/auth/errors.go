@@ -1,43 +1,52 @@
 package auth
 
-import "errors"
+import pkgerrors "superset/auth-service/internal/pkg/autherrors"
 
 // Sentinel errors for the login flow.
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrAccountLocked      = errors.New("account locked")
-	ErrAccountInactive    = errors.New("account inactive")
-	ErrRateLimited        = errors.New("rate limit exceeded")
+	ErrInvalidCredentials = pkgerrors.ErrInvalidCredentials
+	ErrAccountLocked      = pkgerrors.ErrAccountLocked
+	ErrAccountInactive    = pkgerrors.ErrAccountInactive
+	ErrRateLimited        = pkgerrors.ErrRateLimited
 )
 
 // Sentinel errors for JWT middleware.
 var (
-	ErrTokenMissing = errors.New("token missing")
-	ErrTokenInvalid = errors.New("token invalid")
-	ErrTokenRevoked = errors.New("token revoked")
-	ErrTokenReused  = errors.New("refresh token reuse detected")
+	ErrTokenMissing = pkgerrors.ErrTokenMissing
+	ErrTokenInvalid = pkgerrors.ErrTokenInvalid
+	ErrTokenRevoked = pkgerrors.ErrTokenRevoked
+	ErrTokenReused  = pkgerrors.ErrTokenReused
 )
 
 // Sentinel errors for role management.
 var (
-	ErrForbidden        = errors.New("forbidden")
-	ErrBuiltInRole      = errors.New("built-in role cannot be modified")
-	ErrRoleHasUsers     = errors.New("role has assigned users")
-	ErrRoleNotFound     = errors.New("role not found")
-	ErrUserNotFound     = errors.New("user not found")
-	ErrInvalidUser      = errors.New("invalid user")
-	ErrInvalidRole      = errors.New("invalid role")
-	ErrUserMustHaveRole = errors.New("user must have at least one role")
+	ErrForbidden        = pkgerrors.ErrForbidden
+	ErrBuiltInRole      = pkgerrors.ErrBuiltInRole
+	ErrRoleHasUsers     = pkgerrors.ErrRoleHasUsers
+	ErrRoleNotFound     = pkgerrors.ErrRoleNotFound
+	ErrUserNotFound     = pkgerrors.ErrUserNotFound
+	ErrInvalidUser      = pkgerrors.ErrInvalidUser
+	ErrInvalidRole      = pkgerrors.ErrInvalidRole
+	ErrUserMustHaveRole = pkgerrors.ErrUserMustHaveRole
 )
 
 // Sentinel errors for permission/view-menu management.
 var (
-	ErrInvalidPermission       = errors.New("invalid permission")
-	ErrInvalidViewMenu         = errors.New("invalid view menu")
-	ErrInvalidPermissionViewID = errors.New("invalid permission view id")
-	ErrPermissionDuplicate     = errors.New("permission already exists")
-	ErrViewMenuDuplicate       = errors.New("view menu already exists")
-	ErrPermissionViewDuplicate = errors.New("permission view already exists")
-	ErrPermissionViewInUse     = errors.New("permission view is in use")
-	ErrPermissionViewNotFound  = errors.New("permission view not found")
+	ErrInvalidPermission       = pkgerrors.ErrInvalidPermission
+	ErrInvalidViewMenu         = pkgerrors.ErrInvalidViewMenu
+	ErrInvalidPermissionViewID = pkgerrors.ErrInvalidPermissionViewID
+	ErrPermissionDuplicate     = pkgerrors.ErrPermissionDuplicate
+	ErrViewMenuDuplicate       = pkgerrors.ErrViewMenuDuplicate
+	ErrPermissionViewDuplicate = pkgerrors.ErrPermissionViewDuplicate
+	ErrPermissionViewInUse     = pkgerrors.ErrPermissionViewInUse
+	ErrPermissionViewNotFound  = pkgerrors.ErrPermissionViewNotFound
+)
+
+// Sentinel errors for database connection management.
+var (
+	ErrInvalidDatabase              = pkgerrors.ErrInvalidDatabase
+	ErrInvalidDatabaseURI           = pkgerrors.ErrInvalidDatabaseURI
+	ErrDatabaseNameExists           = pkgerrors.ErrDatabaseNameExists
+	ErrDatabaseConnectionTestFailed = pkgerrors.ErrDatabaseConnectionTestFailed
+	ErrDatabaseCredentialEncryption = pkgerrors.ErrDatabaseCredentialEncryption
 )

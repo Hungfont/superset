@@ -1,5 +1,4 @@
 import { Plus, ShieldCheck, UserCog, Users, Waypoints } from "lucide-react";
-import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -138,17 +137,6 @@ export default function AdminDashboardPage() {
     setSelectedRole(null);
     form.reset({ name: "" });
     setIsUpsertOpen(true);
-  }
-
-  function openEditDialog(role: Role) {
-    setSelectedRole(role);
-    form.reset({ name: role.name });
-    setIsUpsertOpen(true);
-  }
-
-  function openDeleteDialog(role: Role) {
-    setSelectedRole(role);
-    setIsDeleteOpen(true);
   }
 
   function submitRole(values: RoleNameValues) {

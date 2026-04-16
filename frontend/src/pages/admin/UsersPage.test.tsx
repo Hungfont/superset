@@ -111,6 +111,7 @@ describe("UsersPage", () => {
     await user.type(screen.getByLabelText(/username/i), "bob");
     await user.type(screen.getByLabelText(/email/i), "bob@example.com");
     await user.type(screen.getByLabelText(/password/i), "StrongPass@123");
+    await user.click(screen.getByRole("button", { name: "Admin" }));
     await user.click(screen.getByRole("button", { name: /save user/i }));
 
     await waitFor(() => {

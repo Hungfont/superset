@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 
 	httpauth "superset/auth-service/internal/delivery/http/auth"
+	httpdb "superset/auth-service/internal/delivery/http/db"
 	"superset/auth-service/internal/delivery/http/middleware"
 	domain "superset/auth-service/internal/domain/auth"
 
@@ -21,6 +22,7 @@ func NewRouter(
 	roleHandler *httpauth.RoleHandler,
 	userRoleHandler *httpauth.UserRoleHandler,
 	permissionHandler *httpauth.PermissionHandler,
+	databaseHandler *httpdb.DatabaseHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -52,6 +54,8 @@ func NewRouter(
 
 			admin := protected.Group("/admin")
 			{
+				admin.POST("/databases", databaseHandler.Create)
+
 				admin.GET("/users", require("can_read", "User"), userHandler.List)
 				admin.GET("/users/:id", userHandler.Get)
 				admin.POST("/users", userHandler.Create)

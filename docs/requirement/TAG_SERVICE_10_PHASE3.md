@@ -26,7 +26,7 @@ Tags are the most user-visible feature here - they appear as colored Badges thro
 | Icons         | Lucide React                         | Consistent icon set                                    |
 | Notifications | shadcn Toaster + useToast            | Toast notifications                                    |
 | Charts        | Recharts (for reports/alert history) | Report trend charts                                    |
-| Cron UI       | cronstrue (npm)                      | Human-readable cron expression display                 |
+| Cron UI       | cronstrue (bun)                      | Human-readable cron expression display                 |
 | Date/Time     | shadcn Calendar + Popover + date-fns | Date pickers & formatting                              |
 | Backend       | Gin + GORM                           | Simple CRUD + audit logging                            |
 | Audit Log     | Async goroutine writes               | Non-blocking audit writes for every significant action |

@@ -1,4 +1,4 @@
-import { Grid2x2Check, LayoutDashboard, ShieldCheck, Users } from "lucide-react";
+import { Database, Grid2x2Check, LayoutDashboard, ShieldCheck, Users } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { Separator } from "@/components/ui/separator";
@@ -21,6 +21,12 @@ const adminNavItems = [
     to: "/admin/settings/users",
     label: "Users",
     icon: Users,
+    end: false,
+  },
+  {
+    to: "/admin/settings/databases",
+    label: "Databases",
+    icon: Database,
     end: false,
   },
   {

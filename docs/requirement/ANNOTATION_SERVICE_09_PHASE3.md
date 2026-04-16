@@ -26,7 +26,7 @@ The service is deliberately simple: a straightforward CRUD with a time-range que
 | Icons         | Lucide React                           | Consistent icon set                            |
 | Notifications | shadcn Toaster + useToast              | Toast notifications                            |
 | Charts        | Recharts (for reports/alert history)   | Report trend charts                            |
-| Cron UI       | cronstrue (npm)                        | Human-readable cron expression display         |
+| Cron UI       | cronstrue (bun)                        | Human-readable cron expression display         |
 | Date/Time     | shadcn Calendar + Popover + date-fns   | Date pickers & formatting                      |
 | Backend       | Gin + GORM                             | Simple CRUD with time-range filtering          |
 | FE Timeline   | Recharts ReferenceArea + ReferenceLine | Annotation rendering in chart previews         |
