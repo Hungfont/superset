@@ -123,4 +123,75 @@ describe("databasesApi", () => {
     expect(result.success).toBe(true);
     expect(result.driver).toBe("postgresql");
   });
+
+  it("calls GET /api/v1/admin/databases with query filters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: [
+            {
+              id: 7,
+              database_name: "analytics",
+              backend: "postgresql",
+              sqlalchemy_uri: "postgresql://superset:***@localhost:5432/analytics",
+              expose_in_sqllab: true,
+              allow_run_async: false,
+            },
+          ],
+          pagination: { total: 1, page: 2, page_size: 10 },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await databasesApi.getDatabases({ q: "ana", backend: "postgresql", page: 2, pageSize: 10 });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/databases?q=ana&backend=postgresql&page=2&page_size=10");
+    expect(init.method).toBe("GET");
+    expect(result.items).toHaveLength(1);
+    expect(result.pagination.total).toBe(1);
+  });
+
+  it("calls GET /api/v1/admin/databases/:id for detail", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: {
+            id: 8,
+            database_name: "warehouse",
+            backend: "postgresql",
+            sqlalchemy_uri: "postgresql://superset:***@localhost:5432/warehouse",
+            dataset_count: 12,
+            allow_dml: false,
+            expose_in_sqllab: true,
+            allow_run_async: true,
+            allow_file_upload: false,
+          },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await databasesApi.getDatabase(8);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/databases/8");
+    expect(init.method).toBe("GET");
+    expect(result.dataset_count).toBe(12);
+  });
+
+  it("calls DELETE /api/v1/admin/databases/:id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await databasesApi.deleteDatabase(5);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/databases/5");
+    expect(init.method).toBe("DELETE");
+  });
 });

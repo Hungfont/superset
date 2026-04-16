@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,11 @@ type handlerDatabaseRepo struct {
 	createErr         error
 	getByIDResult     *domain.Database
 	getByIDErr        error
+	roleNames         []string
+	listResult        domain.DatabaseListResult
+	listErr           error
+	visibleByIDResult *domain.DatabaseWithDatasetCount
+	visibleByIDErr    error
 }
 
 func (h *handlerDatabaseRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
@@ -51,6 +57,28 @@ func (h *handlerDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domai
 		return nil, domain.ErrDatabaseNotFound
 	}
 	copyValue := *h.getByIDResult
+	return &copyValue, nil
+}
+
+func (h *handlerDatabaseRepo) GetRoleNamesByUser(_ context.Context, _ uint) ([]string, error) {
+	return append([]string(nil), h.roleNames...), nil
+}
+
+func (h *handlerDatabaseRepo) ListDatabases(_ context.Context, _ domain.DatabaseListFilters) (domain.DatabaseListResult, error) {
+	if h.listErr != nil {
+		return domain.DatabaseListResult{}, h.listErr
+	}
+	return h.listResult, nil
+}
+
+func (h *handlerDatabaseRepo) GetVisibleDatabaseByID(_ context.Context, _ uint, _ domain.DatabaseVisibilityScope, _ uint) (*domain.DatabaseWithDatasetCount, error) {
+	if h.visibleByIDErr != nil {
+		return nil, h.visibleByIDErr
+	}
+	if h.visibleByIDResult == nil {
+		return nil, domain.ErrDatabaseNotFound
+	}
+	copyValue := *h.visibleByIDResult
 	return &copyValue, nil
 }
 
@@ -97,6 +125,8 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 
 	admin := r.Group("/api/v1/admin")
 	admin.POST("/databases", h.Create)
+	admin.GET("/databases", h.List)
+	admin.GET("/databases/:id", h.Get)
 	admin.POST("/databases/test", h.TestConnection)
 	admin.POST("/databases/:id/test", h.TestConnectionByID)
 
@@ -223,5 +253,44 @@ func TestDatabaseHandler_TestConnectionByIDReturns200(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListReturns200WithPagination(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{
+		roleNames: []string{"Admin"},
+		listResult: domain.DatabaseListResult{
+			Items: []domain.DatabaseWithDatasetCount{{
+				Database:     domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: "postgresql://superset:secret@localhost:5432/analytics", ExposeInSQLLab: true},
+				DatasetCount: 5,
+			}},
+			Total: 1,
+		},
+	}, &handlerDatabaseTester{allowRate: true})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases?page=1&page_size=10", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "\"pagination\"") {
+		t.Fatalf("expected pagination in body, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "***") {
+		t.Fatalf("expected masked uri in body, got %s", w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_GetReturns404WhenNotVisible(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{roleNames: []string{"Gamma"}}, &handlerDatabaseTester{allowRate: true})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/77", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }

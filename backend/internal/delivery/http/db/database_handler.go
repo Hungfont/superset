@@ -23,6 +23,68 @@ func NewDatabaseHandler(svc *svcdb.DatabaseService) *DatabaseHandler {
 	return &DatabaseHandler{svc: svc}
 }
 
+func (h *DatabaseHandler) List(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	page, err := parsePositiveInt(c.Query("page"), 1)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	pageSize, err := parsePositiveInt(c.Query("page_size"), 10)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	result, listErr := h.svc.ListDatabases(c.Request.Context(), actor.ID, domain.DatabaseListQuery{
+		SearchQ:  c.Query("q"),
+		Backend:  c.Query("backend"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if listErr != nil {
+		h.handleError(c, listErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": result.Items,
+		"pagination": gin.H{
+			"total":     result.Total,
+			"page":      result.Page,
+			"page_size": result.PageSize,
+		},
+	})
+}
+
+func (h *DatabaseHandler) Get(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	result, getErr := h.svc.GetDatabase(c.Request.Context(), actor.ID, uint(databaseID))
+	if getErr != nil {
+		h.handleError(c, getErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 func (h *DatabaseHandler) Create(c *gin.Context) {
 	actor, ok := getActor(c)
 	if !ok {
@@ -122,4 +184,17 @@ func getActor(c *gin.Context) (domainauth.UserContext, bool) {
 	}
 
 	return actor, true
+}
+
+func parsePositiveInt(raw string, defaultValue int) (int, error) {
+	if raw == "" {
+		return defaultValue, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		return 0, domain.ErrInvalidDatabase
+	}
+
+	return value, nil
 }

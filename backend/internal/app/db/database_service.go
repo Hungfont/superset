@@ -24,6 +24,9 @@ const (
 	databaseTestConnectionTimeout = 5 * time.Second
 	databaseTestRateLimitCap      = 10
 	databaseTestRateLimitWindow   = time.Minute
+	databaseListDefaultPage       = 1
+	databaseListDefaultPageSize   = 10
+	databaseListMaxPageSize       = 100
 )
 
 // DatabaseConnectionTester validates a database connection before persistence.
@@ -246,6 +249,7 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		ExposeInSQLLab:  normalizedReq.ExposeInSQLLab,
 		AllowRunAsync:   normalizedReq.AllowRunAsync,
 		AllowFileUpload: normalizedReq.AllowFileUpload,
+		CreatedByFK:     actorUserID,
 	}
 
 	if err := s.repo.CreateDatabase(ctx, &database); err != nil {
@@ -266,10 +270,87 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		ID:              database.ID,
 		DatabaseName:    database.DatabaseName,
 		SQLAlchemyURI:   maskedURI,
+		Backend:         extractBackend(normalizedReq.SQLAlchemyURI),
 		AllowDML:        database.AllowDML,
 		ExposeInSQLLab:  database.ExposeInSQLLab,
 		AllowRunAsync:   database.AllowRunAsync,
 		AllowFileUpload: database.AllowFileUpload,
+	}, nil
+}
+
+func (s *DatabaseService) ListDatabases(ctx context.Context, actorUserID uint, query domain.DatabaseListQuery) (*domain.DatabaseListResponse, error) {
+	normalized := normalizeListQuery(query)
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.repo.ListDatabases(ctx, domain.DatabaseListFilters{
+		SearchQ:         normalized.SearchQ,
+		Backend:         normalized.Backend,
+		Offset:          (normalized.Page - 1) * normalized.PageSize,
+		Limit:           normalized.PageSize,
+		VisibilityScope: visibilityScope,
+		ActorUserID:     actorUserID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing databases: %w", err)
+	}
+
+	items := make([]domain.DatabaseListItem, 0, len(result.Items))
+	for _, record := range result.Items {
+		maskedURI, maskErr := maskSQLAlchemyURI(record.SQLAlchemyURI)
+		if maskErr != nil {
+			return nil, maskErr
+		}
+
+		items = append(items, domain.DatabaseListItem{
+			ID:              record.ID,
+			DatabaseName:    record.DatabaseName,
+			Backend:         extractBackend(record.SQLAlchemyURI),
+			SQLAlchemyURI:   maskedURI,
+			AllowDML:        record.AllowDML,
+			ExposeInSQLLab:  record.ExposeInSQLLab,
+			AllowRunAsync:   record.AllowRunAsync,
+			AllowFileUpload: record.AllowFileUpload,
+			DatasetCount:    record.DatasetCount,
+		})
+	}
+
+	return &domain.DatabaseListResponse{
+		Items:    items,
+		Total:    result.Total,
+		Page:     normalized.Page,
+		PageSize: normalized.PageSize,
+	}, nil
+}
+
+func (s *DatabaseService) GetDatabase(ctx context.Context, actorUserID uint, databaseID uint) (*domain.DatabaseDetail, error) {
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	record, err := s.repo.GetVisibleDatabaseByID(ctx, databaseID, visibilityScope, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	maskedURI, err := maskSQLAlchemyURI(record.SQLAlchemyURI)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.DatabaseDetail{
+		ID:              record.ID,
+		DatabaseName:    record.DatabaseName,
+		SQLAlchemyURI:   maskedURI,
+		Backend:         extractBackend(record.SQLAlchemyURI),
+		AllowDML:        record.AllowDML,
+		ExposeInSQLLab:  record.ExposeInSQLLab,
+		AllowRunAsync:   record.AllowRunAsync,
+		AllowFileUpload: record.AllowFileUpload,
+		DatasetCount:    record.DatasetCount,
 	}, nil
 }
 
@@ -341,14 +422,70 @@ func (s *DatabaseService) runProbeWithRateLimit(ctx context.Context, sqlalchemyU
 }
 
 func (s *DatabaseService) ensureAdmin(ctx context.Context, actorUserID uint) error {
-	// isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
-	// if err != nil {
-	// 	return fmt.Errorf("checking admin role: %w", err)
-	// }
-	// if !isAdmin {
-	// 	return domain.ErrForbidden
-	// }
+	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
+	if err != nil {
+		return fmt.Errorf("checking admin role: %w", err)
+	}
+	if !isAdmin {
+		return domain.ErrForbidden
+	}
 	return nil
+}
+
+func (s *DatabaseService) resolveVisibilityScope(ctx context.Context, actorUserID uint) (domain.DatabaseVisibilityScope, error) {
+	roleNames, err := s.repo.GetRoleNamesByUser(ctx, actorUserID)
+	if err != nil {
+		return "", fmt.Errorf("loading actor role names: %w", err)
+	}
+
+	for _, roleName := range roleNames {
+		value := strings.ToLower(strings.TrimSpace(roleName))
+		if value == "admin" {
+			return domain.DatabaseVisibilityAdmin, nil
+		}
+	}
+
+	for _, roleName := range roleNames {
+		value := strings.ToLower(strings.TrimSpace(roleName))
+		if value == "alpha" {
+			return domain.DatabaseVisibilityAlpha, nil
+		}
+	}
+
+	return domain.DatabaseVisibilityGamma, nil
+}
+
+func normalizeListQuery(query domain.DatabaseListQuery) domain.DatabaseListQuery {
+	page := query.Page
+	if page < 1 {
+		page = databaseListDefaultPage
+	}
+
+	pageSize := query.PageSize
+	if pageSize < 1 {
+		pageSize = databaseListDefaultPageSize
+	}
+	if pageSize > databaseListMaxPageSize {
+		pageSize = databaseListMaxPageSize
+	}
+
+	return domain.DatabaseListQuery{
+		SearchQ:  strings.TrimSpace(query.SearchQ),
+		Backend:  strings.ToLower(strings.TrimSpace(query.Backend)),
+		Page:     page,
+		PageSize: pageSize,
+	}
+}
+
+func extractBackend(sqlalchemyURI string) string {
+	parsedURI, err := url.Parse(sqlalchemyURI)
+	if err != nil {
+		return "unknown"
+	}
+	if parsedURI.Scheme == "" {
+		return "unknown"
+	}
+	return strings.ToLower(strings.TrimSpace(parsedURI.Scheme))
 }
 
 func normalizeCreateDatabaseRequest(req domain.CreateDatabaseRequest) (domain.CreateDatabaseRequest, bool, error) {

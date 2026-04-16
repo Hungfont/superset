@@ -11,6 +11,7 @@ type Database struct {
 	ExposeInSQLLab  bool      `gorm:"column:expose_in_sqllab;default:false" json:"expose_in_sqllab"`
 	AllowRunAsync   bool      `gorm:"column:allow_run_async;default:false" json:"allow_run_async"`
 	AllowFileUpload bool      `gorm:"column:allow_file_upload;default:false" json:"allow_file_upload"`
+	CreatedByFK     uint      `gorm:"column:created_by_fk" json:"-"`
 	CreatedOn       time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
 	ChangedOn       time.Time `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
 }
@@ -33,10 +34,72 @@ type DatabaseDetail struct {
 	ID              uint   `json:"id"`
 	DatabaseName    string `json:"database_name"`
 	SQLAlchemyURI   string `json:"sqlalchemy_uri"`
+	Backend         string `json:"backend"`
 	AllowDML        bool   `json:"allow_dml"`
 	ExposeInSQLLab  bool   `json:"expose_in_sqllab"`
 	AllowRunAsync   bool   `json:"allow_run_async"`
 	AllowFileUpload bool   `json:"allow_file_upload"`
+	DatasetCount    int64  `json:"dataset_count,omitempty"`
+}
+
+// DatabaseVisibilityScope controls list/get filtering by actor role.
+type DatabaseVisibilityScope string
+
+const (
+	DatabaseVisibilityAdmin DatabaseVisibilityScope = "admin"
+	DatabaseVisibilityAlpha DatabaseVisibilityScope = "alpha"
+	DatabaseVisibilityGamma DatabaseVisibilityScope = "gamma"
+)
+
+// DatabaseWithDatasetCount stores one database row plus derived dataset usage.
+type DatabaseWithDatasetCount struct {
+	Database
+	DatasetCount int64 `gorm:"column:dataset_count"`
+}
+
+// DatabaseListQuery represents list endpoint query params.
+type DatabaseListQuery struct {
+	SearchQ  string
+	Backend  string
+	Page     int
+	PageSize int
+}
+
+// DatabaseListFilters stores normalized filters passed into repository layer.
+type DatabaseListFilters struct {
+	SearchQ         string
+	Backend         string
+	Offset          int
+	Limit           int
+	VisibilityScope DatabaseVisibilityScope
+	ActorUserID     uint
+}
+
+// DatabaseListResult is repository output with rows and total records.
+type DatabaseListResult struct {
+	Items []DatabaseWithDatasetCount
+	Total int64
+}
+
+// DatabaseListItem is one item in list response payload.
+type DatabaseListItem struct {
+	ID              uint   `json:"id"`
+	DatabaseName    string `json:"database_name"`
+	Backend         string `json:"backend"`
+	SQLAlchemyURI   string `json:"sqlalchemy_uri"`
+	AllowDML        bool   `json:"allow_dml"`
+	ExposeInSQLLab  bool   `json:"expose_in_sqllab"`
+	AllowRunAsync   bool   `json:"allow_run_async"`
+	AllowFileUpload bool   `json:"allow_file_upload"`
+	DatasetCount    int64  `json:"dataset_count"`
+}
+
+// DatabaseListResponse is returned by GET /api/v1/admin/databases.
+type DatabaseListResponse struct {
+	Items    []DatabaseListItem `json:"items"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
 }
 
 // TestDatabaseConnectionRequest is used by POST /api/v1/admin/databases/test.

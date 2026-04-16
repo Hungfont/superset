@@ -228,7 +228,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**           |
 | ----------------- | ------------ | --------- | ------------- | ------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | PUT /api/v1/databases/:id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | PUT /api/v1/admin/databases/:id |
 
 | **⚙️ Backend - Description**
 - Owner/Admin partial update. Smart password merge (*** = keep existing). Re-test credentials on change. Flush pool + Redis schema cache.
@@ -244,7 +244,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - 403 - Not owner.
 - 422 - Test failed. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/databases/:id
+/admin/settings/databases/:id
 **🧩 shadcn/ui Components**
 - Same Form as DBC-001 wizard but pre-populated (edit mode)
 - Input (password) - placeholder "•••••••• Leave blank to keep current password" (never pre-filled)
@@ -253,20 +253,20 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - Alert - "Changes saved" success inline + Toast
 - Breadcrumb - "Settings / Databases / {database_name}"
 - Tabs [Connection, Advanced, Datasets] - organize edit sections
-- "Datasets" tab: DataTable of datasets using this connection (read-only, links to /datasets/:id)
+- "Datasets" tab: DataTable of datasets using this connection (read-only, links to /admin/datasets/:id)
 **📦 State & Data Fetching**
 - useQuery({ queryKey:["database",id] }) - pre-populate form
 - useMutation({ mutationFn: api.updateDatabase, onSuccess: ()=>toast.success("Database updated") })
 - React Hook Form + Zod - same schema as create, password not required on edit
 - isDirty from React Hook Form formState.isDirty
 **✨ UX Behaviors**
-- Edit mode: form pre-filled from GET /api/v1/databases/:id response (masked URI).
+- Edit mode: form pre-filled from GET /api/v1/admin/databases/:id response (masked URI).
 - "Save Changes" Button disabled until isDirty=true.
 - Password: empty = keep existing, any value = update password.
 - Datasets tab shows warning if updating connection used by N active datasets.
 **🌐 API Calls (TanStack Query)**
 1. useQuery(["database",id])
-2. useMutation({ mutationFn: (data)=>fetch("/api/v1/databases/"+id,{method:"PUT",body:JSON.stringify(data)}) }) |
+2. useMutation({ mutationFn: (data)=>fetch("/api/v1/admin/databases/"+id,{method:"PUT",body:JSON.stringify(data)}) }) |
 | --- | --- | --- |
 
 
@@ -274,7 +274,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**              |
 | ----------------- | ------------ | --------- | ------------- | ---------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | DELETE /api/v1/databases/:id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | DELETE /api/v1/admin/databases/:id |
 
 | **⚙️ Backend - Description**
 - Guard: block if datasets exist or queries running. On approve: close pool, clear Redis cache, hard delete.
@@ -297,7 +297,7 @@ AlertDialog triggered from DBC-003 table or DBC-004 edit page
 - Alert (variant=destructive, shown inside dialog) - if dataset_count > 0: "This database has N datasets. Delete or reassign them first."
 - Button (variant=destructive, disabled if has_datasets) - "Delete Database"
 **📦 State & Data Fetching**
-- useMutation({ mutationFn: api.deleteDatabase, onSuccess: ()=>{ navigate("/settings/databases"); toast.success("Database deleted") } })
+- useMutation({ mutationFn: api.deleteDatabase, onSuccess: ()=>{ navigate("/admin/settings/databases"); toast.success("Database deleted") } })
 - Pre-fetch dataset_count before showing AlertDialog to configure disable state
 **✨ UX Behaviors**
 - AlertDialog: "Delete {database_name}? This cannot be undone. All connections to this database will be closed."
@@ -305,7 +305,7 @@ AlertDialog triggered from DBC-003 table or DBC-004 edit page
 - If has_running_queries: same pattern with running query count.
 - On success: navigate back to list + Toast "Database removed".
 **🌐 API Calls (TanStack Query)**
-1. useMutation({ mutationFn: (id)=>fetch("/api/v1/databases/"+id,{method:"DELETE"}) }) |
+1. useMutation({ mutationFn: (id)=>fetch("/api/v1/admin/databases/"+id,{method:"DELETE"}) }) |
 | --- | --- | --- |
 
 

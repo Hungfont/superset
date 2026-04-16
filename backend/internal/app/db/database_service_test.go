@@ -17,6 +17,11 @@ type fakeDatabaseRepo struct {
 	createErr         error
 	getByIDResult     *domain.Database
 	getByIDErr        error
+	roleNames         []string
+	listResult        domain.DatabaseListResult
+	listErr           error
+	visibleByIDResult *domain.DatabaseWithDatasetCount
+	visibleByIDErr    error
 
 	created *domain.Database
 }
@@ -46,6 +51,28 @@ func (f *fakeDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.D
 		return nil, domain.ErrDatabaseNotFound
 	}
 	copyValue := *f.getByIDResult
+	return &copyValue, nil
+}
+
+func (f *fakeDatabaseRepo) GetRoleNamesByUser(_ context.Context, _ uint) ([]string, error) {
+	return append([]string(nil), f.roleNames...), nil
+}
+
+func (f *fakeDatabaseRepo) ListDatabases(_ context.Context, _ domain.DatabaseListFilters) (domain.DatabaseListResult, error) {
+	if f.listErr != nil {
+		return domain.DatabaseListResult{}, f.listErr
+	}
+	return f.listResult, nil
+}
+
+func (f *fakeDatabaseRepo) GetVisibleDatabaseByID(_ context.Context, _ uint, _ domain.DatabaseVisibilityScope, _ uint) (*domain.DatabaseWithDatasetCount, error) {
+	if f.visibleByIDErr != nil {
+		return nil, f.visibleByIDErr
+	}
+	if f.visibleByIDResult == nil {
+		return nil, domain.ErrDatabaseNotFound
+	}
+	copyValue := *f.visibleByIDResult
 	return &copyValue, nil
 }
 
@@ -345,6 +372,75 @@ func TestDatabaseService_TestConnectionByIDDecryptsAndProbes(t *testing.T) {
 	}
 	if !strings.Contains(probe.lastURI, "secret") {
 		t.Fatalf("expected decrypted password in probe URI, got %s", probe.lastURI)
+	}
+}
+
+func TestDatabaseService_ListDatabasesAppliesGammaVisibilityAndMasksURI(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		roleNames: []string{"Gamma"},
+		listResult: domain.DatabaseListResult{
+			Items: []domain.DatabaseWithDatasetCount{{
+				Database: domain.Database{
+					ID:             10,
+					DatabaseName:   "analytics",
+					SQLAlchemyURI:  "postgresql://alice:secret@localhost:5432/analytics",
+					ExposeInSQLLab: true,
+				},
+				DatasetCount: 3,
+			}},
+			Total: 1,
+		},
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	result, listErr := svc.ListDatabases(context.Background(), 9, domain.DatabaseListQuery{Page: 1, PageSize: 20})
+	if listErr != nil {
+		t.Fatalf("expected nil error, got %v", listErr)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected one database, got %d", len(result.Items))
+	}
+	if !strings.Contains(result.Items[0].SQLAlchemyURI, "***") {
+		t.Fatalf("expected masked URI, got %s", result.Items[0].SQLAlchemyURI)
+	}
+	if result.Items[0].Backend != "postgresql" {
+		t.Fatalf("expected backend postgresql, got %s", result.Items[0].Backend)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected total 1, got %d", result.Total)
+	}
+}
+
+func TestDatabaseService_GetDatabaseReturnsDatasetCountAndMaskedURI(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		roleNames: []string{"Admin"},
+		visibleByIDResult: &domain.DatabaseWithDatasetCount{
+			Database: domain.Database{
+				ID:             22,
+				DatabaseName:   "warehouse",
+				SQLAlchemyURI:  "postgresql://superset:secret@localhost:5432/warehouse",
+				ExposeInSQLLab: true,
+			},
+			DatasetCount: 12,
+		},
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	detail, getErr := svc.GetDatabase(context.Background(), 1, 22)
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
+	}
+	if detail.DatasetCount != 12 {
+		t.Fatalf("expected dataset_count 12, got %d", detail.DatasetCount)
+	}
+	if !strings.Contains(detail.SQLAlchemyURI, "***") {
+		t.Fatalf("expected masked URI, got %s", detail.SQLAlchemyURI)
 	}
 }
 

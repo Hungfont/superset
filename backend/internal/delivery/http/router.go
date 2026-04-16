@@ -55,6 +55,8 @@ func NewRouter(
 			admin := protected.Group("/admin")
 			{
 				admin.POST("/databases", databaseHandler.Create)
+				admin.GET("/databases", databaseHandler.List)
+				admin.GET("/databases/:id", databaseHandler.Get)
 				admin.POST("/databases/test", databaseHandler.TestConnection)
 				admin.POST("/databases/:id/test", databaseHandler.TestConnectionByID)
 
