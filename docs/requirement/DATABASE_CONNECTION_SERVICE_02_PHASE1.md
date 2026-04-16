@@ -33,8 +33,9 @@ On the frontend, this service powers the Database Management settings page, a mu
 | Service Name       | Database Connection Service                                             |
 | Rank / Build Order | #02                                                                     |
 | Phase              | Phase 1 - Foundation                                                    |
-| Backend API Prefix | /api/v1/databases                                                       |
-| Frontend Routes    | /settings/databases · /settings/databases/new · /settings/databases/:id |
+| Backend API Prefix | /api/v1/admin/databases                                                 |
+| Frontend Routes    | /admin/settings/databases · /admin/settings/databases/new ·             |
+|                    | /admin/settings/databases/:id                                           |
 | Primary DB Tables  | dbs                                                                     |
 | Total Requirements | 9                                                                       |
 | Independent        | 7                                                                       |
