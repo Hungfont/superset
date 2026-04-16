@@ -164,13 +164,13 @@ func (f *fakeRoleCacheRepo) BustRBACForUser(_ context.Context, _ uint) error {
 	return nil
 }
 
-func TestRoleService_ListRoles_NonAdminForbidden(t *testing.T) {
+func TestRoleService_ListRoles_DoesNotApplyRoleGate(t *testing.T) {
 	repo := &fakeRoleRepo{isAdmin: false}
 	svc := svcauth.NewRoleService(repo, &fakeRoleCacheRepo{})
 
 	_, err := svc.ListRoles(context.Background(), 1)
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden, got %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 }
 

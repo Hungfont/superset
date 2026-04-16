@@ -37,6 +37,10 @@ func NewUserRoleRepository(db *gorm.DB) domain.UserRoleRepository {
 	return &roleRepo{db: db}
 }
 
+func NewRBACPermissionRepository(db *gorm.DB) domain.RBACPermissionRepository {
+	return &roleRepo{db: db}
+}
+
 func (r *roleRepo) IsAdmin(ctx context.Context, userID uint) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
@@ -48,6 +52,25 @@ func (r *roleRepo) IsAdmin(ctx context.Context, userID uint) (bool, error) {
 		return false, fmt.Errorf("checking admin role: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (r *roleRepo) ListPermissionTuplesByUser(ctx context.Context, userID uint) ([]domain.PermissionTuple, error) {
+	tuples := make([]domain.PermissionTuple, 0)
+	err := r.db.WithContext(ctx).
+		Table("ab_user_role ur").
+		Select("DISTINCT p.name AS action, vm.name AS resource").
+		Joins("JOIN ab_permission_view_role pvr ON pvr.role_id = ur.role_id").
+		Joins("JOIN ab_permission_view pv ON pv.id = pvr.permission_view_id").
+		Joins("JOIN ab_permission p ON p.id = pv.permission_id").
+		Joins("JOIN ab_view_menu vm ON vm.id = pv.view_menu_id").
+		Where("ur.user_id = ?", userID).
+		Order("p.name ASC, vm.name ASC").
+		Scan(&tuples).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing permission tuples by user: %w", err)
+	}
+
+	return tuples, nil
 }
 
 func (r *roleRepo) ListWithCounts(ctx context.Context) ([]domain.RoleListItem, error) {
@@ -325,3 +348,5 @@ func isBuiltInRoleName(name string) bool {
 		return false
 	}
 }
+
+var _ domain.RBACPermissionRepository = (*roleRepo)(nil)

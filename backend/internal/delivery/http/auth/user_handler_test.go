@@ -176,14 +176,14 @@ func TestUserHandler_DeleteNotFoundReturns404(t *testing.T) {
 	}
 }
 
-func TestUserHandler_NonAdminReturns403(t *testing.T) {
+func TestUserHandler_DoesNotApplyRoleGate(t *testing.T) {
 	r := newUserAdminRouter(&handlerUserAdminRepo{isAdmin: false})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -219,3 +219,9 @@ type PermissionViewSeed struct {
 	PermissionName string
 	ViewMenuName   string
 }
+
+// PermissionTuple represents one RBAC relation pair: action on resource.
+type PermissionTuple struct {
+	Action   string
+	Resource string
+}

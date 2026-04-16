@@ -25,6 +25,8 @@ func NewRouter(
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
 	roleRepo domain.RoleRepository,
+	rbacPermissionRepo domain.RBACPermissionRepository,
+	rbacPermissionCacheRepo domain.RBACPermissionCacheRepository,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -44,10 +46,13 @@ func NewRouter(
 		protected := v1.Group("/")
 		protected.Use(middleware.JWTMiddleware(pubKey, jwtRepo, userRepo))
 		{
+			require := func(action string, resource string) gin.HandlerFunc {
+				return middleware.RequirePermission(roleRepo, rbacPermissionRepo, rbacPermissionCacheRepo, action, resource)
+			}
+
 			admin := protected.Group("/admin")
-			admin.Use(middleware.AuthorizeAdminRole(roleRepo))
 			{
-				admin.GET("/users", userHandler.List)
+				admin.GET("/users", require("can_read", "User"), userHandler.List)
 				admin.GET("/users/:id", userHandler.Get)
 				admin.POST("/users", userHandler.Create)
 				admin.PUT("/users/:id", userHandler.Update)
@@ -56,7 +61,7 @@ func NewRouter(
 				admin.GET("/users/:id/roles", userRoleHandler.List)
 				admin.PUT("/users/:id/roles", userRoleHandler.Set)
 
-				admin.GET("/roles", roleHandler.List)
+				admin.GET("/roles", require("can_read", "Role"), roleHandler.List)
 				admin.POST("/roles", roleHandler.Create)
 				admin.PUT("/roles/:id", roleHandler.Update)
 				admin.DELETE("/roles/:id", roleHandler.Delete)
@@ -65,13 +70,13 @@ func NewRouter(
 				admin.POST("/roles/:id/permissions/add", roleHandler.AddPermissions)
 				admin.DELETE("/roles/:id/permissions/:pv_id", roleHandler.RemovePermission)
 
-				admin.GET("/permissions", permissionHandler.ListPermissions)
+				admin.GET("/permissions", require("can_read", "Permission"), permissionHandler.ListPermissions)
 				admin.POST("/permissions", permissionHandler.CreatePermission)
 
-				admin.GET("/view-menus", permissionHandler.ListViewMenus)
+				admin.GET("/view-menus", require("can_read", "ViewMenu"), permissionHandler.ListViewMenus)
 				admin.POST("/view-menus", permissionHandler.CreateViewMenu)
 
-				admin.GET("/permission-views", permissionHandler.ListPermissionViews)
+				admin.GET("/permission-views", require("can_read", "PermissionView"), permissionHandler.ListPermissionViews)
 				admin.POST("/permission-views", permissionHandler.CreatePermissionView)
 				admin.DELETE("/permission-views/:id", permissionHandler.DeletePermissionView)
 			}

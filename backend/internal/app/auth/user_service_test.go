@@ -182,13 +182,27 @@ func TestUserService_CreateUser_EmptyRolesReturnsError(t *testing.T) {
 	}
 }
 
-func TestUserService_UpdateUser_NonAdminForbidden(t *testing.T) {
-	repo := &fakeUserAdminRepo{isAdmin: false}
+func TestUserService_UpdateUser_DoesNotApplyRoleGate(t *testing.T) {
+	repo := &fakeUserAdminRepo{
+		isAdmin:      false,
+		validRoleIDs: map[uint]bool{1: true},
+		nextUser:     &domain.UserDetail{ID: 7, Username: "updated", Email: "updated@example.com", Active: true, RoleIDs: []uint{1}},
+	}
 	svc := svcauth.NewUserService(repo, &fakeUserAdminCacheRepo{})
 
-	_, err := svc.UpdateUser(context.Background(), 2, 7, domain.UpdateUserRequest{RoleIDs: []uint{1}})
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden, got %v", err)
+	updated, err := svc.UpdateUser(context.Background(), 2, 7, domain.UpdateUserRequest{
+		FirstName: "Updated",
+		LastName:  "User",
+		Username:  "updated",
+		Email:     "updated@example.com",
+		Active:    true,
+		RoleIDs:   []uint{1},
+	})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if updated == nil || updated.ID != 7 {
+		t.Fatalf("expected updated user id=7, got %#v", updated)
 	}
 }
 

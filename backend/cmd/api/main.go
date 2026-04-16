@@ -89,12 +89,14 @@ func main() {
 	userRepo := repopostgres.NewUserRepository(db)
 	userAdminRepo := repopostgres.NewUserAdminRepository(db)
 	roleRepo := repopostgres.NewRoleRepository(db)
+	rbacPermissionRepo := repopostgres.NewRBACPermissionRepository(db)
 	userRoleRepo := repopostgres.NewUserRoleRepository(db)
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
 	refreshRepo := reporedis.NewRefreshRepository(redisClient)
 	roleCacheRepo := reporedis.NewRoleCacheRepository(redisClient)
+	rbacPermissionCacheRepo := reporedis.NewRBACPermissionCacheRepository(redisClient)
 
 	mailer := email.NewSMTPSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
 
@@ -135,6 +137,8 @@ func main() {
 		jwtRepo,
 		userRepo,
 		roleRepo,
+		rbacPermissionRepo,
+		rbacPermissionCacheRepo,
 	)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)

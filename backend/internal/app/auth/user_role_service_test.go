@@ -122,12 +122,19 @@ func TestUserRoleService_SetUserRoles_InvalidRoleIDReturns422DomainError(t *test
 	}
 }
 
-func TestUserRoleService_SetUserRoles_NonAdminReturnsForbidden(t *testing.T) {
-	repo := &fakeUserRoleRepo{isAdmin: false}
+func TestUserRoleService_SetUserRoles_DoesNotApplyRoleGate(t *testing.T) {
+	repo := &fakeUserRoleRepo{
+		isAdmin:       false,
+		validRoleIDs:  map[uint]bool{1: true},
+		roleIDsByUser: map[uint][]uint{22: []uint{1}},
+	}
 	svc := svcauth.NewUserRoleService(repo, &fakeUserRoleCacheRepo{})
 
-	_, err := svc.SetUserRoles(context.Background(), 10, 22, []uint{1})
-	if !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden, got %v", err)
+	roles, err := svc.SetUserRoles(context.Background(), 10, 22, []uint{1})
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(roles) != 1 || roles[0] != 1 {
+		t.Fatalf("expected role_ids [1], got %v", roles)
 	}
 }

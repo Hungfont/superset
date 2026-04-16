@@ -164,6 +164,17 @@ type RoleCacheRepository interface {
 	BustRBACForUser(ctx context.Context, userID uint) error
 }
 
+// RBACPermissionRepository resolves effective permission tuples for a user.
+type RBACPermissionRepository interface {
+	ListPermissionTuplesByUser(ctx context.Context, userID uint) ([]PermissionTuple, error)
+}
+
+// RBACPermissionCacheRepository caches user permission tuple sets.
+type RBACPermissionCacheRepository interface {
+	GetPermissionSet(ctx context.Context, userID uint) ([]string, error)
+	SetPermissionSet(ctx context.Context, userID uint, values []string) error
+}
+
 // PermissionRepository manages permission, view-menu, and permission-view CRUD.
 type PermissionRepository interface {
 	ListPermissions(ctx context.Context) ([]Permission, error)

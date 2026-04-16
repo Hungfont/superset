@@ -168,7 +168,7 @@ func TestUserRoleHandler_GetReturns200(t *testing.T) {
 	}
 }
 
-func TestUserRoleHandler_NonAdminReturns403(t *testing.T) {
+func TestUserRoleHandler_DoesNotApplyRoleGate(t *testing.T) {
 	r := newUserRoleRouter(&handlerUserRoleRepo{isAdmin: false}, false)
 
 	w := httptest.NewRecorder()
@@ -176,7 +176,7 @@ func TestUserRoleHandler_NonAdminReturns403(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
