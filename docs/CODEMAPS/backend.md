@@ -18,6 +18,8 @@ POST /api/v1/auth/logout                   -> LogoutHandler.Logout
 
 Protected (JWTMiddleware)
 POST   /api/v1/admin/databases             -> DatabaseHandler.Create
+POST   /api/v1/admin/databases/test        -> DatabaseHandler.TestConnection
+POST   /api/v1/admin/databases/:id/test    -> DatabaseHandler.TestConnectionByID
 
 GET    /api/v1/admin/users                 -> UserHandler.List
 GET    /api/v1/admin/users/:id             -> UserHandler.Get
@@ -66,19 +68,21 @@ UserService     -> UserAdminRepository + RoleCacheRepository
 UserRoleService -> UserRoleRepository + RoleCacheRepository
 RoleService     -> RoleRepository + RoleCacheRepository
 PermissionService -> PermissionRepository + RoleCacheRepository
-DatabaseService   -> DatabaseRepository
+DatabaseService   -> DatabaseRepository (create + test by config + test by id, timeout/rate limit/error sanitization)
 ```
 
 ## Key Files
 
 - `backend/cmd/api/main.go`: config load, DB/Redis init, key parsing, DI wiring, server run.
 - `backend/internal/delivery/http/router.go`: `/api/v1` route graph and middleware attachment.
-- `backend/internal/delivery/http/auth/*.go`: auth + user + role + permission + database HTTP handlers.
+- `backend/internal/delivery/http/auth/*.go`: auth + user + role + permission HTTP handlers.
+- `backend/internal/delivery/http/db/database_handler.go`: database create + test-connection HTTP handlers.
 - `backend/internal/delivery/http/middleware/jwt.go`: bearer token verification and context hydration.
-- `backend/internal/app/auth/*.go`: auth/session/user/role/permission/database business logic.
+- `backend/internal/app/auth/*.go`: auth/session/user/role/permission business logic.
+- `backend/internal/app/db/database_service.go`: database create/test business logic with 5s timeout probe flow.
 - `backend/internal/domain/auth/entity.go`: `RegisterUser`, `User`, `Role`, `Permission`, `ViewMenu`, `PermissionView`, DTOs.
-- `backend/internal/domain/auth/database.go`: `Database` entity and request/response DTOs for DB connection APIs.
-- `backend/internal/domain/auth/repository.go`: repository contracts.
+- `backend/internal/domain/db/database.go`: `Database` entity and request/response DTOs for DB connection APIs.
+- `backend/internal/domain/db/repository.go`: database repository contracts.
 - `backend/internal/repository/postgres/*.go`: persistent repositories (user/register/verify/login/user-role/role/permission/database).
 - `backend/internal/repository/redis/*.go`: cache/session/blocklist/rate repositories.
 - `backend/configs/config.go`: env-bound configuration structs.

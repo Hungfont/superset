@@ -99,4 +99,28 @@ describe("databasesApi", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)?.Authorization).toBe("Bearer tok-db-123");
   });
+
+  it("calls POST /api/v1/admin/databases/:id/test for existing database", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: {
+            success: true,
+            latency_ms: 29,
+            db_version: "PostgreSQL 16.2",
+            driver: "postgresql",
+          },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await databasesApi.testConnectionById(7);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/databases/7/test");
+    expect(init.method).toBe("POST");
+    expect(result.success).toBe(true);
+    expect(result.driver).toBe("postgresql");
+  });
 });

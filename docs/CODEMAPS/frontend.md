@@ -24,6 +24,8 @@ Admin area (session-protected in frontend; role enforced by backend APIs)
 /admin/settings/roles/:id/permissions -> RolePermissionsPage
 /admin/settings/users               -> UsersPage
 /admin/settings/users/:id           -> UserRolesPage
+/admin/settings/databases           -> DatabasesPage
+/admin/settings/databases/new       -> CreateDatabasePage
 /admin/settings/permissions         -> PermissionsPage
 
 Fallback
@@ -54,7 +56,7 @@ hooks/useLogout.ts
 hooks/useTokenRefresh.ts
   - orchestrate API calls, redirects, and toasts
 
-api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.ts + utils/request.ts
+api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.ts + api/databases.ts + utils/request.ts
   - backend calls and request helpers
 ```
 
@@ -69,7 +71,10 @@ api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.t
 - `frontend/src/pages/admin/UsersPage.tsx`: admin user CRUD and deactivate screen.
 - `frontend/src/pages/admin/UserRolesPage.tsx`: AUTH-010 user-role assignment screen.
 - `frontend/src/pages/admin/PermissionsPage.tsx`: AUTH-008 permission/view-menu matrix screen.
+- `frontend/src/pages/admin/DatabasesPage.tsx`: database list/empty-state entrypoint.
+- `frontend/src/pages/admin/CreateDatabasePage.tsx`: DBC wizard with connection test UX (spinner, result alerts, latency badge, version card, error details, 429 toast).
 - `frontend/src/pages/admin/*`: admin dashboard and settings shell.
+- `frontend/src/api/databases.ts`: database API client (create, testConnection, testConnectionById).
 - `frontend/src/stores/authStore.ts`: shared auth state.
 - `frontend/src/test/setup.ts`: Vitest DOM setup.
 

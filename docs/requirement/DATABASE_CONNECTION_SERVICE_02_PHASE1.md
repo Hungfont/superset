@@ -90,7 +90,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - 422 - Test failed or invalid URI.
 - 500 - Encryption error. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/databases/new (multi-step Dialog or full page wizard)
+admin/settings/databases/new (multi-step Dialog or full page wizard)
 **🧩 shadcn/ui Components**
 - Dialog or full-page wizard shell - 3 steps: "Select DB Type" → "Configure Connection" → "Test & Save"
 - Tabs or stepper: shadcn Tabs with TabsList + TabsTrigger per step (visual step indicator)
@@ -106,7 +106,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - Accordion - "Advanced Settings" section (SSH Tunnel, SSL cert)
 **📦 State & Data Fetching**
 - useMutation({ mutationFn: api.testConnection }) - "Test Connection" button
-- useMutation({ mutationFn: api.createDatabase, onSuccess: ()=>{ navigate("/settings/databases"); toast.success("Database connected successfully") } })
+- useMutation({ mutationFn: api.createDatabase, onSuccess: ()=>{ navigate("/admin/settings/databases"); toast.success("Database connected successfully") } })
 - React Hook Form with Zod - field validation per DB type template
 - useState: { step: 0&#124;1&#124;2, testResult: null&#124;{success,latency,version} }
 - DB type selection → auto-populate default host/port/driver template
@@ -136,7 +136,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**           | **API / Route**                                               |
 | ----------------- | ------------ | --------- | ----------------------- | ------------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read for existing) | POST /api/v1/databases/test · POST /api/v1/databases/:id/test |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read for existing) | POST /api/v1/admin/databases/test · POST /api/v1/admin/databases/:id/test |
 
 | **⚙️ Backend - Description**
 - Two modes: pre-save (raw config) and existing (by ID). sql.Open → PingContext(5s) → SELECT version(). Return {success, latency_ms, db_version, driver, error}. Rate limit 10/min.
@@ -172,7 +172,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - Test result persists until form changes (clears on any input change).
 - Rate limit hit: Toast "Too many test attempts. Wait 60 seconds."
 **🌐 API Calls (TanStack Query)**
-1. useMutation({ mutationFn: (cfg)=>fetch("/api/v1/databases/test",{method:"POST",body:JSON.stringify(cfg)}).then(r=>r.json()) }) |
+1. useMutation({ mutationFn: (cfg)=>fetch("/api/v1/admin/databases/test",{method:"POST",body:JSON.stringify(cfg)}).then(r=>r.json()) }) |
 | --- | --- | --- |
 
 
@@ -180,7 +180,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                   |
 | ----------------- | ------------ | --------- | ------------- | ------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | GET /api/v1/databases · GET /api/v1/databases/:id |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs           | GET /api/v1/admin/databases · GET /api/v1/admin/databases/:id |
 
 | **⚙️ Backend - Description**
 - Paginated list with role-based visibility (Admin=all, Alpha=own+expose_in_sqllab, Gamma=expose_in_sqllab only). Masks password. Detail adds dataset_count.
@@ -196,7 +196,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 **⚠️ Error Responses**
 - 404 - Not found or not visible. | **🖥️ Frontend Specification**
 **📍 Route & Page**
-/settings/databases
+/admin/settings/databases
 **🧩 shadcn/ui Components**
 - DataTable - columns: Name, Backend (Badge), SQL Lab (Switch), Async (Switch), Status, Actions
 - Button ("+ Connect a Database") - opens DBC-001 wizard
@@ -220,7 +220,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - "Test" action in row DropdownMenu → runs DBC-002, shows result in Toast.
 - Backend Badge: color-coded (blue=PostgreSQL, orange=MySQL, green=BigQuery, etc.).
 **🌐 API Calls (TanStack Query)**
-1. useQuery({ queryKey:["databases",{q,backend}], queryFn: ()=>fetch("/api/v1/databases?q="+q+"&backend="+backend).then(r=>r.json()) }) |
+1. useQuery({ queryKey:["databases",{q,backend}], queryFn: ()=>fetch("/api/v1/admin/databases?q="+q+"&backend="+backend).then(r=>r.json()) }) |
 | --- | --- | --- |
 
 

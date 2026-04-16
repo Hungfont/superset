@@ -52,6 +52,15 @@ export const databasesApi = {
     return body.data;
   },
 
+  async testConnectionById(databaseId: number): Promise<TestConnectionResult> {
+    const body = await request<ApiEnvelope<TestConnectionResult>>(`/api/v1/admin/databases/${databaseId}/test`, {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+    return body.data;
+  },
+
   async createDatabase(payload: CreateDatabasePayload): Promise<DatabaseDetail> {
     const body = await request<ApiEnvelope<DatabaseDetail>>("/api/v1/admin/databases", {
       method: "POST",

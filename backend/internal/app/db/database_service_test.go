@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	svcauth "superset/auth-service/internal/app/db"
 	domain "superset/auth-service/internal/domain/db"
@@ -14,6 +15,8 @@ type fakeDatabaseRepo struct {
 	isAdmin           bool
 	databaseNameTaken bool
 	createErr         error
+	getByIDResult     *domain.Database
+	getByIDErr        error
 
 	created *domain.Database
 }
@@ -35,6 +38,17 @@ func (f *fakeDatabaseRepo) CreateDatabase(_ context.Context, db *domain.Database
 	return f.createErr
 }
 
+func (f *fakeDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
+	if f.getByIDErr != nil {
+		return nil, f.getByIDErr
+	}
+	if f.getByIDResult == nil {
+		return nil, domain.ErrDatabaseNotFound
+	}
+	copyValue := *f.getByIDResult
+	return &copyValue, nil
+}
+
 type fakeDatabaseTester struct {
 	err     error
 	called  int
@@ -50,6 +64,40 @@ func (f *fakeDatabaseTester) TestConnection(_ context.Context, sqlalchemyURI str
 type fakeDatabaseAuditLogger struct {
 	called int
 	lastID uint
+}
+
+type fakeConnectionProbe struct {
+	result  domain.TestConnectionResult
+	err     error
+	called  int
+	lastURI string
+}
+
+func (f *fakeConnectionProbe) Probe(_ context.Context, sqlalchemyURI string) (domain.TestConnectionResult, error) {
+	f.called++
+	f.lastURI = sqlalchemyURI
+	return f.result, f.err
+}
+
+type fakeTestRateLimiter struct {
+	allow bool
+	err   error
+
+	called  int
+	lastKey string
+	lastCap int
+	lastTTL time.Duration
+}
+
+func (f *fakeTestRateLimiter) Allow(_ context.Context, key string, cap int, ttl time.Duration) (bool, error) {
+	f.called++
+	f.lastKey = key
+	f.lastCap = cap
+	f.lastTTL = ttl
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.allow, nil
 }
 
 func (f *fakeDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, databaseID uint) {
@@ -172,6 +220,131 @@ func TestDatabaseService_CreateDatabaseNonAdminReturnsForbidden(t *testing.T) {
 	})
 	if !errors.Is(createErr, domain.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", createErr)
+	}
+}
+
+func TestDatabaseService_TestConnectionReturnsSuccessResult(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	probe := &fakeConnectionProbe{result: domain.TestConnectionResult{Success: true, LatencyMS: 42, DBVersion: "PostgreSQL 15.4", Driver: "pgx"}}
+	limiter := &fakeTestRateLimiter{allow: true}
+	svc.SetConnectionProber(probe)
+	svc.SetTestRateLimiter(limiter)
+
+	result, testErr := svc.TestConnection(context.Background(), 1, domain.TestDatabaseConnectionRequest{
+		SQLAlchemyURI: "postgresql://alice:secret@localhost:5432/analytics",
+	}, "user:1:ip:127.0.0.1")
+	if testErr != nil {
+		t.Fatalf("expected nil error, got %v", testErr)
+	}
+	if !result.Success {
+		t.Fatalf("expected success=true, got %+v", result)
+	}
+	if result.LatencyMS != 42 {
+		t.Fatalf("expected latency 42, got %d", result.LatencyMS)
+	}
+	if probe.called != 1 {
+		t.Fatalf("expected prober call once, got %d", probe.called)
+	}
+}
+
+func TestDatabaseService_TestConnectionBadCredentialsReturnsSuccessFalse(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	probe := &fakeConnectionProbe{result: domain.TestConnectionResult{Success: false, Driver: "pgx", Error: "password authentication failed"}}
+	limiter := &fakeTestRateLimiter{allow: true}
+	svc.SetConnectionProber(probe)
+	svc.SetTestRateLimiter(limiter)
+
+	result, testErr := svc.TestConnection(context.Background(), 1, domain.TestDatabaseConnectionRequest{
+		SQLAlchemyURI: "postgresql://alice:secret@localhost:5432/analytics",
+	}, "user:1:ip:127.0.0.1")
+	if testErr != nil {
+		t.Fatalf("expected nil error, got %v", testErr)
+	}
+	if result.Success {
+		t.Fatalf("expected success=false, got %+v", result)
+	}
+	if result.Error == "" {
+		t.Fatal("expected error message in result")
+	}
+}
+
+func TestDatabaseService_TestConnectionUnknownDriverReturns422Error(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	probe := &fakeConnectionProbe{err: domain.ErrUnknownDatabaseDriver}
+	limiter := &fakeTestRateLimiter{allow: true}
+	svc.SetConnectionProber(probe)
+	svc.SetTestRateLimiter(limiter)
+
+	_, testErr := svc.TestConnection(context.Background(), 1, domain.TestDatabaseConnectionRequest{
+		SQLAlchemyURI: "snowflake://account/warehouse",
+	}, "user:1:ip:127.0.0.1")
+	if !errors.Is(testErr, domain.ErrUnknownDatabaseDriver) {
+		t.Fatalf("expected ErrUnknownDatabaseDriver, got %v", testErr)
+	}
+}
+
+func TestDatabaseService_TestConnectionRateLimitedReturns429Error(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	probe := &fakeConnectionProbe{result: domain.TestConnectionResult{Success: true, Driver: "pgx"}}
+	limiter := &fakeTestRateLimiter{allow: false}
+	svc.SetConnectionProber(probe)
+	svc.SetTestRateLimiter(limiter)
+
+	_, testErr := svc.TestConnection(context.Background(), 1, domain.TestDatabaseConnectionRequest{
+		SQLAlchemyURI: "postgresql://alice:secret@localhost:5432/analytics",
+	}, "user:1:ip:127.0.0.1")
+	if !errors.Is(testErr, domain.ErrRateLimited) {
+		t.Fatalf("expected ErrRateLimited, got %v", testErr)
+	}
+}
+
+func TestDatabaseService_TestConnectionByIDDecryptsAndProbes(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+	repo.getByIDResult = &domain.Database{ID: 7, SQLAlchemyURI: encryptedURI}
+
+	probe := &fakeConnectionProbe{result: domain.TestConnectionResult{Success: true, LatencyMS: 17, DBVersion: "PostgreSQL 15.4", Driver: "pgx"}}
+	limiter := &fakeTestRateLimiter{allow: true}
+	svc.SetConnectionProber(probe)
+	svc.SetTestRateLimiter(limiter)
+
+	result, testErr := svc.TestConnectionByID(context.Background(), 1, 7, "user:1:ip:127.0.0.1")
+	if testErr != nil {
+		t.Fatalf("expected nil error, got %v", testErr)
+	}
+	if !result.Success {
+		t.Fatalf("expected success=true, got %+v", result)
+	}
+	if !strings.Contains(probe.lastURI, "secret") {
+		t.Fatalf("expected decrypted password in probe URI, got %s", probe.lastURI)
 	}
 }
 

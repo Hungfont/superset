@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	svcauth "superset/auth-service/internal/app/db"
 	httpauth "superset/auth-service/internal/delivery/http/db"
@@ -20,6 +21,8 @@ type handlerDatabaseRepo struct {
 	isAdmin           bool
 	databaseNameTaken bool
 	createErr         error
+	getByIDResult     *domain.Database
+	getByIDErr        error
 }
 
 func (h *handlerDatabaseRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
@@ -40,12 +43,37 @@ func (h *handlerDatabaseRepo) CreateDatabase(_ context.Context, db *domain.Datab
 	return nil
 }
 
+func (h *handlerDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
+	if h.getByIDErr != nil {
+		return nil, h.getByIDErr
+	}
+	if h.getByIDResult == nil {
+		return nil, domain.ErrDatabaseNotFound
+	}
+	copyValue := *h.getByIDResult
+	return &copyValue, nil
+}
+
 type handlerDatabaseTester struct {
-	err error
+	err        error
+	probeErr   error
+	probeValue domain.TestConnectionResult
+	allowRate  bool
 }
 
 func (h *handlerDatabaseTester) TestConnection(_ context.Context, _ string) error {
 	return h.err
+}
+
+func (h *handlerDatabaseTester) Probe(_ context.Context, _ string) (domain.TestConnectionResult, error) {
+	if h.probeErr != nil {
+		return domain.TestConnectionResult{}, h.probeErr
+	}
+	return h.probeValue, nil
+}
+
+func (h *handlerDatabaseTester) Allow(_ context.Context, _ string, _ int, _ time.Duration) (bool, error) {
+	return h.allowRate, nil
 }
 
 type handlerDatabaseAuditLogger struct{}
@@ -57,6 +85,8 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 	if err != nil {
 		panic(err)
 	}
+	svc.SetConnectionProber(tester)
+	svc.SetTestRateLimiter(tester)
 	h := httpauth.NewDatabaseHandler(svc)
 	r := gin.New()
 
@@ -67,12 +97,14 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 
 	admin := r.Group("/api/v1/admin")
 	admin.POST("/databases", h.Create)
+	admin.POST("/databases/test", h.TestConnection)
+	admin.POST("/databases/:id/test", h.TestConnectionByID)
 
 	return r
 }
 
 func TestDatabaseHandler_PostReturns201WithMaskedURI(t *testing.T) {
-	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{})
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{allowRate: true})
 
 	payload := []byte(`{"database_name":"analytics","sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics","allow_dml":true}`)
 	w := httptest.NewRecorder()
@@ -89,7 +121,7 @@ func TestDatabaseHandler_PostReturns201WithMaskedURI(t *testing.T) {
 }
 
 func TestDatabaseHandler_PostDuplicateNameReturns409(t *testing.T) {
-	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true, databaseNameTaken: true}, &handlerDatabaseTester{})
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true, databaseNameTaken: true}, &handlerDatabaseTester{allowRate: true})
 
 	payload := []byte(`{"database_name":"analytics","sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics"}`)
 	w := httptest.NewRecorder()
@@ -103,7 +135,7 @@ func TestDatabaseHandler_PostDuplicateNameReturns409(t *testing.T) {
 }
 
 func TestDatabaseHandler_PostStrictTestFailureReturns422(t *testing.T) {
-	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{err: domain.ErrDatabaseConnectionTestFailed})
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{err: domain.ErrDatabaseConnectionTestFailed, allowRate: true})
 
 	payload := []byte(`{"database_name":"analytics","sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics","strict_test":true}`)
 	w := httptest.NewRecorder()
@@ -117,7 +149,7 @@ func TestDatabaseHandler_PostStrictTestFailureReturns422(t *testing.T) {
 }
 
 func TestDatabaseHandler_PostNonAdminReturns403(t *testing.T) {
-	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: false}, &handlerDatabaseTester{})
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: false}, &handlerDatabaseTester{allowRate: true})
 
 	payload := []byte(`{"database_name":"analytics","sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics"}`)
 	w := httptest.NewRecorder()
@@ -127,5 +159,69 @@ func TestDatabaseHandler_PostNonAdminReturns403(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_TestConnectionReturns200SuccessFalse(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{allowRate: true, probeValue: domain.TestConnectionResult{Success: false, Driver: "postgresql", Error: "auth failed"}})
+
+	payload := []byte(`{"sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics"}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/databases/test", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"success":false`)) {
+		t.Fatalf("expected success false body, got %s", w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_TestConnectionUnknownDriverReturns422(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{allowRate: true, probeErr: domain.ErrUnknownDatabaseDriver})
+
+	payload := []byte(`{"sqlalchemy_uri":"snowflake://account/warehouse"}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/databases/test", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_TestConnectionRateLimitedReturns429(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true}, &handlerDatabaseTester{allowRate: false})
+
+	payload := []byte(`{"sqlalchemy_uri":"postgresql://superset:secret-pass@localhost:5432/analytics"}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/databases/test", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_TestConnectionByIDReturns200(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, probeValue: domain.TestConnectionResult{Success: true, Driver: "postgresql", LatencyMS: 10, DBVersion: "PostgreSQL 15.4"}},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/admin/databases/2/test", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }

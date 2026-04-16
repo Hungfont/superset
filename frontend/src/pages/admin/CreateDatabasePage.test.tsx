@@ -98,6 +98,9 @@ describe("CreateDatabasePage", () => {
       expect(databasesApi.testConnection).toHaveBeenCalled();
     });
 
+    expect(screen.getByRole("button", { name: /test connection/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /(show|hide) error details/i })).toBeInTheDocument();
+
     expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
 
     await user.click(screen.getByLabelText(/save without testing/i));
@@ -105,11 +108,19 @@ describe("CreateDatabasePage", () => {
   });
 
   it("creates database and navigates to list on success", async () => {
-    vi.mocked(databasesApi.testConnection).mockResolvedValue({
+    let resolveTestConnection: ((value: { success: boolean; latency_ms?: number; db_version?: string }) => void) | null = null;
+    vi.mocked(databasesApi.testConnection).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTestConnection = resolve;
+        }),
+    );
+
+    const successfulTestResult = {
       success: true,
       latency_ms: 31,
       db_version: "PostgreSQL 15.4",
-    });
+    };
 
     vi.mocked(databasesApi.createDatabase).mockResolvedValue({
       id: 10,
@@ -136,9 +147,16 @@ describe("CreateDatabasePage", () => {
     await user.click(screen.getByRole("button", { name: /^next$/i }));
     await user.click(screen.getByRole("button", { name: /test connection/i }));
 
+    expect(screen.getByRole("button", { name: /testing/i })).toBeDisabled();
+
+    resolveTestConnection?.(successfulTestResult);
+
     await waitFor(() => {
       expect(screen.getByText(/connection successful/i)).toBeInTheDocument();
     });
+
+    expect(screen.getAllByText(/postgresql 15.4/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/31ms/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -148,5 +166,30 @@ describe("CreateDatabasePage", () => {
 
     expect(toastSuccessMock).toHaveBeenCalled();
     expect(navigateMock).toHaveBeenCalledWith("/admin/settings/databases");
+  });
+
+  it("shows rate limit toast when test endpoint returns 429", async () => {
+    vi.mocked(databasesApi.testConnection).mockRejectedValue(
+      Object.assign(new Error("too many requests"), { status: 429 }),
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByLabelText(/postgresql/i));
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+
+    await user.type(screen.getByLabelText(/database name/i), "analytics");
+    await user.type(screen.getByLabelText(/^host$/i), "localhost");
+    await user.type(screen.getByLabelText(/database$/i), "analytics");
+    await user.type(screen.getByLabelText(/username/i), "alice");
+    await user.type(screen.getByLabelText(/password/i), "secret");
+
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /test connection/i }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith("Too many test attempts. Wait 60 seconds.");
+    });
   });
 });

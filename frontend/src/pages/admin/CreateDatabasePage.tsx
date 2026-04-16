@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
@@ -54,6 +54,7 @@ export default function CreateDatabasePage() {
   const [step, setStep] = useState(0);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
 
   const form = useForm<CreateDatabaseFormValues>({
@@ -91,6 +92,7 @@ export default function CreateDatabasePage() {
         return;
       }
       setTestResult(null);
+      setShowErrorDetails(false);
     });
 
     return () => subscription.unsubscribe();
@@ -101,12 +103,22 @@ export default function CreateDatabasePage() {
     onSuccess: (result) => {
       setTestResult(result);
       if (!result.success) {
+        setShowErrorDetails(true);
         error(result.error || "Connection failed");
+      } else {
+        setShowErrorDetails(false);
       }
     },
     onError: (err) => {
-      setTestResult({ success: false, error: (err as Error).message || "Connection failed" });
-      error((err as Error).message || "Connection failed");
+      const requestError = err as Error & { status?: number };
+      if (requestError.status === 429) {
+        error("Too many test attempts. Wait 60 seconds.");
+        return;
+      }
+
+      setShowErrorDetails(true);
+      setTestResult({ success: false, error: requestError.message || "Connection failed" });
+      error(requestError.message || "Connection failed");
     },
   });
 
@@ -398,7 +410,14 @@ export default function CreateDatabasePage() {
 
                 <div className="flex items-center gap-2">
                   <Button type="button" onClick={handleTestConnection} disabled={testMutation.isPending}>
-                    Test Connection
+                    {testMutation.isPending ? (
+                      <>
+                        <Loader2 className="animate-spin" />
+                        Testing...
+                      </>
+                    ) : (
+                      "Test Connection"
+                    )}
                   </Button>
 
                   {testResult?.success ? (
@@ -422,12 +441,46 @@ export default function CreateDatabasePage() {
                   </Alert>
                 ) : null}
 
+                {testResult?.success && testResult.db_version ? (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Database Version</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">{testResult.db_version}</p>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
                 {testResult && !testResult.success ? (
                   <Alert variant="destructive">
                     <XCircle className="size-4" />
                     <AlertTitle>Connection failed</AlertTitle>
                     <AlertDescription>{testResult.error || "Unknown connection error"}</AlertDescription>
                   </Alert>
+                ) : null}
+
+                {testResult && !testResult.success && testResult.error ? (
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit"
+                      onClick={() => setShowErrorDetails((prev) => !prev)}
+                    >
+                      {showErrorDetails ? "Hide error details" : "Show error details"}
+                    </Button>
+                    {showErrorDetails ? (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">Error details</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground break-all">{testResult.error}</p>
+                        </CardContent>
+                      </Card>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 <FormField

@@ -38,3 +38,17 @@ type DatabaseDetail struct {
 	AllowRunAsync   bool   `json:"allow_run_async"`
 	AllowFileUpload bool   `json:"allow_file_upload"`
 }
+
+// TestDatabaseConnectionRequest is used by POST /api/v1/admin/databases/test.
+type TestDatabaseConnectionRequest struct {
+	SQLAlchemyURI string `json:"sqlalchemy_uri" binding:"required"`
+}
+
+// TestConnectionResult is returned by test endpoints.
+type TestConnectionResult struct {
+	Success   bool   `json:"success"`
+	LatencyMS int64  `json:"latency_ms,omitempty"`
+	DBVersion string `json:"db_version,omitempty"`
+	Driver    string `json:"driver,omitempty"`
+	Error     string `json:"error,omitempty"`
+}

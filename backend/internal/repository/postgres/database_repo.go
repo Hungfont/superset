@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	domain "superset/auth-service/internal/domain/db"
@@ -40,6 +41,18 @@ func (r *databaseRepo) DatabaseNameExists(ctx context.Context, databaseName stri
 		return false, fmt.Errorf("checking database name exists: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (r *databaseRepo) GetDatabaseByID(ctx context.Context, databaseID uint) (*domain.Database, error) {
+	var database domain.Database
+	err := r.db.WithContext(ctx).Table("dbs").Where("id = ?", databaseID).First(&database).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrDatabaseNotFound
+		}
+		return nil, fmt.Errorf("loading database by id: %w", err)
+	}
+	return &database, nil
 }
 
 func (r *databaseRepo) CreateDatabase(ctx context.Context, database *domain.Database) error {

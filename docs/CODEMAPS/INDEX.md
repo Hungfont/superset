@@ -17,5 +17,5 @@ HLD: [docs/diagram/HLD.md](../diagram/HLD.md)
 
 ## Current Scope
 
-Only the **Auth Service** is implemented (Phase 1).  
+The **Auth Service** is implemented (Phase 1), along with initial **Database Connection Service** endpoints (create + test connection flows).  
 Future services tracked in [docs/requirement/](../requirement/).
