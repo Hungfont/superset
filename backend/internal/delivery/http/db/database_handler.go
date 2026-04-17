@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	svcdb "superset/auth-service/internal/app/db"
 	"superset/auth-service/internal/delivery/http/middleware"
@@ -202,12 +203,141 @@ func (h *DatabaseHandler) TestConnectionByID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+func (h *DatabaseHandler) ListSchemas(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	forceRefresh, err := parseBoolQuery(c.Query("force_refresh"), false)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	rateLimitKey := fmt.Sprintf("database-schema-refresh:user:%d:db:%d:ip:%s", actor.ID, databaseID, c.ClientIP())
+	result, listErr := h.svc.ListSchemas(c.Request.Context(), actor.ID, uint(databaseID), forceRefresh, rateLimitKey)
+	if listErr != nil {
+		h.handleError(c, listErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *DatabaseHandler) ListTables(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	page, err := parsePositiveInt(c.Query("page"), 1)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	pageSize, err := parsePositiveInt(c.Query("page_size"), 50)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	forceRefresh, err := parseBoolQuery(c.Query("force_refresh"), false)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	req := domain.ListDatabaseTablesRequest{
+		Schema:   strings.TrimSpace(c.Query("schema")),
+		Page:     page,
+		PageSize: pageSize,
+	}
+	if req.Schema == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	rateLimitKey := fmt.Sprintf("database-schema-refresh:user:%d:db:%d:ip:%s", actor.ID, databaseID, c.ClientIP())
+	result, listErr := h.svc.ListTables(c.Request.Context(), actor.ID, uint(databaseID), req, forceRefresh, rateLimitKey)
+	if listErr != nil {
+		h.handleError(c, listErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": result.Items,
+		"pagination": gin.H{
+			"total":     result.Total,
+			"page":      result.Page,
+			"page_size": result.PageSize,
+		},
+	})
+}
+
+func (h *DatabaseHandler) ListColumns(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	forceRefresh, err := parseBoolQuery(c.Query("force_refresh"), false)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	req := domain.ListDatabaseColumnsRequest{
+		Schema: strings.TrimSpace(c.Query("schema")),
+		Table:  strings.TrimSpace(c.Query("table")),
+	}
+	if req.Schema == "" || req.Table == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	rateLimitKey := fmt.Sprintf("database-schema-refresh:user:%d:db:%d:ip:%s", actor.ID, databaseID, c.ClientIP())
+	result, listErr := h.svc.ListColumns(c.Request.Context(), actor.ID, uint(databaseID), req, forceRefresh, rateLimitKey)
+	if listErr != nil {
+		h.handleError(c, listErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 func (h *DatabaseHandler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrRateLimited):
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many test attempts. wait 60 seconds."})
+	case errors.Is(err, domain.ErrDatabaseUnreachable):
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatabaseTimeout):
+		c.JSON(http.StatusGatewayTimeout, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatabaseNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatabaseNameExists):
@@ -245,6 +375,19 @@ func parsePositiveInt(raw string, defaultValue int) (int, error) {
 	value, err := strconv.Atoi(raw)
 	if err != nil || value < 1 {
 		return 0, domain.ErrInvalidDatabase
+	}
+
+	return value, nil
+}
+
+func parseBoolQuery(raw string, defaultValue bool) (bool, error) {
+	if raw == "" {
+		return defaultValue, nil
+	}
+
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, domain.ErrInvalidDatabase
 	}
 
 	return value, nil

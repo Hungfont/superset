@@ -25,6 +25,7 @@ type SQLConnection interface {
 	SetMaxIdleConns(n int)
 	SetConnMaxLifetime(d time.Duration)
 	PingContext(ctx context.Context) error
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	Close() error
 }
 

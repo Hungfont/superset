@@ -21,12 +21,16 @@ import (
 )
 
 const (
-	databaseTestConnectionTimeout = 5 * time.Second
-	databaseTestRateLimitCap      = 10
-	databaseTestRateLimitWindow   = time.Minute
-	databaseListDefaultPage       = 1
-	databaseListDefaultPageSize   = 10
-	databaseListMaxPageSize       = 100
+	databaseTestConnectionTimeout        = 5 * time.Second
+	databaseTestRateLimitCap             = 10
+	databaseTestRateLimitWindow          = time.Minute
+	databaseListDefaultPage              = 1
+	databaseListDefaultPageSize          = 10
+	databaseListMaxPageSize              = 100
+	databaseSchemaCacheTTL               = 10 * time.Minute
+	databaseSchemaIntrospectionTimeout   = 5 * time.Second
+	databaseSchemaRefreshRateLimitCap    = 5
+	databaseSchemaRefreshRateLimitWindow = time.Minute
 )
 
 // DatabaseConnectionTester validates a database connection before persistence.
@@ -160,13 +164,15 @@ func resolveSQLDriver(scheme string) (string, string, error) {
 
 // DatabaseService handles admin database connection management.
 type DatabaseService struct {
-	repo          domain.DatabaseRepository
-	tester        DatabaseConnectionTester
-	prober        DatabaseConnectionProber
-	testRateLimit DatabaseTestRateLimiter
-	poolManager   DatabaseConnectionPool
-	auditLogger   DatabaseAuditLogger
-	encryptionKey []byte
+	repo            domain.DatabaseRepository
+	tester          DatabaseConnectionTester
+	prober          DatabaseConnectionProber
+	testRateLimit   DatabaseTestRateLimiter
+	poolManager     DatabaseConnectionPool
+	auditLogger     DatabaseAuditLogger
+	schemaInspector SchemaInspector
+	schemaCache     domain.SchemaCacheRepository
+	encryptionKey   []byte
 }
 
 func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectionTester, auditLogger DatabaseAuditLogger, encryptionKey string) (*DatabaseService, error) {
@@ -188,15 +194,19 @@ func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectio
 	resolvedProber := DatabaseConnectionProber(defaultDatabaseConnectionProber{})
 	resolvedRateLimiter := DatabaseTestRateLimiter(newDefaultDatabaseTestRateLimiter())
 	resolvedPoolManager := DatabaseConnectionPool(NewConnectionPoolManager(nil, ConnectionPoolManagerConfig{}))
+	resolvedSchemaInspector := newDefaultSchemaInspector()
+	resolvedSchemaCache := newInMemorySchemaCache()
 
 	return &DatabaseService{
-		repo:          repo,
-		tester:        resolvedTester,
-		prober:        resolvedProber,
-		testRateLimit: resolvedRateLimiter,
-		auditLogger:   resolvedAuditLogger,
-		encryptionKey: parsedKey,
-		poolManager:   resolvedPoolManager,
+		repo:            repo,
+		tester:          resolvedTester,
+		prober:          resolvedProber,
+		testRateLimit:   resolvedRateLimiter,
+		auditLogger:     resolvedAuditLogger,
+		encryptionKey:   parsedKey,
+		poolManager:     resolvedPoolManager,
+		schemaInspector: resolvedSchemaInspector,
+		schemaCache:     resolvedSchemaCache,
 	}, nil
 }
 
@@ -230,6 +240,22 @@ func (s *DatabaseService) SetTestRateLimiter(limiter DatabaseTestRateLimiter) {
 		return
 	}
 	s.testRateLimit = limiter
+}
+
+// SetSchemaInspector replaces the default inspector, mainly for tests.
+func (s *DatabaseService) SetSchemaInspector(inspector SchemaInspector) {
+	if inspector == nil {
+		return
+	}
+	s.schemaInspector = inspector
+}
+
+// SetSchemaCache replaces the default cache repository, mainly for tests and production DI.
+func (s *DatabaseService) SetSchemaCache(cache domain.SchemaCacheRepository) {
+	if cache == nil {
+		return
+	}
+	s.schemaCache = cache
 }
 
 func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, req domain.CreateDatabaseRequest) (*domain.DatabaseDetail, error) {

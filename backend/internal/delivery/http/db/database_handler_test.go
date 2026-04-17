@@ -117,6 +117,17 @@ type handlerDatabaseTester struct {
 	probeErr   error
 	probeValue domain.TestConnectionResult
 	allowRate  bool
+
+	schemas      []string
+	tables       []domain.DatabaseTable
+	tablesTotal  int64
+	columns      []domain.DatabaseColumn
+	schemasErr   error
+	tablesErr    error
+	columnsErr   error
+	schemasCalls int
+	tablesCalls  int
+	columnsCalls int
 }
 
 func (h *handlerDatabaseTester) TestConnection(_ context.Context, _ string) error {
@@ -134,6 +145,44 @@ func (h *handlerDatabaseTester) Allow(_ context.Context, _ string, _ int, _ time
 	return h.allowRate, nil
 }
 
+func (h *handlerDatabaseTester) ListSchemas(_ context.Context, _ svcauth.SQLConnection) ([]string, error) {
+	h.schemasCalls++
+	if h.schemasErr != nil {
+		return nil, h.schemasErr
+	}
+	return append([]string(nil), h.schemas...), nil
+}
+
+func (h *handlerDatabaseTester) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int) ([]domain.DatabaseTable, int64, error) {
+	h.tablesCalls++
+	if h.tablesErr != nil {
+		return nil, 0, h.tablesErr
+	}
+	return append([]domain.DatabaseTable(nil), h.tables...), h.tablesTotal, nil
+}
+
+func (h *handlerDatabaseTester) ListColumns(_ context.Context, _ svcauth.SQLConnection, _ string, _ string) ([]domain.DatabaseColumn, error) {
+	h.columnsCalls++
+	if h.columnsErr != nil {
+		return nil, h.columnsErr
+	}
+	return append([]domain.DatabaseColumn(nil), h.columns...), nil
+}
+
+type handlerConnectionPool struct{}
+
+func (handlerConnectionPool) Get(_ context.Context, _ uint, _ string) (svcauth.SQLConnection, error) {
+	return nil, nil
+}
+
+func (handlerConnectionPool) Close(_ context.Context, _ uint) error {
+	return nil
+}
+
+func (handlerConnectionPool) Shutdown(_ context.Context) error {
+	return nil
+}
+
 type handlerDatabaseAuditLogger struct{}
 
 func (h *handlerDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, _ uint) {}
@@ -145,6 +194,8 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 	}
 	svc.SetConnectionProber(tester)
 	svc.SetTestRateLimiter(tester)
+	svc.SetSchemaInspector(tester)
+	svc.SetConnectionPool(handlerConnectionPool{})
 	h := httpauth.NewDatabaseHandler(svc)
 	r := gin.New()
 
@@ -161,6 +212,9 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 	admin.DELETE("/databases/:id", h.Delete)
 	admin.POST("/databases/test", h.TestConnection)
 	admin.POST("/databases/:id/test", h.TestConnectionByID)
+	admin.GET("/databases/:id/schemas", h.ListSchemas)
+	admin.GET("/databases/:id/tables", h.ListTables)
+	admin.GET("/databases/:id/columns", h.ListColumns)
 
 	return r
 }
@@ -377,5 +431,137 @@ func TestDatabaseHandler_DeleteReturns409WhenInUse(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListSchemasReturns200(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, schemas: []string{"analytics", "public"}},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/schemas", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "public") {
+		t.Fatalf("expected schemas payload, got %s", w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListTablesReturnsPaginatedData(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, tables: []domain.DatabaseTable{{Name: "orders"}}, tablesTotal: 1},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/tables?schema=public&page=1&page_size=10", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "orders") {
+		t.Fatalf("expected tables payload, got %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "\"pagination\"") {
+		t.Fatalf("expected pagination payload, got %s", w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListColumnsReturnsIsDttmMetadata(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, columns: []domain.DatabaseColumn{{Name: "created_at", DataType: "timestamp", IsDttm: true}}},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/columns?schema=public&table=orders", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "\"is_dttm\":true") {
+		t.Fatalf("expected is_dttm metadata in payload, got %s", w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListSchemasForceRefreshRateLimitedReturns429(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: false},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/schemas?force_refresh=true", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListSchemasDatabaseUnreachableReturns502(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, schemasErr: domain.ErrDatabaseUnreachable},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/schemas", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_ListSchemasTimeoutReturns504(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: encryptedURI}},
+		&handlerDatabaseTester{allowRate: true, schemasErr: domain.ErrDatabaseTimeout},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/admin/databases/2/schemas", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusGatewayTimeout {
+		t.Fatalf("expected 504, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -1,6 +1,9 @@
 package db
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // DatabaseRepository manages database connection records.
 type DatabaseRepository interface {
@@ -24,4 +27,10 @@ type DatabaseRepository interface {
 	DeleteDatabase(ctx context.Context, databaseID uint) error
 	// CountDatasetsByDatabaseID returns number of datasets bound to the database.
 	CountDatasetsByDatabaseID(ctx context.Context, databaseID uint) (int64, error)
+}
+
+// SchemaCacheRepository stores and retrieves serialized introspection payloads.
+type SchemaCacheRepository interface {
+	Get(ctx context.Context, key string) (string, bool, error)
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
 }

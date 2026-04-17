@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,66 @@ type fakeConnectionPool struct {
 	closeCalled   int
 	shutdownCalls int
 	lastClosedID  uint
+}
+
+type fakeSchemaInspector struct {
+	schemas      []string
+	tables       []domain.DatabaseTable
+	tablesTotal  int64
+	columns      []domain.DatabaseColumn
+	schemasErr   error
+	tablesErr    error
+	columnsErr   error
+	schemasCalls int
+	tablesCalls  int
+	columnsCalls int
+}
+
+func (f *fakeSchemaInspector) ListSchemas(_ context.Context, _ svcauth.SQLConnection) ([]string, error) {
+	f.schemasCalls++
+	if f.schemasErr != nil {
+		return nil, f.schemasErr
+	}
+	return append([]string(nil), f.schemas...), nil
+}
+
+func (f *fakeSchemaInspector) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int) ([]domain.DatabaseTable, int64, error) {
+	f.tablesCalls++
+	if f.tablesErr != nil {
+		return nil, 0, f.tablesErr
+	}
+	return append([]domain.DatabaseTable(nil), f.tables...), f.tablesTotal, nil
+}
+
+func (f *fakeSchemaInspector) ListColumns(_ context.Context, _ svcauth.SQLConnection, _ string, _ string) ([]domain.DatabaseColumn, error) {
+	f.columnsCalls++
+	if f.columnsErr != nil {
+		return nil, f.columnsErr
+	}
+	return append([]domain.DatabaseColumn(nil), f.columns...), nil
+}
+
+type fakeSchemaCache struct {
+	store map[string]string
+}
+
+func (f *fakeSchemaCache) Get(_ context.Context, key string) (string, bool, error) {
+	if f.store == nil {
+		return "", false, nil
+	}
+	value, ok := f.store[key]
+	if !ok {
+		return "", false, nil
+	}
+	return value, true, nil
+}
+
+func (f *fakeSchemaCache) Set(_ context.Context, key string, value string, _ time.Duration) error {
+	if f.store == nil {
+		f.store = map[string]string{}
+	}
+	f.store[key] = value
+	return nil
 }
 
 func (f *fakeConnectionPool) Get(_ context.Context, _ uint, _ string) (svcauth.SQLConnection, error) {
@@ -592,6 +653,169 @@ func TestDatabaseService_ShutdownConnectionPoolsDelegatesToManager(t *testing.T)
 	}
 	if pool.shutdownCalls != 1 {
 		t.Fatalf("expected shutdown calls 1, got %d", pool.shutdownCalls)
+	}
+}
+
+func TestDatabaseService_ListSchemasUsesCacheOnSecondRequest(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 9, SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	inspector := &fakeSchemaInspector{schemas: []string{"public", "analytics"}}
+	svc.SetSchemaInspector(inspector)
+	svc.SetSchemaCache(&fakeSchemaCache{store: map[string]string{}})
+	svc.SetConnectionPool(&fakeConnectionPool{})
+
+	first, firstErr := svc.ListSchemas(context.Background(), 1, 9, false, "")
+	if firstErr != nil {
+		t.Fatalf("expected nil error, got %v", firstErr)
+	}
+
+	second, secondErr := svc.ListSchemas(context.Background(), 1, 9, false, "")
+	if secondErr != nil {
+		t.Fatalf("expected nil error, got %v", secondErr)
+	}
+
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("expected same schemas from cache, got first=%v second=%v", first, second)
+	}
+	if inspector.schemasCalls != 1 {
+		t.Fatalf("expected inspector called once due cache hit, got %d", inspector.schemasCalls)
+	}
+}
+
+func TestDatabaseService_ListTablesForceRefreshBypassesCache(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 10, SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	inspector := &fakeSchemaInspector{
+		tables:      []domain.DatabaseTable{{Name: "orders"}},
+		tablesTotal: 1,
+	}
+	limiter := &fakeTestRateLimiter{allow: true}
+
+	svc.SetSchemaInspector(inspector)
+	svc.SetSchemaCache(&fakeSchemaCache{store: map[string]string{}})
+	svc.SetConnectionPool(&fakeConnectionPool{})
+	svc.SetTestRateLimiter(limiter)
+
+	first, firstErr := svc.ListTables(context.Background(), 1, 10, domain.ListDatabaseTablesRequest{Schema: "public", Page: 1, PageSize: 10}, false, "")
+	if firstErr != nil {
+		t.Fatalf("expected nil error, got %v", firstErr)
+	}
+	if len(first.Items) != 1 || first.Items[0].Name != "orders" {
+		t.Fatalf("unexpected first table result: %+v", first.Items)
+	}
+
+	inspector.tables = []domain.DatabaseTable{{Name: "customers"}}
+
+	cached, cachedErr := svc.ListTables(context.Background(), 1, 10, domain.ListDatabaseTablesRequest{Schema: "public", Page: 1, PageSize: 10}, false, "")
+	if cachedErr != nil {
+		t.Fatalf("expected nil error, got %v", cachedErr)
+	}
+	if len(cached.Items) != 1 || cached.Items[0].Name != "orders" {
+		t.Fatalf("expected cached table result, got %+v", cached.Items)
+	}
+
+	refreshed, refreshErr := svc.ListTables(context.Background(), 1, 10, domain.ListDatabaseTablesRequest{Schema: "public", Page: 1, PageSize: 10}, true, "schema-refresh")
+	if refreshErr != nil {
+		t.Fatalf("expected nil error, got %v", refreshErr)
+	}
+	if len(refreshed.Items) != 1 || refreshed.Items[0].Name != "customers" {
+		t.Fatalf("expected force refresh to bypass cache, got %+v", refreshed.Items)
+	}
+	if inspector.tablesCalls != 2 {
+		t.Fatalf("expected inspector called twice, got %d", inspector.tablesCalls)
+	}
+	if limiter.called != 1 {
+		t.Fatalf("expected limiter called once for force refresh, got %d", limiter.called)
+	}
+}
+
+func TestDatabaseService_ListColumnsForceRefreshRateLimited(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	inspector := &fakeSchemaInspector{columns: []domain.DatabaseColumn{{Name: "created_at", DataType: "timestamp", IsDttm: true}}}
+	limiter := &fakeTestRateLimiter{allow: false}
+
+	svc.SetSchemaInspector(inspector)
+	svc.SetConnectionPool(&fakeConnectionPool{})
+	svc.SetTestRateLimiter(limiter)
+
+	_, listErr := svc.ListColumns(context.Background(), 1, 11, domain.ListDatabaseColumnsRequest{Schema: "public", Table: "orders"}, true, "schema-refresh")
+	if !errors.Is(listErr, domain.ErrRateLimited) {
+		t.Fatalf("expected ErrRateLimited, got %v", listErr)
+	}
+	if inspector.columnsCalls != 0 {
+		t.Fatalf("expected inspector not called when rate-limited, got %d", inspector.columnsCalls)
+	}
+}
+
+func TestDatabaseService_ListColumnsMapsTimeoutToGatewayTimeout(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 12, SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	inspector := &fakeSchemaInspector{columnsErr: context.DeadlineExceeded}
+	svc.SetSchemaInspector(inspector)
+	svc.SetConnectionPool(&fakeConnectionPool{})
+
+	_, listErr := svc.ListColumns(context.Background(), 1, 12, domain.ListDatabaseColumnsRequest{Schema: "public", Table: "orders"}, false, "")
+	if !errors.Is(listErr, domain.ErrDatabaseTimeout) {
+		t.Fatalf("expected ErrDatabaseTimeout, got %v", listErr)
+	}
+}
+
+func TestDatabaseService_ListColumnsMapsConnectionErrorsToBadGateway(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 13, SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	inspector := &fakeSchemaInspector{columnsErr: errors.New("connection reset by peer")}
+	svc.SetSchemaInspector(inspector)
+	svc.SetConnectionPool(&fakeConnectionPool{})
+
+	_, listErr := svc.ListColumns(context.Background(), 1, 13, domain.ListDatabaseColumnsRequest{Schema: "public", Table: "orders"}, false, "")
+	if !errors.Is(listErr, domain.ErrDatabaseUnreachable) {
+		t.Fatalf("expected ErrDatabaseUnreachable, got %v", listErr)
 	}
 }
 

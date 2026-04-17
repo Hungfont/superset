@@ -61,6 +61,40 @@ export interface TestConnectionResult {
   error?: string;
 }
 
+export interface DatabaseTable {
+  name: string;
+}
+
+export interface DatabaseColumn {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  default_value?: string;
+  is_dttm: boolean;
+}
+
+export interface DatabaseTablesResponse {
+  items: DatabaseTable[];
+  pagination: {
+    total: number;
+    page: number;
+    page_size: number;
+  };
+}
+
+export interface GetDatabaseTablesParams {
+  schema: string;
+  page?: number;
+  pageSize?: number;
+  forceRefresh?: boolean;
+}
+
+export interface GetDatabaseColumnsParams {
+  schema: string;
+  table: string;
+  forceRefresh?: boolean;
+}
+
 function getAuthHeaders(contentType = false): HeadersInit {
   const accessToken = useAuthStore.getState().accessToken;
   return {
@@ -106,6 +140,73 @@ export const databasesApi = {
       credentials: "include",
       headers: getAuthHeaders(),
     });
+    return body.data;
+  },
+
+  async getSchemas(databaseId: number, forceRefresh = false): Promise<string[]> {
+    const query = new URLSearchParams();
+    if (forceRefresh) {
+      query.set("force_refresh", "true");
+    }
+
+    const queryString = query.toString();
+    const url = queryString === ""
+      ? `/api/v1/admin/databases/${databaseId}/schemas`
+      : `/api/v1/admin/databases/${databaseId}/schemas?${queryString}`;
+
+    const body = await request<ApiEnvelope<string[]>>(url, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+    return body.data;
+  },
+
+  async getTables(databaseId: number, params: GetDatabaseTablesParams): Promise<DatabaseTablesResponse> {
+    const query = new URLSearchParams();
+    query.set("schema", params.schema);
+
+    if (params.page) {
+      query.set("page", String(params.page));
+    }
+    if (params.pageSize) {
+      query.set("page_size", String(params.pageSize));
+    }
+    if (params.forceRefresh) {
+      query.set("force_refresh", "true");
+    }
+
+    const body = await request<{ data: DatabaseTable[]; pagination: DatabaseTablesResponse["pagination"] }>(
+      `/api/v1/admin/databases/${databaseId}/tables?${query.toString()}`,
+      {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      },
+    );
+
+    return {
+      items: body.data,
+      pagination: body.pagination,
+    };
+  },
+
+  async getColumns(databaseId: number, params: GetDatabaseColumnsParams): Promise<DatabaseColumn[]> {
+    const query = new URLSearchParams();
+    query.set("schema", params.schema);
+    query.set("table", params.table);
+    if (params.forceRefresh) {
+      query.set("force_refresh", "true");
+    }
+
+    const body = await request<ApiEnvelope<DatabaseColumn[]>>(
+      `/api/v1/admin/databases/${databaseId}/columns?${query.toString()}`,
+      {
+        method: "GET",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      },
+    );
     return body.data;
   },
 

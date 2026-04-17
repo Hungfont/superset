@@ -11,6 +11,8 @@ var (
 	ErrDatabaseNotFound             = pkgerrors.ErrDatabaseNotFound
 	ErrDatabaseNameExists           = pkgerrors.ErrDatabaseNameExists
 	ErrDatabaseInUse                = pkgerrors.ErrDatabaseInUse
+	ErrDatabaseUnreachable          = pkgerrors.ErrDatabaseUnreachable
+	ErrDatabaseTimeout              = pkgerrors.ErrDatabaseTimeout
 	ErrDatabaseConnectionTestFailed = pkgerrors.ErrDatabaseConnectionTestFailed
 	ErrDatabaseCredentialEncryption = pkgerrors.ErrDatabaseCredentialEncryption
 	ErrUnknownDatabaseDriver        = pkgerrors.ErrUnknownDatabaseDriver

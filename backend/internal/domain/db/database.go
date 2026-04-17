@@ -126,3 +126,38 @@ type UpdateDatabaseRequest struct {
 	AllowFileUpload *bool   `json:"allow_file_upload,omitempty"`
 	StrictTest      *bool   `json:"strict_test,omitempty"`
 }
+
+// ListDatabaseTablesRequest is used by GET /api/v1/admin/databases/:id/tables.
+type ListDatabaseTablesRequest struct {
+	Schema   string
+	Page     int
+	PageSize int
+}
+
+// ListDatabaseColumnsRequest is used by GET /api/v1/admin/databases/:id/columns.
+type ListDatabaseColumnsRequest struct {
+	Schema string
+	Table  string
+}
+
+// DatabaseTable is one table item discovered from database metadata.
+type DatabaseTable struct {
+	Name string `json:"name"`
+}
+
+// DatabaseTableListResponse represents paginated introspection table output.
+type DatabaseTableListResponse struct {
+	Items    []DatabaseTable `json:"items"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}
+
+// DatabaseColumn is one column metadata item discovered from database metadata.
+type DatabaseColumn struct {
+	Name         string `json:"name"`
+	DataType     string `json:"data_type"`
+	IsNullable   bool   `json:"is_nullable"`
+	DefaultValue string `json:"default_value,omitempty"`
+	IsDttm       bool   `json:"is_dttm"`
+}

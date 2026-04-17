@@ -347,7 +347,7 @@ N/A - internal backend component
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                                                                          |
 | ----------------- | ------------ | --------- | ------------- | -------------------------------------------------------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read)    | GET /api/v1/admin/databases/:id/schemas · GET /api/v1/databases/admin/:id/tables · GET /api/v1/admin/databases/:id/columns |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read)  | GET /api/v1/admin/databases/:id/schemas · GET /api/v1/databases/admin/:id/tables · GET /api/v1/admin/databases/:id/columns |
 
 | **⚙️ Backend - Description**
 - Driver-abstracted schema discovery. Redis cache 10min. Paginated table list. Per-driver INFORMATION_SCHEMA or native queries. force_refresh bypasses cache (rate-limited 5/min).

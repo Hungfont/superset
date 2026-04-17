@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -40,6 +41,10 @@ func (f *fakeSQLConnection) PingContext(_ context.Context) error {
 	}
 	err, _ := value.(error)
 	return err
+}
+
+func (f *fakeSQLConnection) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (f *fakeSQLConnection) Close() error {

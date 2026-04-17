@@ -106,6 +106,7 @@ func main() {
 	userRoleRepo := repopostgres.NewUserRoleRepository(db)
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	databaseRepo := repopostgres.NewDatabaseRepository(db)
+	schemaCacheRepo := reporedis.NewDatabaseSchemaCacheRepository(redisClient)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
 	refreshRepo := reporedis.NewRefreshRepository(redisClient)
@@ -127,6 +128,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize database service: %v", err)
 	}
+	databaseSvc.SetSchemaCache(schemaCacheRepo)
 	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
 		log.Fatalf("failed to seed permission views: %v", err)
 	}
