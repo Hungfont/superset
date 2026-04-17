@@ -5,7 +5,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"superset/auth-service/configs"
 	svcauth "superset/auth-service/internal/app/auth"
@@ -156,7 +162,29 @@ func main() {
 	)
 
 	log.Printf("Auth Service starting on :%s", cfg.App.Port)
-	if err := router.Run(":" + cfg.App.Port); err != nil {
-		log.Fatalf("server error: %v", err)
+	server := &http.Server{
+		Addr:    ":" + cfg.App.Port,
+		Handler: router,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	stopSignal := make(chan os.Signal, 1)
+	signal.Notify(stopSignal, syscall.SIGINT, syscall.SIGTERM)
+	<-stopSignal
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := databaseSvc.ShutdownConnectionPools(shutdownCtx); err != nil {
+		log.Printf("failed to shutdown database connection pools: %v", err)
+	}
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("server shutdown error: %v", err)
 	}
 }

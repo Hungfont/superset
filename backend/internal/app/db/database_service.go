@@ -164,6 +164,7 @@ type DatabaseService struct {
 	tester        DatabaseConnectionTester
 	prober        DatabaseConnectionProber
 	testRateLimit DatabaseTestRateLimiter
+	poolManager   DatabaseConnectionPool
 	auditLogger   DatabaseAuditLogger
 	encryptionKey []byte
 }
@@ -186,6 +187,7 @@ func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectio
 
 	resolvedProber := DatabaseConnectionProber(defaultDatabaseConnectionProber{})
 	resolvedRateLimiter := DatabaseTestRateLimiter(newDefaultDatabaseTestRateLimiter())
+	resolvedPoolManager := DatabaseConnectionPool(NewConnectionPoolManager(nil, ConnectionPoolManagerConfig{}))
 
 	return &DatabaseService{
 		repo:          repo,
@@ -194,6 +196,7 @@ func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectio
 		testRateLimit: resolvedRateLimiter,
 		auditLogger:   resolvedAuditLogger,
 		encryptionKey: parsedKey,
+		poolManager:   resolvedPoolManager,
 	}, nil
 }
 
@@ -203,6 +206,22 @@ func (s *DatabaseService) SetConnectionProber(prober DatabaseConnectionProber) {
 		return
 	}
 	s.prober = prober
+}
+
+// SetConnectionPool replaces the default pool manager, mainly for tests.
+func (s *DatabaseService) SetConnectionPool(pool DatabaseConnectionPool) {
+	if pool == nil {
+		return
+	}
+	s.poolManager = pool
+}
+
+// ShutdownConnectionPools closes all managed pools and stops the health monitor.
+func (s *DatabaseService) ShutdownConnectionPools(ctx context.Context) error {
+	if s.poolManager == nil {
+		return nil
+	}
+	return s.poolManager.Shutdown(ctx)
 }
 
 // SetTestRateLimiter replaces the default in-memory limiter, mainly for tests.
@@ -421,6 +440,12 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 		return nil, err
 	}
 
+	if s.poolManager != nil {
+		if err := s.poolManager.Close(ctx, databaseID); err != nil {
+			return nil, fmt.Errorf("closing database pool: %w", err)
+		}
+	}
+
 	maskedURI, err := maskSQLAlchemyURI(updated.SQLAlchemyURI)
 	if err != nil {
 		return nil, err
@@ -458,6 +483,12 @@ func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, 
 
 	if datasetCount > 0 {
 		return domain.ErrDatabaseInUse
+	}
+
+	if s.poolManager != nil {
+		if err := s.poolManager.Close(ctx, databaseID); err != nil {
+			return fmt.Errorf("closing database pool: %w", err)
+		}
 	}
 
 	if err := s.repo.DeleteDatabase(ctx, databaseID); err != nil {

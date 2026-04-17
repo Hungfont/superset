@@ -157,6 +157,29 @@ func (f *fakeTestRateLimiter) Allow(_ context.Context, key string, cap int, ttl 
 	return f.allow, nil
 }
 
+type fakeConnectionPool struct {
+	closeErr      error
+	shutdownErr   error
+	closeCalled   int
+	shutdownCalls int
+	lastClosedID  uint
+}
+
+func (f *fakeConnectionPool) Get(_ context.Context, _ uint, _ string) (svcauth.SQLConnection, error) {
+	return nil, nil
+}
+
+func (f *fakeConnectionPool) Close(_ context.Context, databaseID uint) error {
+	f.closeCalled++
+	f.lastClosedID = databaseID
+	return f.closeErr
+}
+
+func (f *fakeConnectionPool) Shutdown(_ context.Context) error {
+	f.shutdownCalls++
+	return f.shutdownErr
+}
+
 func (f *fakeDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, databaseID uint) {
 	f.called++
 	f.lastID = databaseID
@@ -482,10 +505,12 @@ func TestDatabaseService_UpdateDatabaseMergesMaskedPasswordAndReturnsMaskedURI(t
 
 	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI}}
 	tester := &fakeDatabaseTester{}
+	pool := &fakeConnectionPool{}
 	svc, err := svcauth.NewDatabaseService(repo, tester, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
 	if err != nil {
 		t.Fatalf("expected nil constructor error, got %v", err)
 	}
+	svc.SetConnectionPool(pool)
 
 	name := "analytics-updated"
 	uri := "postgresql://alice:***@localhost:5432/analytics"
@@ -508,6 +533,12 @@ func TestDatabaseService_UpdateDatabaseMergesMaskedPasswordAndReturnsMaskedURI(t
 	if repo.updated.DatabaseName != "analytics-updated" {
 		t.Fatalf("expected updated name, got %s", repo.updated.DatabaseName)
 	}
+	if pool.closeCalled != 1 {
+		t.Fatalf("expected close called once, got %d", pool.closeCalled)
+	}
+	if pool.lastClosedID != 7 {
+		t.Fatalf("expected close id 7, got %d", pool.lastClosedID)
+	}
 }
 
 func TestDatabaseService_DeleteDatabaseReturnsInUseWhenDatasetsExist(t *testing.T) {
@@ -525,10 +556,12 @@ func TestDatabaseService_DeleteDatabaseReturnsInUseWhenDatasetsExist(t *testing.
 
 func TestDatabaseService_DeleteDatabaseDeletesWhenUnused(t *testing.T) {
 	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"}, datasetCount: 0}
+	pool := &fakeConnectionPool{}
 	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
 	if err != nil {
 		t.Fatalf("expected nil constructor error, got %v", err)
 	}
+	svc.SetConnectionPool(pool)
 
 	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
 	if deleteErr != nil {
@@ -536,6 +569,29 @@ func TestDatabaseService_DeleteDatabaseDeletesWhenUnused(t *testing.T) {
 	}
 	if repo.deleted != 11 {
 		t.Fatalf("expected deleted id 11, got %d", repo.deleted)
+	}
+	if pool.closeCalled != 1 {
+		t.Fatalf("expected close called once, got %d", pool.closeCalled)
+	}
+	if pool.lastClosedID != 11 {
+		t.Fatalf("expected close id 11, got %d", pool.lastClosedID)
+	}
+}
+
+func TestDatabaseService_ShutdownConnectionPoolsDelegatesToManager(t *testing.T) {
+	pool := &fakeConnectionPool{}
+	svc, err := svcauth.NewDatabaseService(&fakeDatabaseRepo{isAdmin: true}, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+	svc.SetConnectionPool(pool)
+
+	err = svc.ShutdownConnectionPools(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if pool.shutdownCalls != 1 {
+		t.Fatalf("expected shutdown calls 1, got %d", pool.shutdownCalls)
 	}
 }
 

@@ -328,7 +328,8 @@ AlertDialog triggered from DBC-003 table or DBC-004 edit page
 - Singleflight prevents thundering herd.
 - Graceful shutdown closes all pools within 10s.
 **⚠️ Error Responses**
-- 503 - Pool exhausted (context deadline). | **🖥️ Frontend Specification**
+- 503 - Pool exhausted (context deadline). | 
+**🖥️ Frontend Specification**
 **📍 Route & Page**
 N/A - internal backend component
 **🧩 shadcn/ui Components**
@@ -346,7 +347,7 @@ N/A - internal backend component
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                                                                          |
 | ----------------- | ------------ | --------- | ------------- | -------------------------------------------------------------------------------------------------------- |
-| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read)    | GET /api/v1/databases/:id/schemas · GET /api/v1/databases/:id/tables · GET /api/v1/databases/:id/columns |
+| **✓ INDEPENDENT** | **P0**       | Phase 1   | dbs (read)    | GET /api/v1/admin/databases/:id/schemas · GET /api/v1/databases/admin/:id/tables · GET /api/v1/admin/databases/:id/columns |
 
 | **⚙️ Backend - Description**
 - Driver-abstracted schema discovery. Redis cache 10min. Paginated table list. Per-driver INFORMATION_SCHEMA or native queries. force_refresh bypasses cache (rate-limited 5/min).
@@ -355,7 +356,8 @@ N/A - internal backend component
 **⚙️ Go Implementation**
 1. type SchemaInspector interface{ ListSchemas,ListTables,ListColumns }
 2. redis.Get("schema:"+dbID+":"+schema+":tables") → if miss: inspector → redis.Set(10min)
-3. isDttm map per driver | **✅ Acceptance Criteria**
+3. isDttm map per driver | **
+✅ Acceptance Criteria**
 - GET /schemas → string array.
 - GET /tables?schema=X → paginated.
 - GET /columns?schema=X&table=Y → column metadata with is_dttm.
@@ -364,7 +366,8 @@ N/A - internal backend component
 **⚠️ Error Responses**
 - 502 - DB unreachable.
 - 504 - Timeout.
-- 429 - force_refresh rate limit. | **🖥️ Frontend Specification**
+- 429 - force_refresh rate limit. | 
+**🖥️ Frontend Specification**
 **📍 Route & Page**
 Used by SQL Lab schema browser (SQL-006) + Dataset create wizard (DS-001)
 **🧩 shadcn/ui Components**
@@ -385,8 +388,8 @@ Used by SQL Lab schema browser (SQL-006) + Dataset create wizard (DS-001)
 - Columns: loaded on table expand (accordion/collapsible pattern in SQL Lab sidebar).
 - force_refresh: "Refresh Schema" Button in SQL Lab sidebar header → fires request with ?force_refresh=true.
 **🌐 API Calls (TanStack Query)**
-1. useQuery({ queryKey:["schemas",dbId], queryFn: ()=>fetch("/api/v1/databases/"+dbId+"/schemas").then(r=>r.json()) })
-2. useQuery({ queryKey:["tables",dbId,schema], queryFn: ()=>fetch("/api/v1/databases/"+dbId+"/tables?schema="+schema).then(r=>r.json()) }) |
+1. useQuery({ queryKey:["schemas",dbId], queryFn: ()=>fetch("/api/v1/admin/databases/"+dbId+"/schemas").then(r=>r.json()) })
+2. useQuery({ queryKey:["tables",dbId,schema], queryFn: ()=>fetch("/api/v1/admin/databases/"+dbId+"/tables?schema="+schema).then(r=>r.json()) }) |
 | --- | --- | --- |
 
 
