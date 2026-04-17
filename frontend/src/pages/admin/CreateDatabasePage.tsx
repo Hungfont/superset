@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
-import { databasesApi, type CreateDatabasePayload, type TestConnectionResult } from "@/api/databases";
+import { databasesApi, type CreateDatabasePayload, type UpdateDatabasePayload, type TestConnectionResult } from "@/api/databases";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,15 +18,17 @@ import { useToast } from "@/hooks/use-toast";
 import {
   CREATE_DATABASE_DEFAULT_VALUES,
   createDatabaseSchema,
+  updateDatabaseSchema,
   DATABASE_TYPE_OPTIONS,
   type CreateDatabaseFormValues,
+  type UpdateDatabaseFormValues,
 } from "@/lib/validations/database";
 
-function buildSQLAlchemyURI(values: CreateDatabaseFormValues): string {
+function buildSQLAlchemyURI(values: CreateDatabaseFormValues | UpdateDatabaseFormValues): string {
   const selectedType = DATABASE_TYPE_OPTIONS.find((opt) => opt.value === values.db_type);
   const driver = selectedType?.driver ?? values.db_type;
   const username = encodeURIComponent(values.username);
-  const password = encodeURIComponent(values.password);
+  const password = encodeURIComponent(values.password || "");
 
   return `${driver}://${username}:${password}@${values.host}:${values.port}/${values.database}`;
 }
@@ -35,7 +37,7 @@ function maskSQLAlchemyURI(sqlalchemyURI: string): string {
   return sqlalchemyURI.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@");
 }
 
-function toPayload(values: CreateDatabaseFormValues): CreateDatabasePayload {
+function toCreatePayload(values: CreateDatabaseFormValues): CreateDatabasePayload {
   return {
     database_name: values.database_name,
     sqlalchemy_uri: buildSQLAlchemyURI(values),
@@ -47,9 +49,30 @@ function toPayload(values: CreateDatabaseFormValues): CreateDatabasePayload {
   };
 }
 
+function toUpdatePayload(values: UpdateDatabaseFormValues): UpdateDatabasePayload {
+  const payload: UpdateDatabasePayload = {
+    database_name: values.database_name,
+    allow_dml: values.allow_dml,
+    expose_in_sqllab: values.expose_in_sqllab,
+    allow_run_async: values.allow_run_async,
+    allow_file_upload: values.allow_file_upload,
+    strict_test: values.strict_test,
+  };
+
+  // Only include sqlalchemy_uri if password is provided (user wants to update connection)
+  if (values.password) {
+    payload.sqlalchemy_uri = buildSQLAlchemyURI(values);
+  }
+
+  return payload;
+}
+
 export default function CreateDatabasePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { id: databaseId } = useParams<{ id: string }>();
   const { success, error } = useToast();
+  const isEditMode = !!databaseId;
 
   const [step, setStep] = useState(0);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState(0);
@@ -57,13 +80,48 @@ export default function CreateDatabasePage() {
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
 
-  const form = useForm<CreateDatabaseFormValues>({
-    resolver: zodResolver(createDatabaseSchema),
+  // Fetch existing database when in edit mode
+  const { data: existingDatabase, isLoading: isLoadingDatabase } = useQuery({
+    queryKey: ["database", databaseId],
+    queryFn: () => databasesApi.getDatabase(Number(databaseId)),
+    enabled: isEditMode,
+  });
+
+  const form = useForm<CreateDatabaseFormValues | UpdateDatabaseFormValues>({
+    resolver: zodResolver(isEditMode ? updateDatabaseSchema : createDatabaseSchema),
     defaultValues: CREATE_DATABASE_DEFAULT_VALUES,
   });
 
+  // Populate form with existing database data when loaded
+  useEffect(() => {
+    if (isEditMode && existingDatabase) {
+      const { sqlalchemy_uri, ...dbData } = existingDatabase;
+      // Extract connection details from sqlalchemy_uri for display/editing
+      const uriMatch = sqlalchemy_uri.match(/^(\w+):\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)$/);
+      if (uriMatch) {
+        const [, driver, username, _password, host, port, database] = uriMatch;
+        const dbType = DATABASE_TYPE_OPTIONS.find(opt => opt.driver === driver)?.value || driver;
+        
+        form.reset({
+          db_type: dbType,
+          database_name: dbData.database_name,
+          host,
+          port: parseInt(port, 10),
+          database,
+          username,
+          password: "", // Don't pre-fill password for edit
+          allow_dml: dbData.allow_dml,
+          expose_in_sqllab: dbData.expose_in_sqllab,
+          allow_run_async: dbData.allow_run_async,
+          allow_file_upload: dbData.allow_file_upload,
+          strict_test: true,
+          ...(isEditMode ? {} : { save_without_testing: false }),
+        } as CreateDatabaseFormValues | UpdateDatabaseFormValues);
+      }
+    }
+  }, [isEditMode, existingDatabase, form]);
+
   const selectedType = form.watch("db_type");
-  const saveWithoutTesting = form.watch("save_without_testing");
   const watchedHost = form.watch("host");
   const watchedDatabase = form.watch("database");
   const watchedUsername = form.watch("username");
@@ -71,11 +129,15 @@ export default function CreateDatabasePage() {
   const watchedPort = form.watch("port");
   const uriPreview = useMemo(() => {
     const values = form.getValues();
-    if (!values.db_type || !values.host || !values.database || !values.username || !values.password) {
+    if (!values.db_type || !values.host || !values.database || !values.username) {
+      return "";
+    }
+    // For edit mode, if password is not provided, construct URI with placeholder
+    if (isEditMode && !values.password) {
       return "";
     }
     return maskSQLAlchemyURI(buildSQLAlchemyURI(values));
-  }, [form, selectedType, watchedHost, watchedDatabase, watchedUsername, watchedPassword, watchedPort]);
+  }, [form, selectedType, watchedHost, watchedDatabase, watchedUsername, watchedPassword, watchedPort, isEditMode]);
 
   useEffect(() => {
     const option = DATABASE_TYPE_OPTIONS.find((item) => item.value === selectedType);
@@ -97,6 +159,29 @@ export default function CreateDatabasePage() {
 
     return () => subscription.unsubscribe();
   }, [form]);
+
+  const testByIdMutation = useMutation({
+    mutationFn: (id: number) => databasesApi.testConnectionById(id),
+    onSuccess: (result) => {
+      setTestResult(result);
+      if (!result.success) {
+        setShowErrorDetails(true);
+        error(result.error || "Connection failed");
+      } else {
+        setShowErrorDetails(false);
+      }
+    },
+    onError: (err) => {
+      const requestError = err as Error & { status?: number };
+      if (requestError.status === 429) {
+        error("Too many test attempts. Wait 60 seconds.");
+        return;
+      }
+      setShowErrorDetails(true);
+      setTestResult({ success: false, error: requestError.message || "Connection failed" });
+      error(requestError.message || "Connection failed");
+    },
+  });
 
   const testMutation = useMutation({
     mutationFn: databasesApi.testConnection,
@@ -126,6 +211,7 @@ export default function CreateDatabasePage() {
     mutationFn: databasesApi.createDatabase,
     onSuccess: () => {
       success("Database connected successfully");
+      queryClient.invalidateQueries({ queryKey: ["databases"] });
       navigate("/admin/settings/databases");
     },
     onError: (err) => {
@@ -133,7 +219,20 @@ export default function CreateDatabasePage() {
     },
   });
 
-  const canSave = !!(testResult?.success || saveWithoutTesting);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: UpdateDatabasePayload }) =>
+      databasesApi.updateDatabase(id, payload),
+    onSuccess: () => {
+      success("Database updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      navigate("/admin/settings/databases");
+    },
+    onError: (err) => {
+      error((err as Error).message || "Failed to update database");
+    },
+  });
+
+  const canSave = !!(testResult?.success || (form.watch("save_without_testing") ?? false));
   const stepItems = useMemo(
     () => [
       { title: "Select DB Type", description: "Choose your engine", disabled: false },
@@ -146,6 +245,15 @@ export default function CreateDatabasePage() {
     ],
     [maxUnlockedStep],
   );
+
+  // Show loading state while fetching database
+  if (isEditMode && isLoadingDatabase) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="animate-spin" />
+      </div>
+    );
+  }
 
   async function handleNext() {
     setStepError(null);
@@ -177,30 +285,52 @@ export default function CreateDatabasePage() {
   }
 
   async function handleTestConnection() {
-    const valid = await form.trigger(["database_name", "host", "port", "database", "username", "password"]);
+    // In edit mode, if password is not provided, use the existing database test endpoint
+    if (isEditMode && databaseId && !form.getValues("password")) {
+      testByIdMutation.mutate(Number(databaseId));
+      return;
+    }
+
+    // Validate required fields for test connection
+    const fieldsToValidate = isEditMode
+      ? ["database_name", "host", "port", "database", "username"]
+      : ["database_name", "host", "port", "database", "username", "password"];
+    
+    const valid = await form.trigger(fieldsToValidate as any);
     if (!valid) {
       setStep(1);
       return;
     }
 
-    const payload = toPayload(form.getValues());
+    const payload = toCreatePayload(form.getValues() as CreateDatabaseFormValues);
     testMutation.mutate(payload);
   }
 
-  function onSubmit(values: CreateDatabaseFormValues) {
+  function onSubmit(values: CreateDatabaseFormValues | UpdateDatabaseFormValues) {
     if (!canSave) {
       return;
     }
 
-    const payload = toPayload(values);
-    createMutation.mutate(payload);
+    if (isEditMode && databaseId) {
+      const payload = toUpdatePayload(values as UpdateDatabaseFormValues);
+      updateMutation.mutate({ id: Number(databaseId), payload });
+    } else {
+      const payload = toCreatePayload(values as CreateDatabaseFormValues);
+      createMutation.mutate(payload);
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Connect a Database</h1>
-        <p className="text-sm text-muted-foreground">Create an encrypted connection using a guided three-step flow.</p>
+        <h1 className="text-2xl font-semibold">
+          {isEditMode ? "Edit Database Connection" : "Connect a Database"}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {isEditMode
+            ? "Update your encrypted database connection settings."
+            : "Create an encrypted connection using a guided three-step flow."}
+        </p>
       </header>
 
       <Stepper
@@ -241,6 +371,7 @@ export default function CreateDatabasePage() {
                       variant={isActive ? "default" : "outline"}
                       className="justify-start"
                       aria-label={option.label}
+                      disabled={isEditMode}
                       onClick={() => {
                         form.setValue("db_type", option.value, { shouldValidate: true });
                         setStepError(null);
@@ -338,7 +469,11 @@ export default function CreateDatabasePage() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="Enter password" {...field} />
+                        <Input
+                          type="password"
+                          placeholder={isEditMode ? "Leave blank to keep current password" : "Enter password"}
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -409,8 +544,12 @@ export default function CreateDatabasePage() {
                 ) : null}
 
                 <div className="flex items-center gap-2">
-                  <Button type="button" onClick={handleTestConnection} disabled={testMutation.isPending}>
-                    {testMutation.isPending ? (
+                  <Button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testMutation.isPending || testByIdMutation.isPending}
+                  >
+                    {testMutation.isPending || testByIdMutation.isPending ? (
                       <>
                         <Loader2 className="animate-spin" />
                         Testing...
@@ -439,17 +578,6 @@ export default function CreateDatabasePage() {
                       {testResult.db_version || "Driver test completed successfully."}
                     </AlertDescription>
                   </Alert>
-                ) : null}
-
-                {testResult?.success && testResult.db_version ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Database Version</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">{testResult.db_version}</p>
-                    </CardContent>
-                  </Card>
                 ) : null}
 
                 {testResult && !testResult.success ? (
@@ -486,16 +614,20 @@ export default function CreateDatabasePage() {
                 <FormField
                   control={form.control}
                   name="save_without_testing"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center gap-2 rounded border p-2">
-                      <Checkbox
-                        id="save_without_testing"
-                        checked={field.value}
-                        onCheckedChange={(checked) => field.onChange(checked === true)}
-                      />
-                      <FormLabel htmlFor="save_without_testing">Save without testing</FormLabel>
-                    </FormItem>
-                  )}
+                  render={({ field }) =>
+                    !isEditMode ? (
+                      <FormItem className="flex items-center gap-2 rounded border p-2">
+                        <Checkbox
+                          id="save_without_testing"
+                          checked={field.value}
+                          onCheckedChange={(checked) => field.onChange(checked === true)}
+                        />
+                        <FormLabel htmlFor="save_without_testing">Save without testing</FormLabel>
+                      </FormItem>
+                    ) : (
+                      <div />
+                    )
+                  }
                 />
               </CardContent>
             </Card>
@@ -512,7 +644,10 @@ export default function CreateDatabasePage() {
                   Next
                 </Button>
               ) : (
-                <Button type="submit" disabled={!canSave || createMutation.isPending}>
+                <Button
+                  type="submit"
+                  disabled={!canSave || createMutation.isPending || updateMutation.isPending}
+                >
                   Save
                 </Button>
               )}

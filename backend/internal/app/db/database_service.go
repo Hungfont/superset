@@ -354,6 +354,119 @@ func (s *DatabaseService) GetDatabase(ctx context.Context, actorUserID uint, dat
 	}, nil
 }
 
+func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, databaseID uint, req domain.UpdateDatabaseRequest) (*domain.DatabaseDetail, error) {
+	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
+		return nil, err
+	}
+
+	if databaseID == 0 {
+		return nil, domain.ErrInvalidDatabase
+	}
+
+	existing, err := s.repo.GetDatabaseByID(ctx, databaseID)
+	if err != nil {
+		return nil, err
+	}
+
+	normalizedReq, strictTest, err := normalizeUpdateDatabaseRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	updated := *existing
+	if normalizedReq.DatabaseName != nil {
+		updated.DatabaseName = *normalizedReq.DatabaseName
+	}
+	if normalizedReq.AllowDML != nil {
+		updated.AllowDML = *normalizedReq.AllowDML
+	}
+	if normalizedReq.ExposeInSQLLab != nil {
+		updated.ExposeInSQLLab = *normalizedReq.ExposeInSQLLab
+	}
+	if normalizedReq.AllowRunAsync != nil {
+		updated.AllowRunAsync = *normalizedReq.AllowRunAsync
+	}
+	if normalizedReq.AllowFileUpload != nil {
+		updated.AllowFileUpload = *normalizedReq.AllowFileUpload
+	}
+
+	if normalizedReq.SQLAlchemyURI != nil {
+		decryptedExistingURI, decryptErr := decryptSQLAlchemyURIPassword(existing.SQLAlchemyURI, s.encryptionKey)
+		if decryptErr != nil {
+			return nil, decryptErr
+		}
+
+		mergedURI, mergeErr := mergeSQLAlchemyURIWithMaskedPassword(*normalizedReq.SQLAlchemyURI, decryptedExistingURI)
+		if mergeErr != nil {
+			return nil, mergeErr
+		}
+
+		if strictTest {
+			if err := s.tester.TestConnection(ctx, mergedURI); err != nil {
+				return nil, fmt.Errorf("%w: %v", domain.ErrDatabaseConnectionTestFailed, err)
+			}
+		}
+
+		encryptedURI, encryptErr := encryptSQLAlchemyURIPassword(mergedURI, s.encryptionKey)
+		if encryptErr != nil {
+			return nil, encryptErr
+		}
+		updated.SQLAlchemyURI = encryptedURI
+	}
+
+	if err := s.repo.UpdateDatabase(ctx, &updated); err != nil {
+		if errors.Is(err, domain.ErrDatabaseNameExists) {
+			return nil, domain.ErrDatabaseNameExists
+		}
+		return nil, err
+	}
+
+	maskedURI, err := maskSQLAlchemyURI(updated.SQLAlchemyURI)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.DatabaseDetail{
+		ID:              updated.ID,
+		DatabaseName:    updated.DatabaseName,
+		SQLAlchemyURI:   maskedURI,
+		Backend:         extractBackend(updated.SQLAlchemyURI),
+		AllowDML:        updated.AllowDML,
+		ExposeInSQLLab:  updated.ExposeInSQLLab,
+		AllowRunAsync:   updated.AllowRunAsync,
+		AllowFileUpload: updated.AllowFileUpload,
+	}, nil
+}
+
+func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, databaseID uint) error {
+	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
+		return err
+	}
+
+	if databaseID == 0 {
+		return domain.ErrInvalidDatabase
+	}
+
+	if _, err := s.repo.GetDatabaseByID(ctx, databaseID); err != nil {
+		return err
+	}
+
+	datasetCount, err := s.repo.CountDatasetsByDatabaseID(ctx, databaseID)
+	if err != nil {
+		return fmt.Errorf("checking database dependencies: %w", err)
+	}
+
+	if datasetCount > 0 {
+		return domain.ErrDatabaseInUse
+	}
+
+	if err := s.repo.DeleteDatabase(ctx, databaseID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *DatabaseService) TestConnection(ctx context.Context, actorUserID uint, req domain.TestDatabaseConnectionRequest, rateLimitKey string) (domain.TestConnectionResult, error) {
 	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
 		return domain.TestConnectionResult{}, err
@@ -513,6 +626,68 @@ func normalizeCreateDatabaseRequest(req domain.CreateDatabaseRequest) (domain.Cr
 		AllowFileUpload: req.AllowFileUpload,
 		StrictTest:      req.StrictTest,
 	}, strictTest, nil
+}
+
+func normalizeUpdateDatabaseRequest(req domain.UpdateDatabaseRequest) (domain.UpdateDatabaseRequest, bool, error) {
+	strictTest := true
+	if req.StrictTest != nil {
+		strictTest = *req.StrictTest
+	}
+
+	normalized := req
+	if req.DatabaseName != nil {
+		databaseName := strings.TrimSpace(*req.DatabaseName)
+		if databaseName == "" {
+			return domain.UpdateDatabaseRequest{}, false, domain.ErrInvalidDatabase
+		}
+		normalized.DatabaseName = &databaseName
+	}
+
+	if req.SQLAlchemyURI != nil {
+		sqlalchemyURI := strings.TrimSpace(*req.SQLAlchemyURI)
+		if sqlalchemyURI == "" {
+			return domain.UpdateDatabaseRequest{}, false, domain.ErrInvalidDatabaseURI
+		}
+		if _, err := parseSQLAlchemyURI(sqlalchemyURI); err != nil {
+			return domain.UpdateDatabaseRequest{}, false, err
+		}
+		normalized.SQLAlchemyURI = &sqlalchemyURI
+	}
+
+	return normalized, strictTest, nil
+}
+
+func mergeSQLAlchemyURIWithMaskedPassword(nextURI string, existingURI string) (string, error) {
+	nextParsedURI, err := parseSQLAlchemyURI(nextURI)
+	if err != nil {
+		return "", err
+	}
+
+	if nextParsedURI.User == nil {
+		return nextParsedURI.String(), nil
+	}
+
+	password, hasPassword := nextParsedURI.User.Password()
+	if !hasPassword || password != "***" {
+		return nextParsedURI.String(), nil
+	}
+
+	existingParsedURI, err := parseSQLAlchemyURI(existingURI)
+	if err != nil {
+		return "", err
+	}
+
+	if existingParsedURI.User == nil {
+		return "", domain.ErrInvalidDatabaseURI
+	}
+
+	existingPassword, hasExistingPassword := existingParsedURI.User.Password()
+	if !hasExistingPassword || existingPassword == "" {
+		return "", domain.ErrInvalidDatabaseURI
+	}
+
+	nextParsedURI.User = url.UserPassword(nextParsedURI.User.Username(), existingPassword)
+	return nextParsedURI.String(), nil
 }
 
 func parseDatabaseEncryptionKey(rawKey string) ([]byte, error) {

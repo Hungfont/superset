@@ -48,6 +48,7 @@ var (
 	ErrInvalidDatabaseURI           = errors.New("invalid sqlalchemy uri")
 	ErrDatabaseNotFound             = errors.New("database not found")
 	ErrDatabaseNameExists           = errors.New("database name already exists")
+	ErrDatabaseInUse                = errors.New("database is in use")
 	ErrDatabaseConnectionTestFailed = errors.New("database connection test failed")
 	ErrDatabaseCredentialEncryption = errors.New("database credential encryption failed")
 	ErrUnknownDatabaseDriver        = errors.New("unknown database driver")

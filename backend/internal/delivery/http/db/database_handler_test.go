@@ -22,13 +22,18 @@ type handlerDatabaseRepo struct {
 	isAdmin           bool
 	databaseNameTaken bool
 	createErr         error
+	updateErr         error
+	deleteErr         error
 	getByIDResult     *domain.Database
 	getByIDErr        error
+	datasetCount      int64
 	roleNames         []string
 	listResult        domain.DatabaseListResult
 	listErr           error
 	visibleByIDResult *domain.DatabaseWithDatasetCount
 	visibleByIDErr    error
+	updated           *domain.Database
+	deletedID         uint
 }
 
 func (h *handlerDatabaseRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
@@ -47,6 +52,31 @@ func (h *handlerDatabaseRepo) CreateDatabase(_ context.Context, db *domain.Datab
 		db.ID = 301
 	}
 	return nil
+}
+
+func (h *handlerDatabaseRepo) UpdateDatabase(_ context.Context, db *domain.Database) error {
+	if h.updateErr != nil {
+		return h.updateErr
+	}
+	copyValue := *db
+	h.updated = &copyValue
+	if h.getByIDResult != nil && h.getByIDResult.ID == db.ID {
+		updated := copyValue
+		h.getByIDResult = &updated
+	}
+	return nil
+}
+
+func (h *handlerDatabaseRepo) DeleteDatabase(_ context.Context, databaseID uint) error {
+	if h.deleteErr != nil {
+		return h.deleteErr
+	}
+	h.deletedID = databaseID
+	return nil
+}
+
+func (h *handlerDatabaseRepo) CountDatasetsByDatabaseID(_ context.Context, _ uint) (int64, error) {
+	return h.datasetCount, nil
 }
 
 func (h *handlerDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
@@ -127,6 +157,8 @@ func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester)
 	admin.POST("/databases", h.Create)
 	admin.GET("/databases", h.List)
 	admin.GET("/databases/:id", h.Get)
+	admin.PUT("/databases/:id", h.Update)
+	admin.DELETE("/databases/:id", h.Delete)
 	admin.POST("/databases/test", h.TestConnection)
 	admin.POST("/databases/:id/test", h.TestConnectionByID)
 
@@ -292,5 +324,58 @@ func TestDatabaseHandler_GetReturns404WhenNotVisible(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_PutReturns200WithMaskedURI(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://superset:secret-pass@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI}}
+	r := newDatabaseRouter(repo, &handlerDatabaseTester{allowRate: true})
+
+	payload := []byte(`{"database_name":"analytics-updated","sqlalchemy_uri":"postgresql://superset:***@localhost:5432/analytics"}`)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/admin/databases/2", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "***") {
+		t.Fatalf("expected masked URI in response body, got: %s", w.Body.String())
+	}
+	if repo.updated == nil || repo.updated.DatabaseName != "analytics-updated" {
+		t.Fatalf("expected updated database name to be persisted")
+	}
+}
+
+func TestDatabaseHandler_DeleteReturns204(t *testing.T) {
+	r := newDatabaseRouter(&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: "postgresql://superset:enc@localhost:5432/analytics"}}, &handlerDatabaseTester{allowRate: true})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/databases/2", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_DeleteReturns409WhenInUse(t *testing.T) {
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: "postgresql://superset:enc@localhost:5432/analytics"}, datasetCount: 3},
+		&handlerDatabaseTester{allowRate: true},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/databases/2", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
 }

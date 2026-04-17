@@ -18,4 +18,10 @@ type DatabaseRepository interface {
 	GetDatabaseByID(ctx context.Context, databaseID uint) (*Database, error)
 	// CreateDatabase inserts one database record.
 	CreateDatabase(ctx context.Context, database *Database) error
+	// UpdateDatabase updates one database record by ID.
+	UpdateDatabase(ctx context.Context, database *Database) error
+	// DeleteDatabase deletes one database record by ID.
+	DeleteDatabase(ctx context.Context, databaseID uint) error
+	// CountDatasetsByDatabaseID returns number of datasets bound to the database.
+	CountDatasetsByDatabaseID(ctx context.Context, databaseID uint) (int64, error)
 }

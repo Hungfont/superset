@@ -5,12 +5,16 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CreateDatabasePage from "@/pages/admin/CreateDatabasePage";
+import EditDatabasePage from "@/pages/admin/EditDatabasePage";
 import { databasesApi } from "@/api/databases";
 
 vi.mock("@/api/databases", () => ({
   databasesApi: {
     testConnection: vi.fn(),
+    testConnectionById: vi.fn(),
     createDatabase: vi.fn(),
+    updateDatabase: vi.fn(),
+    getDatabase: vi.fn(),
   },
 }));
 
@@ -25,15 +29,18 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 const navigateMock = vi.fn();
+let currentParams: Record<string, string> = { id: "" };
+
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
   return {
     ...actual,
     useNavigate: () => navigateMock,
+    useParams: () => currentParams,
   };
 });
 
-function renderPage() {
+function renderPage(databaseId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -41,10 +48,13 @@ function renderPage() {
     },
   });
 
+  // Set the params for this render
+  currentParams = { id: databaseId || "" };
+
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[databaseId ? `/databases/${databaseId}` : "/databases/new"]}>
       <QueryClientProvider client={queryClient}>
-        <CreateDatabasePage />
+        {databaseId ? <EditDatabasePage /> : <CreateDatabasePage />}
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -125,6 +135,7 @@ describe("CreateDatabasePage", () => {
     vi.mocked(databasesApi.createDatabase).mockResolvedValue({
       id: 10,
       database_name: "analytics",
+      backend: "postgresql",
       sqlalchemy_uri: "postgresql://alice:***@localhost:5432/analytics",
       allow_dml: false,
       expose_in_sqllab: true,
@@ -149,7 +160,7 @@ describe("CreateDatabasePage", () => {
 
     expect(screen.getByRole("button", { name: /testing/i })).toBeDisabled();
 
-    resolveTestConnection?.(successfulTestResult);
+    resolveTestConnection!(successfulTestResult);
 
     await waitFor(() => {
       expect(screen.getByText(/connection successful/i)).toBeInTheDocument();
@@ -191,5 +202,130 @@ describe("CreateDatabasePage", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledWith("Too many test attempts. Wait 60 seconds.");
     });
+  });
+});
+
+describe("EditDatabasePage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders edit mode when database ID is provided", async () => {
+    const existingDb = {
+      id: 10,
+      database_name: "analytics",
+      backend: "postgresql",
+      sqlalchemy_uri: "postgresql://alice:secret@localhost:5432/analytics",
+      allow_dml: false,
+      expose_in_sqllab: true,
+      allow_run_async: false,
+      allow_file_upload: false,
+    };
+
+    vi.mocked(databasesApi.getDatabase).mockResolvedValue(existingDb);
+
+    renderPage("10");
+
+    await waitFor(() => {
+      expect(screen.getByText(/edit database connection/i)).toBeInTheDocument();
+    });
+
+    expect(databasesApi.getDatabase).toHaveBeenCalledWith(10);
+  });
+
+  it("updates database and navigates on success", async () => {
+    const existingDb = {
+      id: 10,
+      database_name: "analytics",
+      backend: "postgresql",
+      sqlalchemy_uri: "postgresql://alice:***@localhost:5432/analytics",
+      allow_dml: false,
+      expose_in_sqllab: true,
+      allow_run_async: false,
+      allow_file_upload: false,
+    };
+
+    vi.mocked(databasesApi.getDatabase).mockResolvedValue(existingDb);
+    vi.mocked(databasesApi.updateDatabase).mockResolvedValue(existingDb);
+    vi.mocked(databasesApi.testConnectionById).mockResolvedValue({
+      success: true,
+      latency_ms: 25,
+      db_version: "PostgreSQL 15.4",
+    });
+
+    renderPage("10");
+
+    await waitFor(() => {
+      expect(screen.getByText(/edit database connection/i)).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+
+    // Test connection without changing password
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    await user.click(screen.getByRole("button", { name: /test connection/i }));
+
+    await waitFor(() => {
+      expect(databasesApi.testConnectionById).toHaveBeenCalledWith(10);
+    });
+
+    // Save without changing password
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(databasesApi.updateDatabase).toHaveBeenCalled();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith("Database updated successfully");
+    expect(navigateMock).toHaveBeenCalledWith("/admin/settings/databases");
+  });
+
+  it("disables database type selection in edit mode", async () => {
+    const existingDb = {
+      id: 10,
+      database_name: "analytics",
+      backend: "postgresql",
+      sqlalchemy_uri: "postgresql://alice:***@localhost:5432/analytics",
+      allow_dml: false,
+      expose_in_sqllab: true,
+      allow_run_async: false,
+      allow_file_upload: false,
+    };
+
+    vi.mocked(databasesApi.getDatabase).mockResolvedValue(existingDb);
+
+    renderPage("10");
+
+    await waitFor(() => {
+      expect(screen.getByText(/edit database connection/i)).toBeInTheDocument();
+    });
+
+    const postgresButton = screen.getByLabelText(/postgresql/i);
+    expect(postgresButton).toBeDisabled();
+  });
+
+  it("shows password placeholder for unchanged password in edit mode", async () => {
+    const existingDb = {
+      id: 10,
+      database_name: "analytics",
+      backend: "postgresql",
+      sqlalchemy_uri: "postgresql://alice:***@localhost:5432/analytics",
+      allow_dml: false,
+      expose_in_sqllab: true,
+      allow_run_async: false,
+      allow_file_upload: false,
+    };
+
+    vi.mocked(databasesApi.getDatabase).mockResolvedValue(existingDb);
+
+    renderPage("10");
+
+    await waitFor(() => {
+      expect(screen.getByText(/edit database connection/i)).toBeInTheDocument();
+    });
+
+    const passwordInput = screen.getByLabelText(/password/i) as HTMLInputElement;
+    expect(passwordInput.placeholder).toContain("Leave blank to keep current password");
   });
 });

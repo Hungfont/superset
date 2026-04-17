@@ -161,6 +161,56 @@ func (r *databaseRepo) CreateDatabase(ctx context.Context, database *domain.Data
 	return nil
 }
 
+func (r *databaseRepo) UpdateDatabase(ctx context.Context, database *domain.Database) error {
+	if database == nil || database.ID == 0 {
+		return domain.ErrInvalidDatabase
+	}
+
+	result := r.db.WithContext(ctx).
+		Table("dbs").
+		Where("id = ?", database.ID).
+		Updates(map[string]any{
+			"database_name":     database.DatabaseName,
+			"sqlalchemy_uri":    database.SQLAlchemyURI,
+			"allow_dml":         database.AllowDML,
+			"expose_in_sqllab":  database.ExposeInSQLLab,
+			"allow_run_async":   database.AllowRunAsync,
+			"allow_file_upload": database.AllowFileUpload,
+		})
+	if result.Error != nil {
+		if isUniqueViolation(result.Error) {
+			return domain.ErrDatabaseNameExists
+		}
+		return fmt.Errorf("updating database: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return domain.ErrDatabaseNotFound
+	}
+
+	return nil
+}
+
+func (r *databaseRepo) DeleteDatabase(ctx context.Context, databaseID uint) error {
+	result := r.db.WithContext(ctx).Table("dbs").Where("id = ?", databaseID).Delete(&domain.Database{})
+	if result.Error != nil {
+		return fmt.Errorf("deleting database: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrDatabaseNotFound
+	}
+	return nil
+}
+
+func (r *databaseRepo) CountDatasetsByDatabaseID(ctx context.Context, databaseID uint) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("tables").Where("database_id = ?", databaseID).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("counting datasets by database id: %w", err)
+	}
+	return count, nil
+}
+
 func applyVisibilityScope(query *gorm.DB, scope domain.DatabaseVisibilityScope, actorUserID uint) *gorm.DB {
 	switch scope {
 	case domain.DatabaseVisibilityAdmin:

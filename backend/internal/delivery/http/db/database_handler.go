@@ -107,6 +107,55 @@ func (h *DatabaseHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": created})
 }
 
+func (h *DatabaseHandler) Update(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	var req domain.UpdateDatabaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	updated, updateErr := h.svc.UpdateDatabase(c.Request.Context(), actor.ID, uint(databaseID), req)
+	if updateErr != nil {
+		h.handleError(c, updateErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": updated})
+}
+
+func (h *DatabaseHandler) Delete(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	databaseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || databaseID == 0 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})
+		return
+	}
+
+	if err := h.svc.DeleteDatabase(c.Request.Context(), actor.ID, uint(databaseID)); err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *DatabaseHandler) TestConnection(c *gin.Context) {
 	actor, ok := getActor(c)
 	if !ok {
@@ -162,6 +211,8 @@ func (h *DatabaseHandler) handleError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrDatabaseNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatabaseNameExists):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatabaseInUse):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrUnknownDatabaseDriver), errors.Is(err, domain.ErrInvalidDatabase), errors.Is(err, domain.ErrInvalidDatabaseURI), errors.Is(err, domain.ErrDatabaseConnectionTestFailed):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})

@@ -10,6 +10,7 @@ var (
 	ErrInvalidDatabaseURI           = pkgerrors.ErrInvalidDatabaseURI
 	ErrDatabaseNotFound             = pkgerrors.ErrDatabaseNotFound
 	ErrDatabaseNameExists           = pkgerrors.ErrDatabaseNameExists
+	ErrDatabaseInUse                = pkgerrors.ErrDatabaseInUse
 	ErrDatabaseConnectionTestFailed = pkgerrors.ErrDatabaseConnectionTestFailed
 	ErrDatabaseCredentialEncryption = pkgerrors.ErrDatabaseCredentialEncryption
 	ErrUnknownDatabaseDriver        = pkgerrors.ErrUnknownDatabaseDriver

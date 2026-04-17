@@ -15,6 +15,16 @@ export interface CreateDatabasePayload {
   strict_test: boolean;
 }
 
+export interface UpdateDatabasePayload {
+  database_name?: string;
+  sqlalchemy_uri?: string;
+  allow_dml?: boolean;
+  expose_in_sqllab?: boolean;
+  allow_run_async?: boolean;
+  allow_file_upload?: boolean;
+  strict_test?: boolean;
+}
+
 export interface DatabaseDetail {
   id: number;
   database_name: string;
@@ -121,6 +131,16 @@ export const databasesApi = {
   async createDatabase(payload: CreateDatabasePayload): Promise<DatabaseDetail> {
     const body = await request<ApiEnvelope<DatabaseDetail>>("/api/v1/admin/databases", {
       method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    return body.data;
+  },
+
+  async updateDatabase(databaseId: number, payload: UpdateDatabasePayload): Promise<DatabaseDetail> {
+    const body = await request<ApiEnvelope<DatabaseDetail>>(`/api/v1/admin/databases/${databaseId}`, {
+      method: "PUT",
       credentials: "include",
       headers: getAuthHeaders(true),
       body: JSON.stringify(payload),

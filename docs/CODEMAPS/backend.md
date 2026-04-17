@@ -18,6 +18,10 @@ POST /api/v1/auth/logout                   -> LogoutHandler.Logout
 
 Protected (JWTMiddleware)
 POST   /api/v1/admin/databases             -> DatabaseHandler.Create
+GET    /api/v1/admin/databases             -> DatabaseHandler.List
+GET    /api/v1/admin/databases/:id         -> DatabaseHandler.Get
+PUT    /api/v1/admin/databases/:id         -> DatabaseHandler.Update
+DELETE /api/v1/admin/databases/:id         -> DatabaseHandler.Delete
 POST   /api/v1/admin/databases/test        -> DatabaseHandler.TestConnection
 POST   /api/v1/admin/databases/:id/test    -> DatabaseHandler.TestConnectionByID
 
@@ -53,7 +57,7 @@ DELETE /api/v1/admin/permission-views/:id  -> PermissionHandler.DeletePermission
 ```
 gin.Logger -> gin.Recovery -> route group middleware
 protected routes: JWTMiddleware(pubKey, jwtRepo, userRepo)
-admin routes: AuthorizeAdminRole(roleRepo)
+admin routes: handler-level authorization and selective RequirePermission middleware
 ```
 
 ## Service to Repository Mapping
@@ -68,7 +72,7 @@ UserService     -> UserAdminRepository + RoleCacheRepository
 UserRoleService -> UserRoleRepository + RoleCacheRepository
 RoleService     -> RoleRepository + RoleCacheRepository
 PermissionService -> PermissionRepository + RoleCacheRepository
-DatabaseService   -> DatabaseRepository (create + test by config + test by id, timeout/rate limit/error sanitization)
+DatabaseService   -> DatabaseRepository (create/list/get/update/delete + test by config + test by id, timeout/rate limit/error sanitization)
 ```
 
 ## Key Files
@@ -76,10 +80,10 @@ DatabaseService   -> DatabaseRepository (create + test by config + test by id, t
 - `backend/cmd/api/main.go`: config load, DB/Redis init, key parsing, DI wiring, server run.
 - `backend/internal/delivery/http/router.go`: `/api/v1` route graph and middleware attachment.
 - `backend/internal/delivery/http/auth/*.go`: auth + user + role + permission HTTP handlers.
-- `backend/internal/delivery/http/db/database_handler.go`: database create + test-connection HTTP handlers.
+- `backend/internal/delivery/http/db/database_handler.go`: database create/list/get/update/delete + test-connection HTTP handlers.
 - `backend/internal/delivery/http/middleware/jwt.go`: bearer token verification and context hydration.
 - `backend/internal/app/auth/*.go`: auth/session/user/role/permission business logic.
-- `backend/internal/app/db/database_service.go`: database create/test business logic with 5s timeout probe flow.
+- `backend/internal/app/db/database_service.go`: database lifecycle business logic (create/list/get/update/delete/test) with 5s timeout probe flow.
 - `backend/internal/domain/auth/entity.go`: `RegisterUser`, `User`, `Role`, `Permission`, `ViewMenu`, `PermissionView`, DTOs.
 - `backend/internal/domain/db/database.go`: `Database` entity and request/response DTOs for DB connection APIs.
 - `backend/internal/domain/db/repository.go`: database repository contracts.

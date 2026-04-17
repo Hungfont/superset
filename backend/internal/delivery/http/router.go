@@ -57,6 +57,8 @@ func NewRouter(
 				admin.POST("/databases", databaseHandler.Create)
 				admin.GET("/databases", databaseHandler.List)
 				admin.GET("/databases/:id", databaseHandler.Get)
+				admin.PUT("/databases/:id", databaseHandler.Update)
+				admin.DELETE("/`databases`/:id", databaseHandler.Delete)
 				admin.POST("/databases/test", databaseHandler.TestConnection)
 				admin.POST("/databases/:id/test", databaseHandler.TestConnectionByID)
 

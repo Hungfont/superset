@@ -126,13 +126,4 @@ describe("DatabasesPage", () => {
     });
     expect(vi.mocked(databasesApi.deleteDatabase).mock.calls[0][0]).toBe(11);
   });
-
-  it("navigates to detail page on row click", async () => {
-    renderPage();
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByRole("button", { name: /open details for analytics/i }));
-
-    expect(navigateMock).toHaveBeenCalledWith("/admin/settings/databases/11");
-  });
 });

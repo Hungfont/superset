@@ -1,7 +1,6 @@
 **🗄️ Database Connection Service**
 
 Rank #02 · Phase 1 - Foundation · 9 Requirements · 7 Independent · 2 Dependent
-
 ## **Service Overview**
 
 Manages the lifecycle of external database connections. Provides encrypted credential storage, connection pooling, schema introspection, and SSH tunnel support.
@@ -242,7 +241,8 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - Test failure → 422, no update.
 **⚠️ Error Responses**
 - 403 - Not owner.
-- 422 - Test failed. | **🖥️ Frontend Specification**
+- 422 - Test failed. | 
+**🖥️ Frontend Specification**
 **📍 Route & Page**
 /admin/settings/databases/:id
 **🧩 shadcn/ui Components**
@@ -260,6 +260,7 @@ Inline within DBC-001 wizard (Step 3) + database detail page
 - React Hook Form + Zod - same schema as create, password not required on edit
 - isDirty from React Hook Form formState.isDirty
 **✨ UX Behaviors**
+- Keep the same step/form visual language as DBC-001; update mode only changes descriptive copy (title, helper text, success message).
 - Edit mode: form pre-filled from GET /api/v1/admin/databases/:id response (masked URI).
 - "Save Changes" Button disabled until isDirty=true.
 - Password: empty = keep existing, any value = update password.

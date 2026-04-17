@@ -115,3 +115,14 @@ type TestConnectionResult struct {
 	Driver    string `json:"driver,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
+
+// UpdateDatabaseRequest is used by PUT /api/v1/admin/databases/:id.
+type UpdateDatabaseRequest struct {
+	DatabaseName    *string `json:"database_name,omitempty"`
+	SQLAlchemyURI   *string `json:"sqlalchemy_uri,omitempty"`
+	AllowDML        *bool   `json:"allow_dml,omitempty"`
+	ExposeInSQLLab  *bool   `json:"expose_in_sqllab,omitempty"`
+	AllowRunAsync   *bool   `json:"allow_run_async,omitempty"`
+	AllowFileUpload *bool   `json:"allow_file_upload,omitempty"`
+	StrictTest      *bool   `json:"strict_test,omitempty"`
+}

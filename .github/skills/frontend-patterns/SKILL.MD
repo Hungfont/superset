@@ -601,7 +601,7 @@ export function VirtualList<T>({ items, renderItem }: { items: T[]; renderItem: 
     <AlertTitle>Unable to load roles</AlertTitle>
     <AlertDescription className="flex items-center justify-between">
       <span>{rolesQuery.error.message}</span>
-      <Button variant="outline" onClick={() => void rolesQuery.refetch()}>Retry</Button>
+      <Button variant="outline">Retry</Button>
     </AlertDescription>
   </Alert>
 ) : (

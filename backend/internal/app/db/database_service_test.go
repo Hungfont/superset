@@ -15,8 +15,11 @@ type fakeDatabaseRepo struct {
 	isAdmin           bool
 	databaseNameTaken bool
 	createErr         error
+	updateErr         error
+	deleteErr         error
 	getByIDResult     *domain.Database
 	getByIDErr        error
+	datasetCount      int64
 	roleNames         []string
 	listResult        domain.DatabaseListResult
 	listErr           error
@@ -24,6 +27,8 @@ type fakeDatabaseRepo struct {
 	visibleByIDErr    error
 
 	created *domain.Database
+	updated *domain.Database
+	deleted uint
 }
 
 func (f *fakeDatabaseRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
@@ -41,6 +46,31 @@ func (f *fakeDatabaseRepo) CreateDatabase(_ context.Context, db *domain.Database
 	copyValue := *db
 	f.created = &copyValue
 	return f.createErr
+}
+
+func (f *fakeDatabaseRepo) UpdateDatabase(_ context.Context, db *domain.Database) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	copyValue := *db
+	f.updated = &copyValue
+	if f.getByIDResult != nil && f.getByIDResult.ID == db.ID {
+		current := copyValue
+		f.getByIDResult = &current
+	}
+	return nil
+}
+
+func (f *fakeDatabaseRepo) DeleteDatabase(_ context.Context, databaseID uint) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleted = databaseID
+	return nil
+}
+
+func (f *fakeDatabaseRepo) CountDatasetsByDatabaseID(_ context.Context, _ uint) (int64, error) {
+	return f.datasetCount, nil
 }
 
 func (f *fakeDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
@@ -441,6 +471,71 @@ func TestDatabaseService_GetDatabaseReturnsDatasetCountAndMaskedURI(t *testing.T
 	}
 	if !strings.Contains(detail.SQLAlchemyURI, "***") {
 		t.Fatalf("expected masked URI, got %s", detail.SQLAlchemyURI)
+	}
+}
+
+func TestDatabaseService_UpdateDatabaseMergesMaskedPasswordAndReturnsMaskedURI(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI}}
+	tester := &fakeDatabaseTester{}
+	svc, err := svcauth.NewDatabaseService(repo, tester, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	name := "analytics-updated"
+	uri := "postgresql://alice:***@localhost:5432/analytics"
+	updated, updateErr := svc.UpdateDatabase(context.Background(), 1, 7, domain.UpdateDatabaseRequest{
+		DatabaseName:  &name,
+		SQLAlchemyURI: &uri,
+	})
+	if updateErr != nil {
+		t.Fatalf("expected nil error, got %v", updateErr)
+	}
+	if tester.called != 1 {
+		t.Fatalf("expected tester to be called once, got %d", tester.called)
+	}
+	if repo.updated == nil {
+		t.Fatal("expected updated database in repository")
+	}
+	if !strings.Contains(updated.SQLAlchemyURI, "***") {
+		t.Fatalf("expected masked uri in response, got %s", updated.SQLAlchemyURI)
+	}
+	if repo.updated.DatabaseName != "analytics-updated" {
+		t.Fatalf("expected updated name, got %s", repo.updated.DatabaseName)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseReturnsInUseWhenDatasetsExist(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"}, datasetCount: 2}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	if !errors.Is(deleteErr, domain.ErrDatabaseInUse) {
+		t.Fatalf("expected ErrDatabaseInUse, got %v", deleteErr)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseDeletesWhenUnused(t *testing.T) {
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"}, datasetCount: 0}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	if deleteErr != nil {
+		t.Fatalf("expected nil error, got %v", deleteErr)
+	}
+	if repo.deleted != 11 {
+		t.Fatalf("expected deleted id 11, got %d", repo.deleted)
 	}
 }
 

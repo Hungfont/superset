@@ -85,6 +85,7 @@ export default function DatabasesPage() {
     onSuccess: () => {
       success("Database deleted");
       setPendingDelete(null);
+      setPage(1);
       queryClient.invalidateQueries({ queryKey: ["databases"] });
     },
     onError: (err) => {
@@ -310,27 +311,15 @@ export default function DatabasesPage() {
                 ))}
               </thead>
               <tbody>
-                {table.getRowModel().rows.map((row) => {
-                  const database = row.original;
-                  return (
-                    <tr key={row.id} className="border-t align-middle">
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-3 py-2">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => navigate(`/admin/settings/databases/${database.id}`)}
-                          aria-label={`Open details for ${database.database_name}`}
-                        >
-                          Open
-                        </Button>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-t align-middle">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-3 py-2">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
