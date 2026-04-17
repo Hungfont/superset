@@ -55,6 +55,7 @@ hooks/useLogin.ts
 hooks/useRegister.ts
 hooks/useLogout.ts
 hooks/useTokenRefresh.ts
+hooks/useDatabaseIntrospection.ts
   - orchestrate API calls, redirects, and toasts
 
 api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.ts + api/databases.ts + utils/request.ts
@@ -76,7 +77,8 @@ api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.t
 - `frontend/src/pages/admin/CreateDatabasePage.tsx`: DBC wizard with create/edit mode, connection test UX (spinner, result alerts, latency badge, error details, 429 toast), and cache invalidation after save.
 - `frontend/src/pages/admin/EditDatabasePage.tsx`: thin route wrapper that reuses `CreateDatabasePage` in edit mode.
 - `frontend/src/pages/admin/*`: admin dashboard and settings shell.
-- `frontend/src/api/databases.ts`: database API client (list/get/create/update/delete/testConnection/testConnectionById).
+- `frontend/src/api/databases.ts`: database API client (list/get/create/update/delete/testConnection/testConnectionById/getSchemas/getTables/getColumns).
+- `frontend/src/hooks/useDatabaseIntrospection.ts`: DBC-007 query hooks using TanStack Query keys `db-schemas`, `db-tables`, `db-columns` with stale time 10 minutes.
 - `frontend/src/utils/request.ts`: shared request helper with normalized errors and safe handling for 204 or empty/non-JSON responses.
 - `frontend/src/stores/authStore.ts`: shared auth state.
 - `frontend/src/test/setup.ts`: Vitest DOM setup.

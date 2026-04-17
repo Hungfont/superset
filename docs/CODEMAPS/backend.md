@@ -20,6 +20,9 @@ Protected (JWTMiddleware)
 POST   /api/v1/admin/databases             -> DatabaseHandler.Create
 GET    /api/v1/admin/databases             -> DatabaseHandler.List
 GET    /api/v1/admin/databases/:id         -> DatabaseHandler.Get
+GET    /api/v1/admin/databases/:id/schemas -> DatabaseHandler.ListSchemas
+GET    /api/v1/admin/databases/:id/tables  -> DatabaseHandler.ListTables
+GET    /api/v1/admin/databases/:id/columns -> DatabaseHandler.ListColumns
 PUT    /api/v1/admin/databases/:id         -> DatabaseHandler.Update
 DELETE /api/v1/admin/databases/:id         -> DatabaseHandler.Delete
 POST   /api/v1/admin/databases/test        -> DatabaseHandler.TestConnection
@@ -72,7 +75,11 @@ UserService     -> UserAdminRepository + RoleCacheRepository
 UserRoleService -> UserRoleRepository + RoleCacheRepository
 RoleService     -> RoleRepository + RoleCacheRepository
 PermissionService -> PermissionRepository + RoleCacheRepository
-DatabaseService   -> DatabaseRepository (create/list/get/update/delete + test by config + test by id, timeout/rate limit/error sanitization)
+DatabaseService   -> DatabaseRepository (create/list/get/update/delete + test by config + test by id)
+				 -> ConnectionPoolManager (lazy pool init, reuse, health monitor)
+				 -> SchemaInspector (schemas/tables/columns via INFORMATION_SCHEMA)
+				 -> SchemaCacheRepository (Redis TTL 10m for introspection payloads)
+				 -> force_refresh limiter (5/min; shared limiter contract)
 ```
 
 ## Key Files
@@ -80,21 +87,24 @@ DatabaseService   -> DatabaseRepository (create/list/get/update/delete + test by
 - `backend/cmd/api/main.go`: config load, DB/Redis init, key parsing, DI wiring, server run.
 - `backend/internal/delivery/http/router.go`: `/api/v1` route graph and middleware attachment.
 - `backend/internal/delivery/http/auth/*.go`: auth + user + role + permission HTTP handlers.
-- `backend/internal/delivery/http/db/database_handler.go`: database create/list/get/update/delete + test-connection HTTP handlers.
+- `backend/internal/delivery/http/db/database_handler.go`: database create/list/get/update/delete + test-connection + schema introspection HTTP handlers.
 - `backend/internal/delivery/http/middleware/jwt.go`: bearer token verification and context hydration.
 - `backend/internal/app/auth/*.go`: auth/session/user/role/permission business logic.
-- `backend/internal/app/db/database_service.go`: database lifecycle business logic (create/list/get/update/delete/test) with 5s timeout probe flow.
+- `backend/internal/app/db/database_service.go`: database lifecycle service, dependency wiring, and shared guard logic.
+- `backend/internal/app/db/database_service_introspection.go`: DBC-007 introspection methods (schemas/tables/columns), cache read/write, force-refresh limiter, 429/502/504 error mapping.
+- `backend/internal/app/db/schema_inspector.go`: PostgreSQL INFORMATION_SCHEMA inspector implementation and is_dttm mapping.
+- `backend/internal/app/db/schema_cache_memory.go`: in-memory cache fallback implementation for introspection payloads.
 - `backend/internal/domain/auth/entity.go`: `RegisterUser`, `User`, `Role`, `Permission`, `ViewMenu`, `PermissionView`, DTOs.
-- `backend/internal/domain/db/database.go`: `Database` entity and request/response DTOs for DB connection APIs.
-- `backend/internal/domain/db/repository.go`: database repository contracts.
+- `backend/internal/domain/db/database.go`: `Database` entity plus introspection DTOs (`DatabaseTable`, `DatabaseColumn`, list requests/responses).
+- `backend/internal/domain/db/repository.go`: database repository contracts plus schema cache contract.
 - `backend/internal/repository/postgres/*.go`: persistent repositories (user/register/verify/login/user-role/role/permission/database).
-- `backend/internal/repository/redis/*.go`: cache/session/blocklist/rate repositories.
+- `backend/internal/repository/redis/*.go`: cache/session/blocklist/rate repositories, including schema cache repository.
 - `backend/configs/config.go`: env-bound configuration structs.
 
 ## Runtime Boot Sequence
 
 ```
 Load env -> load config -> open Postgres -> AutoMigrate(RegisterUser, User, Role, Permission, ViewMenu, PermissionView, Database)
--> init Redis client -> parse RSA keys -> construct repos/services/handlers
+-> init Redis client -> parse RSA keys -> construct repos/services/handlers (including schema cache repo wiring)
 -> seed default permission-view pairs -> start Gin server
 ```

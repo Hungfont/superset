@@ -52,6 +52,9 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 - `failed_login:<username>`: failed login count for lockout policy.
 - `lockout:<username>`: active lockout marker with TTL.
 - `rbac:*`: RBAC cache namespace invalidated on role changes.
+- `schema:<dbID>:schemas`: cached schema list for one configured database (TTL 10 minutes).
+- `schema:<dbID>:<schema>:tables:<page>:<pageSize>`: cached paginated table list (TTL 10 minutes).
+- `schema:<dbID>:<schema>:<table>:columns`: cached column metadata list (TTL 10 minutes).
 
 ## Data Flow Summary
 
@@ -63,6 +66,7 @@ logout   -> write jwt:blacklist + delete refresh session
 roles    -> read/write ab_role + invalidate Redis rbac:* namespace
 permissions/view-menus -> read/write ab_permission + ab_view_menu + invalidate Redis rbac:* namespace
 permission-views -> read/write ab_permission_view, join ab_permission + ab_view_menu for display names, check ab_permission_view_role usage, invalidate Redis rbac:* namespace
+database schema introspection -> read dbs (connection config), open/reuse pool, query external DB INFORMATION_SCHEMA, cache payload under schema:* keys, bypass cache when force_refresh=true (rate limited)
 ```
 
 ## Domain Types Used in API
@@ -72,6 +76,9 @@ permission-views -> read/write ab_permission_view, join ab_permission + ab_view_
 - `Role`, `UpsertRoleRequest`, `RoleListItem`
 - `Permission`, `ViewMenu`, `PermissionView`
 - `UpsertPermissionRequest`, `UpsertViewMenuRequest`, `CreatePermissionViewRequest`
+- `Database`, `DatabaseDetail`, `DatabaseListItem`
+- `ListDatabaseTablesRequest`, `ListDatabaseColumnsRequest`
+- `DatabaseTable`, `DatabaseTableListResponse`, `DatabaseColumn`
 
 ## Extended Docs
 

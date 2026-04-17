@@ -17,5 +17,6 @@ HLD: [docs/diagram/HLD.md](../diagram/HLD.md)
 
 ## Current Scope
 
-The **Auth Service** is implemented (Phase 1), along with Phase 1 **Database Connection Service** endpoints (create/list/get/update/delete + test connection flows).  
+The **Auth Service** is implemented (Phase 1), along with Phase 1 **Database Connection Service** endpoints (create/list/get/update/delete + test connection + schema introspection flows).  
+Schema introspection now includes `GET /api/v1/admin/databases/:id/schemas`, `GET /api/v1/admin/databases/:id/tables`, and `GET /api/v1/admin/databases/:id/columns` with Redis-backed metadata cache and force-refresh controls.
 Future services tracked in [docs/requirement/](../requirement/).

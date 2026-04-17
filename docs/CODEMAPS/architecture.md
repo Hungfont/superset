@@ -9,9 +9,10 @@ Browser (React + Vite)
   -> Frontend router/guards (ProtectedRoute)
     -> REST API /api/v1/*
       -> Go service (Gin)
-        -> App services (auth, role, permission)
-          -> Postgres (users, register_users, roles, permissions, view_menus, permission_views)
-          -> Redis (jwt blocklist, refresh sessions, role cache, rate limits)
+        -> App services (auth, role, permission, database)
+          -> Postgres (users, register_users, roles, permissions, view_menus, permission_views, dbs)
+          -> Redis (jwt blocklist, refresh sessions, role cache, rate limits, schema introspection cache)
+          -> External databases via pooled SQL connections for schema/table/column discovery
           -> SMTP (verification email)
 ```
 
@@ -43,6 +44,16 @@ GET/POST /api/v1/admin/permissions
 GET/POST /api/v1/admin/view-menus
 GET/POST/DELETE /api/v1/admin/permission-views
   -> JWTMiddleware -> PermissionHandler -> PermissionService -> PermissionRepository + RoleCacheRepository
+
+Database Schema Introspection (DBC-007):
+GET /api/v1/admin/databases/:id/schemas
+GET /api/v1/admin/databases/:id/tables?schema=...
+GET /api/v1/admin/databases/:id/columns?schema=...&table=...
+  -> JWTMiddleware -> DatabaseHandler -> DatabaseService
+    -> ConnectionPoolManager.Get
+    -> Schema cache lookup (Redis, TTL 10m)
+    -> SchemaInspector (INFORMATION_SCHEMA)
+    -> force_refresh=true bypasses cache (rate limited: 5/min)
 ```
 
 ## Backend Layer Map
@@ -53,7 +64,9 @@ internal/delivery/http/router.go    route groups + middleware hookup
 internal/delivery/http/auth/*       request/response adapters
 internal/delivery/http/middleware/* JWT validation + context injection
 internal/app/auth/*                 business workflows
+internal/app/db/*                   database lifecycle + connection pool + schema introspection
 internal/domain/auth/*              entities + interfaces + contracts
+internal/domain/db/*                database contracts and introspection DTOs
 internal/repository/postgres/*      durable persistence
 internal/repository/redis/*         cache/session/blocklist/rate storage
 ```
