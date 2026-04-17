@@ -69,13 +69,13 @@ func (s *UserRoleService) SetUserRoles(ctx context.Context, actorUserID, userID 
 }
 
 func (s *UserRoleService) ensureAdmin(ctx context.Context, actorUserID uint) error {
-	// isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
-	// if err != nil {
-	// 	return fmt.Errorf("checking admin role: %w", err)
-	// }
-	// if !isAdmin {
-	// 	return domain.ErrForbidden
-	// }
+	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
+	if err != nil {
+		return fmt.Errorf("checking admin role: %w", err)
+	}
+	if !isAdmin {
+		return domain.ErrForbidden
+	}
 	return nil
 }
 

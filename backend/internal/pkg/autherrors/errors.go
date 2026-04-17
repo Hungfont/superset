@@ -55,3 +55,10 @@ var (
 	ErrDatabaseCredentialEncryption = errors.New("database credential encryption failed")
 	ErrUnknownDatabaseDriver        = errors.New("unknown database driver")
 )
+
+// Sentinel errors for dataset management.
+var (
+	ErrInvalidDataset     = errors.New("invalid dataset payload")
+	ErrDatasetDuplicate   = errors.New("dataset already exists")
+	ErrDatasetSyncEnqueue = errors.New("dataset sync enqueue failed")
+)

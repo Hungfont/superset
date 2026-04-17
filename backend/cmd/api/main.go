@@ -15,11 +15,14 @@ import (
 
 	"superset/auth-service/configs"
 	svcauth "superset/auth-service/internal/app/auth"
+	svcdataset "superset/auth-service/internal/app/dataset"
 	svcdb "superset/auth-service/internal/app/db"
 	delivery "superset/auth-service/internal/delivery/http"
 	httpauth "superset/auth-service/internal/delivery/http/auth"
+	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	"superset/auth-service/internal/domain/auth"
+	domaindataset "superset/auth-service/internal/domain/dataset"
 	domaindb "superset/auth-service/internal/domain/db"
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
@@ -58,6 +61,7 @@ func main() {
 		&auth.ViewMenu{},
 		&auth.PermissionView{},
 		&domaindb.Database{},
+		&domaindataset.Dataset{},
 	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
@@ -106,6 +110,7 @@ func main() {
 	userRoleRepo := repopostgres.NewUserRoleRepository(db)
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	databaseRepo := repopostgres.NewDatabaseRepository(db)
+	datasetRepo := repopostgres.NewDatasetRepository(db)
 	schemaCacheRepo := reporedis.NewDatabaseSchemaCacheRepository(redisClient)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
@@ -128,6 +133,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize database service: %v", err)
 	}
+	datasetAsyncQueue := reporedis.NewDatasetAsyncQueue(redisClient)
+	datasetSvc, err := svcdataset.NewService(datasetRepo, databaseRepo, datasetAsyncQueue)
+	if err != nil {
+		log.Fatalf("failed to initialize dataset service: %v", err)
+	}
 	databaseSvc.SetSchemaCache(schemaCacheRepo)
 	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
 		log.Fatalf("failed to seed permission views: %v", err)
@@ -143,6 +153,7 @@ func main() {
 	userRoleHandler := httpauth.NewUserRoleHandler(userRoleSvc)
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
+	datasetHandler := httpdataset.NewHandler(datasetSvc)
 
 	router := delivery.NewRouter(
 		registerHandler,
@@ -155,6 +166,7 @@ func main() {
 		userRoleHandler,
 		permissionHandler,
 		databaseHandler,
+		datasetHandler,
 		pubKey,
 		jwtRepo,
 		userRepo,
@@ -184,6 +196,9 @@ func main() {
 
 	if err := databaseSvc.ShutdownConnectionPools(shutdownCtx); err != nil {
 		log.Printf("failed to shutdown database connection pools: %v", err)
+	}
+	if err := datasetAsyncQueue.Shutdown(shutdownCtx); err != nil {
+		log.Printf("failed to shutdown dataset async queue: %v", err)
 	}
 
 	if err := server.Shutdown(shutdownCtx); err != nil {

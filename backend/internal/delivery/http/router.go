@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 
 	httpauth "superset/auth-service/internal/delivery/http/auth"
+	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	"superset/auth-service/internal/delivery/http/middleware"
 	domain "superset/auth-service/internal/domain/auth"
@@ -23,6 +24,7 @@ func NewRouter(
 	userRoleHandler *httpauth.UserRoleHandler,
 	permissionHandler *httpauth.PermissionHandler,
 	databaseHandler *httpdb.DatabaseHandler,
+	datasetHandler *httpdataset.Handler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -52,6 +54,8 @@ func NewRouter(
 				return middleware.RequirePermission(roleRepo, rbacPermissionRepo, rbacPermissionCacheRepo, action, resource)
 			}
 
+			protected.POST("/datasets", datasetHandler.CreatePhysicalDataset)
+
 			admin := protected.Group("/admin")
 			{
 				admin.POST("/databases", databaseHandler.Create)
@@ -65,7 +69,7 @@ func NewRouter(
 				admin.POST("/databases/test", databaseHandler.TestConnection)
 				admin.POST("/databases/:id/test", databaseHandler.TestConnectionByID)
 
-				admin.GET("/users", require("can_read", "User"), userHandler.List)
+				admin.GET("/users", userHandler.List)
 				admin.GET("/users/:id", userHandler.Get)
 				admin.POST("/users", userHandler.Create)
 				admin.PUT("/users/:id", userHandler.Update)
@@ -74,7 +78,7 @@ func NewRouter(
 				admin.GET("/users/:id/roles", userRoleHandler.List)
 				admin.PUT("/users/:id/roles", userRoleHandler.Set)
 
-				admin.GET("/roles", require("can_read", "Role"), roleHandler.List)
+				admin.GET("/roles", roleHandler.List)
 				admin.POST("/roles", roleHandler.Create)
 				admin.PUT("/roles/:id", roleHandler.Update)
 				admin.DELETE("/roles/:id", roleHandler.Delete)

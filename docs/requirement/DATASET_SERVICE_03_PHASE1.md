@@ -79,7 +79,8 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 **?? Go Implementation**
 1. perm:=fmt.Sprintf("[can_read].[%s].[%s]",db.DatabaseName,tableName)
 2. GORM.Create(&tables{...})
-3. asynq.Enqueue("dataset:sync_columns",{DatasetID:id}) | **? Acceptance Criteria**
+3. asynq.Enqueue("dataset:sync_columns",{DatasetID:id}) | 
+**? Acceptance Criteria**
 - 201 {id,table_name,background_sync:true}.
 - Duplicate ? 409.
 - Gamma ? 403.
@@ -87,7 +88,8 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 **?? Error Responses**
 - 403 - Gamma role.
 - 409 - Duplicate.
-- 422 - Invalid database_id. | **??? Frontend Specification**
+- 422 - Invalid database_id. | 
+**??? Frontend Specification**
 **?? Route & Page**
 /datasets/new (wizard)
 **?? shadcn/ui Components**

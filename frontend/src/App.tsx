@@ -14,6 +14,7 @@ import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import DatabasesPage from "@/pages/admin/DatabasesPage";
 import CreateDatabasePage from "@/pages/admin/CreateDatabasePage";
 import EditDatabasePage from "@/pages/admin/EditDatabasePage";
+import CreateDatasetPage from "@/pages/datasets/CreateDatasetPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -30,6 +31,8 @@ export default function App() {
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/datasets/new" element={<CreateDatasetPage />} />
+          <Route path="/datasets/:id/edit" element={<CreateDatasetPage />} />
         </Route>
 
         {/* Admin routes (authorization enforced by backend APIs) */}
