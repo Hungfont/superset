@@ -241,7 +241,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - 403 - Not owner or is_featured by non-admin.
 - 422 - Invalid main_dttm_col. | **??? Frontend Specification**
 **?? Route & Page**
-/datasets/:id/edit (Overview tab)
+/admin/datasets/:id/edit (Overview tab)
 **?? shadcn/ui Components**
 - Tabs [Overview &#124; Columns &#124; Metrics &#124; Settings] - dataset editor page structure
 - Form - Overview tab fields

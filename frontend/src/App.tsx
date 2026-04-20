@@ -15,6 +15,7 @@ import DatabasesPage from "@/pages/admin/DatabasesPage";
 import CreateDatabasePage from "@/pages/admin/CreateDatabasePage";
 import EditDatabasePage from "@/pages/admin/EditDatabasePage";
 import CreateDatasetPage from "@/pages/datasets/CreateDatasetPage";
+import EditDatasetPage from "@/pages/datasets/EditDatasetPage";
 import DatasetsPage from "@/pages/admin/DatasetsPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
@@ -48,7 +49,7 @@ export default function App() {
             <Route path="settings/databases/:id" element={<EditDatabasePage />} />
             <Route path="settings/datasets" element={<DatasetsPage />} />
             <Route path="settings/datasets/new" element={<CreateDatasetPage />} />
-            <Route path="settings/datasets/:id/edit" element={<CreateDatasetPage />} />
+            <Route path="settings/datasets/:id/edit" element={<EditDatasetPage />} />
             <Route path="settings/permissions" element={<PermissionsPage />} />
           </Route>
         </Route>

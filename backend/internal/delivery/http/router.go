@@ -58,6 +58,7 @@ func NewRouter(
 			protected.GET("/datasets/:id", datasetHandler.GetDataset)
 			protected.POST("/datasets", datasetHandler.CreatePhysicalDataset)
 			protected.POST("/datasets/virtual", datasetHandler.CreateVirtualDataset)
+			protected.PUT("/datasets/:id", datasetHandler.UpdateDataset)
 
 			admin := protected.Group("/admin")
 			{

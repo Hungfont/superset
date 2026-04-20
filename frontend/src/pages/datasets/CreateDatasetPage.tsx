@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Code2, Loader2, TableIcon } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { databasesApi, type DatabaseTable } from "@/api/databases";
 import { datasetsApi } from "@/api/datasets";
@@ -30,8 +30,6 @@ function resolveTableType(table: DatabaseTable): string {
 }
 
 export default function CreateDatasetPage() {
-  const { id } = useParams<{ id?: string }>();
-  const isEditMode = id !== undefined;
   const navigate = useNavigate();
   const { success, error } = useToast();
 
@@ -89,7 +87,7 @@ export default function CreateDatasetPage() {
     mutationFn: datasetsApi.createDataset,
     onSuccess: (created) => {
       success("Dataset created. Columns are being synced...");
-      navigate(`/admin/datasets/${created.id}/edit`);
+      navigate(`/admin/settings/datasets/${created.id}/edit`);
     },
     onError: (err) => {
       const requestError = err as Error & { status?: number };
@@ -116,7 +114,7 @@ export default function CreateDatasetPage() {
     mutationFn: datasetsApi.createVirtualDataset,
     onSuccess: (created) => {
       success("Virtual dataset created. Columns are being synced...");
-      navigate(`/admin/datasets/${created.id}/edit`);
+      navigate(`/admin/settings/datasets/${created.id}/edit`);
     },
     onError: (err) => {
       const requestError = err as Error & { status?: number; message?: string };
@@ -156,22 +154,6 @@ export default function CreateDatasetPage() {
   };
 
   const sqlIssues = detectSQLIssues(virtualSQL);
-
-  if (isEditMode) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Dataset Editor</CardTitle>
-          <CardDescription>Dataset {id} is being prepared. Column sync runs in the background.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            DS-001 navigation target is ready. Full editor tabs land in upcoming requirements.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-4">

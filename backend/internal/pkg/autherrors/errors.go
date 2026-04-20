@@ -61,12 +61,13 @@ var (
 	ErrInvalidDataset     = errors.New("invalid dataset payload")
 	ErrDatasetDuplicate   = errors.New("dataset already exists")
 	ErrDatasetSyncEnqueue = errors.New("dataset sync enqueue failed")
+	ErrInvalidMainDttmCol = errors.New("invalid main_dttm_col: column not found or not a datetime column")
 )
 
 // Sentinel errors for virtual dataset SQL validation.
 var (
-	ErrInvalidSQL            = errors.New("invalid SQL query")
-	ErrSQLNotSelect          = errors.New("SQL must be a SELECT statement")
-	ErrSQLSemicolon          = errors.New("SQL should not contain semicolons")
-	ErrSQLSemanticError      = errors.New("SQL semantic error")
+	ErrInvalidSQL       = errors.New("invalid SQL query")
+	ErrSQLNotSelect     = errors.New("SQL must be a SELECT statement")
+	ErrSQLSemicolon     = errors.New("SQL should not contain semicolons")
+	ErrSQLSemanticError = errors.New("SQL semantic error")
 )

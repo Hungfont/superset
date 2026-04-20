@@ -24,6 +24,12 @@ export interface DatasetWithCounts {
   database_name?: string;
   type: "physical" | "virtual";
   perm: string;
+  description?: string;
+  main_dttm_col?: string;
+  cache_timeout?: number;
+  filter_select_enabled?: boolean;
+  normalize_columns?: boolean;
+  is_featured?: boolean;
   created_by_fk: number;
   owner_name?: string;
   column_count: number;
@@ -50,6 +56,7 @@ export interface SqlMetric {
 export interface DatasetDetail extends DatasetWithCounts {
   table_columns: Column[];
   sql_metrics: SqlMetric[];
+  sql?: string;
 }
 
 export interface DatasetListResponse {
@@ -83,6 +90,24 @@ export interface CreateVirtualDatasetResponse {
   table_name: string;
   background_sync: boolean;
   columns?: Column[];
+}
+
+export interface UpdateDatasetMetadataPayload {
+  table_name?: string;
+  description?: string;
+  main_dttm_col?: string;
+  cache_timeout?: number;
+  normalize_columns?: boolean;
+  filter_select_enabled?: boolean;
+  is_featured?: boolean;
+  sql?: string;
+  validate_sql?: boolean;
+}
+
+export interface UpdateDatasetMetadataResponse {
+  id: number;
+  table_name: string;
+  background_sync?: boolean;
 }
 
 type PaginationParams = {
@@ -157,5 +182,16 @@ export const datasetsApi = {
       credentials: "include",
       headers: getAuthHeaders(),
     });
+  },
+
+  async updateDataset(id: number, payload: UpdateDatasetMetadataPayload): Promise<UpdateDatasetMetadataResponse> {
+    const body = await request<ApiEnvelope<UpdateDatasetMetadataResponse>>(`/api/v1/datasets/${id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
   },
 };

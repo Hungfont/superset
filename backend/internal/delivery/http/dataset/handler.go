@@ -29,16 +29,21 @@ type getDatasetService interface {
 	GetDatasetDetail(ctx context.Context, actorUserID uint, id uint) (*domain.DatasetDetail, error)
 }
 
+type updateDatasetService interface {
+	UpdateDatasetMetadata(ctx context.Context, actorUserID uint, id uint, req domain.UpdateDatasetMetadataRequest) (*domain.UpdateDatasetMetadataResponse, error)
+}
+
 // Handler handles /api/v1/datasets endpoints.
 type Handler struct {
 	svcPhysical createPhysicalDatasetService
 	svcVirtual  createVirtualDatasetService
 	svcList     listDatasetsService
 	svcGet      getDatasetService
+	svcUpdate   updateDatasetService
 }
 
-func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService) *Handler {
-	return &Handler{svcPhysical: svcPhysical, svcVirtual: svcVirtual, svcList: svcList, svcGet: svcGet}
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService) *Handler {
+	return &Handler{svcPhysical: svcPhysical, svcVirtual: svcVirtual, svcList: svcList, svcGet: svcGet, svcUpdate: svcUpdate}
 }
 
 func (h *Handler) CreatePhysicalDataset(c *gin.Context) {
@@ -134,6 +139,35 @@ func (h *Handler) GetDataset(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": detail})
 }
 
+func (h *Handler) UpdateDataset(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	idParam := c.Param("id")
+	var id uint
+	if _, err := fmt.Sscanf(idParam, "%d", &id); err != nil || id == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	var req domain.UpdateDatasetMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	updated, err := h.svcUpdate.UpdateDatasetMetadata(c.Request.Context(), actor.ID, id, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": updated})
+}
+
 func (h *Handler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
@@ -143,6 +177,8 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrInvalidDataset), errors.Is(err, domain.ErrInvalidDatabase):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrSQLNotSelect), errors.Is(err, domain.ErrSQLSemicolon), errors.Is(err, domain.ErrSQLSemanticError):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrInvalidMainDttmCol):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})

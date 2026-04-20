@@ -20,4 +20,8 @@ type Repository interface {
 	ListDatasets(ctx context.Context, actorUserID uint, filters DatasetListFilters) (*DatasetListResult, error)
 	// GetDatasetDetail retrieves a dataset with full columns and metrics.
 	GetDatasetDetail(ctx context.Context, id uint) (*DatasetDetail, error)
+	// UpdateDatasetMetadata updates dataset metadata.
+	UpdateDatasetMetadata(ctx context.Context, id uint, req UpdateDatasetMetadataRequest) error
+	// GetColumnByName retrieves a column by table_id and column_name.
+	GetColumnByName(ctx context.Context, tableID uint, columnName string) (*Column, error)
 }

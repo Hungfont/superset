@@ -357,3 +357,92 @@ func normalizeDatasetListQuery(query domain.DatasetListQuery) domain.DatasetList
 		OrderBy:   orderBy,
 	}
 }
+
+func (s *Service) UpdateDatasetMetadata(ctx context.Context, actorUserID uint, id uint, req domain.UpdateDatasetMetadataRequest) (*domain.UpdateDatasetMetadataResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, req.IsFeatured)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	if req.MainDttmCol != "" {
+		column, err := s.repo.GetColumnByName(ctx, id, req.MainDttmCol)
+		if err != nil {
+			return nil, fmt.Errorf("validating main_dttm_col: %w", err)
+		}
+		if column == nil || !column.IsDateTime {
+			return nil, domain.ErrInvalidMainDttmCol
+		}
+	}
+
+	backgroundSync := false
+	if req.SQL != "" {
+		sql := strings.TrimSpace(req.SQL)
+		if !selectPattern.MatchString(sql) {
+			return nil, domain.ErrSQLNotSelect
+		}
+		if semicolonPattern.MatchString(sql) {
+			return nil, domain.ErrSQLSemicolon
+		}
+		backgroundSync = true
+	}
+
+	if err := s.repo.UpdateDatasetMetadata(ctx, id, req); err != nil {
+		return nil, fmt.Errorf("updating dataset metadata: %w", err)
+	}
+
+	if backgroundSync {
+		if _, err := s.queue.EnqueueSyncColumns(ctx, id); err != nil {
+			return nil, fmt.Errorf("%w: %v", domain.ErrDatasetSyncEnqueue, err)
+		}
+	}
+
+	return &domain.UpdateDatasetMetadataResponse{
+		ID:             id,
+		TableName:      dataset.Name,
+		BackgroundSync: backgroundSync,
+	}, nil
+}
+
+func (s *Service) canEditDataset(ctx context.Context, actorUserID uint, dataset *domain.Dataset, scope domain.DatasetVisibilityScope, setFeatured bool) (bool, error) {
+	if setFeatured {
+		roleNames, err := s.databaseRepo.GetRoleNamesByUser(ctx, actorUserID)
+		if err != nil {
+			return false, fmt.Errorf("loading actor role names: %w", err)
+		}
+		isAdmin := false
+		for _, roleName := range roleNames {
+			if strings.ToLower(strings.TrimSpace(roleName)) == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+		if !isAdmin {
+			return false, nil
+		}
+	}
+
+	switch scope {
+	case domain.VisibilityScopeAdmin, domain.VisibilityScopeAlpha:
+		return true, nil
+	case domain.VisibilityScopeGamma:
+		return dataset.CreatedByFK == actorUserID, nil
+	default:
+		return dataset.CreatedByFK == actorUserID, nil
+	}
+}

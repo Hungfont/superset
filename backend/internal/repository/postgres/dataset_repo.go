@@ -213,7 +213,9 @@ func (r *datasetRepo) GetDatasetDetail(ctx context.Context, id uint) (*domain.Da
 	err := r.db.WithContext(ctx).Table("tables").
 		Select(`tables.id, tables.table_name, tables.schema, tables.database_id, dbs.database_name, 
 			CASE WHEN tables.sql = '' OR tables.sql IS NULL THEN 'physical' ELSE 'virtual' END as type,
-			tables.perm, tables.created_by_fk, owners.username as owner_name,
+			tables.perm, tables.description, tables.main_dttm_col, tables.cache_timeout,
+			tables.filter_select_enabled, tables.normalize_columns, tables.is_featured,
+			tables.created_by_fk, owners.username as owner_name,
 			(SELECT COUNT(*) FROM table_columns WHERE table_id = tables.id AND is_active = true) as column_count,
 			(SELECT COUNT(*) FROM sql_metrics WHERE table_id = tables.id) as metric_count,
 			tables.changed_on`).
@@ -253,6 +255,52 @@ func (r *datasetRepo) GetDatasetDetail(ctx context.Context, id uint) (*domain.Da
 		TableColumns:    columns,
 		SqlMetrics:     metrics,
 	}, nil
+}
+
+func (r *datasetRepo) UpdateDatasetMetadata(ctx context.Context, id uint, req domain.UpdateDatasetMetadataRequest) error {
+	updates := make(map[string]interface{})
+
+	if req.TableName != "" {
+		updates["table_name"] = req.TableName
+	}
+	if req.Description != "" || req.Description == "" {
+		updates["description"] = req.Description
+	}
+	if req.MainDttmCol != "" {
+		updates["main_dttm_col"] = req.MainDttmCol
+	}
+	updates["cache_timeout"] = req.CacheTimeout
+	updates["normalize_columns"] = req.NormalizeColumns
+	updates["filter_select_enabled"] = req.FilterSelectEnabled
+	updates["is_featured"] = req.IsFeatured
+	if req.SQL != "" {
+		updates["sql"] = req.SQL
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	if err := r.db.WithContext(ctx).Table("tables").Where("id = ?", id).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating dataset metadata: %w", err)
+	}
+
+	return nil
+}
+
+func (r *datasetRepo) GetColumnByName(ctx context.Context, tableID uint, columnName string) (*domain.Column, error) {
+	var column domain.Column
+	err := r.db.WithContext(ctx).Table("table_columns").
+		Where("table_id = ? AND column_name = ? AND is_active = true", tableID, columnName).
+		First(&column).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting column by name: %w", err)
+	}
+
+	return &column, nil
 }
 
 var _ domain.Repository = (*datasetRepo)(nil)

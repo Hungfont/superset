@@ -1,6 +1,8 @@
 package dataset
 
-import pkgerrors "superset/auth-service/internal/pkg/autherrors"
+import (
+	pkgerrors "superset/auth-service/internal/pkg/autherrors"
+)
 
 var (
 	ErrTokenInvalid       = pkgerrors.ErrTokenInvalid
@@ -13,4 +15,5 @@ var (
 	ErrSQLNotSelect       = pkgerrors.ErrSQLNotSelect
 	ErrSQLSemicolon       = pkgerrors.ErrSQLSemicolon
 	ErrSQLSemanticError   = pkgerrors.ErrSQLSemanticError
+	ErrInvalidMainDttmCol = pkgerrors.ErrInvalidMainDttmCol
 )

@@ -13,8 +13,12 @@ type Dataset struct {
 	DatabaseID          uint      `gorm:"column:database_id;not null" json:"database_id"`
 	SQL                 string    `gorm:"column:sql" json:"sql,omitempty"`
 	Perm                string    `gorm:"column:perm;not null" json:"perm"`
+	Description         string    `gorm:"column:description" json:"description,omitempty"`
+	MainDttmCol        string    `gorm:"column:main_dttm_col" json:"main_dttm_col,omitempty"`
+	CacheTimeout        int       `gorm:"column:cache_timeout;default:0" json:"cache_timeout"`
 	FilterSelectEnabled bool      `gorm:"column:filter_select_enabled;default:false" json:"filter_select_enabled"`
 	NormalizeColumns    bool      `gorm:"column:normalize_columns;default:false" json:"normalize_columns"`
+	IsFeatured          bool      `gorm:"column:is_featured;default:false" json:"is_featured"`
 	CreatedByFK         uint      `gorm:"column:created_by_fk" json:"-"`
 	ChangedByFK         uint      `gorm:"column:changed_by_fk" json:"-"`
 	CreatedOn           time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
@@ -70,18 +74,24 @@ type Column struct {
 
 // DatasetWithCounts includes aggregate counts for list view.
 type DatasetWithCounts struct {
-	ID            uint      `json:"id"`
-	TableName    string    `json:"table_name"`
-	Schema       string    `json:"schema,omitempty"`
-	DatabaseID   uint      `json:"database_id"`
-	DatabaseName string    `json:"database_name,omitempty"`
-	Type         string    `json:"type"`
-	Perm         string    `json:"perm"`
-	CreatedByFK  uint      `json:"created_by_fk"`
-	OwnerName    string    `json:"owner_name,omitempty"`
-	ColumnCount  int       `json:"column_count"`
-	MetricCount  int       `json:"metric_count"`
-	ChangedOn    time.Time `json:"changed_on"`
+	ID                  uint      `json:"id"`
+	TableName           string    `json:"table_name"`
+	Schema              string    `json:"schema,omitempty"`
+	DatabaseID          uint      `json:"database_id"`
+	DatabaseName        string    `json:"database_name,omitempty"`
+	Type                string    `json:"type"`
+	Perm                string    `json:"perm"`
+	Description         string    `json:"description,omitempty"`
+	MainDttmCol         string    `json:"main_dttm_col,omitempty"`
+	CacheTimeout        int       `json:"cache_timeout"`
+	FilterSelectEnabled bool      `json:"filter_select_enabled"`
+	NormalizeColumns    bool      `json:"normalize_columns"`
+	IsFeatured          bool      `json:"is_featured"`
+	CreatedByFK         uint      `json:"created_by_fk"`
+	OwnerName           string    `json:"owner_name,omitempty"`
+	ColumnCount         int       `json:"column_count"`
+	MetricCount         int       `json:"metric_count"`
+	ChangedOn           time.Time `json:"changed_on"`
 }
 
 // DatasetDetail includes full columns/metrics for detail view.
@@ -147,3 +157,23 @@ type DatasetListResult struct {
 
 // ErrDatasetNotFound is returned when dataset doesn't exist.
 var ErrDatasetNotFound = errors.New("dataset not found")
+
+// UpdateDatasetMetadataRequest is used by PUT /api/v1/datasets/:id.
+type UpdateDatasetMetadataRequest struct {
+	TableName            string `json:"table_name"`
+	Description          string `json:"description"`
+	MainDttmCol          string `json:"main_dttm_col"`
+	CacheTimeout         int    `json:"cache_timeout"`
+	NormalizeColumns     bool   `json:"normalize_columns"`
+	FilterSelectEnabled  bool   `json:"filter_select_enabled"`
+	IsFeatured           bool   `json:"is_featured"`
+	SQL                  string `json:"sql"`
+	ValidateSQL          bool   `json:"validate_sql"`
+}
+
+// UpdateDatasetMetadataResponse is returned by PUT /api/v1/datasets/:id.
+type UpdateDatasetMetadataResponse struct {
+	ID             uint   `json:"id"`
+	TableName     string `json:"table_name"`
+	BackgroundSync bool  `json:"background_sync,omitempty"`
+}
