@@ -19,4 +19,9 @@ var (
 	ErrColumnNotFound     = pkgerrors.ErrColumnNotFound
 	ErrInvalidExpression  = pkgerrors.ErrInvalidExpression
 	ErrInvalidDateFormat  = pkgerrors.ErrInvalidDateFormat
+
+	ErrMetricDuplicate           = pkgerrors.ErrMetricDuplicate
+	ErrMetricNotFound            = pkgerrors.ErrMetricNotFound
+	ErrNoAggregateFunction       = pkgerrors.ErrNoAggregateFunction
+	ErrDatasetReferencedByCharts = pkgerrors.ErrDatasetReferencedByCharts
 )

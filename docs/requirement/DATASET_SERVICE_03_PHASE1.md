@@ -379,7 +379,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-006** - **Delete Dataset**
+**DS-008** - **Delete Dataset**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**                      | **API / Route**             |
 | ----------------- | ------------ | --------- | ---------------------------------- | --------------------------- |

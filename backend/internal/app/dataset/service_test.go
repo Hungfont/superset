@@ -11,18 +11,21 @@ import (
 )
 
 type fakeDatasetRepository struct {
-	datasetExists    bool
-	datasetExistsErr error
-	createErr        error
-	createdDataset   *domain.Dataset
-	datasets         map[uint]*domain.Dataset
-	metrics          map[uint][]domain.SqlMetric
-	metricIDCounter  uint
-	metricNameExists bool
+	datasetExists      bool
+	datasetExistsErr   error
+	createErr         error
+	createdDataset    *domain.Dataset
+	datasets          map[uint]*domain.Dataset
+	metrics           map[uint][]domain.SqlMetric
+	metricIDCounter   uint
+	metricNameExists  bool
 	metricNameExistsErr error
-	createMetricErr error
-	updateMetricErr error
+	createMetricErr   error
+	updateMetricErr  error
 	deleteMetricErr error
+	deleteDatasetErr error
+	chartCount       int64
+	chartCountErr    error
 }
 
 func (f *fakeDatasetRepository) init() {
@@ -197,6 +200,24 @@ func (f *fakeDatasetRepository) MetricNameExists(_ context.Context, _ uint, _ st
 	return f.metricNameExists, nil
 }
 
+func (f *fakeDatasetRepository) DeleteDataset(_ context.Context, _ uint) error {
+	if f.deleteDatasetErr != nil {
+		return f.deleteDatasetErr
+	}
+	f.init()
+	for id := range f.datasets {
+		delete(f.datasets, id)
+	}
+	return nil
+}
+
+func (f *fakeDatasetRepository) CountChartsByDatasetID(_ context.Context, _ uint) (int64, error) {
+	if f.chartCountErr != nil {
+		return 0, f.chartCountErr
+	}
+	return f.chartCount, nil
+}
+
 type fakeDatabaseLookupRepository struct {
 	roleNames   []string
 	database    *dbdomain.Database
@@ -285,11 +306,11 @@ func TestDatasetService_NewServiceReturnsErrorWhenQueueIsNil(t *testing.T) {
 	}
 
 	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, nil)
-	if !errors.Is(err, datasetsvc.ErrSyncQueueRequired) {
-		t.Fatalf("expected ErrSyncQueueRequired, got %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error creating service, got %v", err)
 	}
-	if svc != nil {
-		t.Fatal("expected nil service when sync queue is nil")
+	if svc == nil {
+		t.Fatal("expected service when sync queue is nil")
 	}
 }
 

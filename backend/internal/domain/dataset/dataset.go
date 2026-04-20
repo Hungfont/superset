@@ -311,11 +311,20 @@ type MetricDetail struct {
 	CreatedOn            time.Time `json:"created_on"`
 }
 
-// ErrMetricDuplicate is returned when metric name already exists.
-var ErrMetricDuplicate = errors.New("metric name already exists")
+// DeleteDatasetRequest is used by DELETE /api/v1/datasets/:id.
+type DeleteDatasetRequest struct {
+	Force bool `json:"force"`
+}
 
-// ErrMetricNotFound is returned when metric doesn't exist.
-var ErrMetricNotFound = errors.New("metric not found")
+// DeleteDatasetResponse is returned by DELETE /api/v1/datasets/:id.
+type DeleteDatasetResponse struct {
+	Deleted       bool       `json:"deleted"`
+	ChartsDeleted int        `json:"charts_deleted,omitempty"`
+	Warnings      []ChartRef `json:"warnings,omitempty"`
+}
 
-// ErrNoAggregateFunction is returned when expression doesn't contain aggregate function.
-var ErrNoAggregateFunction = errors.New("expression must contain an aggregate function")
+// ChartRef references a chart that uses this dataset.
+type ChartRef struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}

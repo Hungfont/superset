@@ -52,30 +52,36 @@ type updateMetricService interface {
 	BulkUpdateMetrics(ctx context.Context, actorUserID uint, datasetID uint, req domain.BulkUpdateMetricsRequest) (*domain.BulkUpdateMetricsResponse, error)
 }
 
-// Handler handles /api/v1/datasets endpoints.
-type Handler struct {
-	svcPhysical   createPhysicalDatasetService
-	svcVirtual   createVirtualDatasetService
-	svcList      listDatasetsService
-	svcGet       getDatasetService
-	svcUpdate    updateDatasetService
-	svcUpdateCol updateColumnService
-	svcMetrics   getMetricsService
-	svcCreateMetric createMetricService
-	svcUpdateMetrics updateMetricService
+type deleteDatasetService interface {
+	DeleteDataset(ctx context.Context, actorUserID uint, id uint, req domain.DeleteDatasetRequest) (*domain.DeleteDatasetResponse, error)
 }
 
-func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService) *Handler {
+// Handler handles /api/v1/datasets endpoints.
+type Handler struct {
+	svcPhysical    createPhysicalDatasetService
+	svcVirtual    createVirtualDatasetService
+	svcList       listDatasetsService
+	svcGet        getDatasetService
+	svcUpdate     updateDatasetService
+	svcUpdateCol  updateColumnService
+	svcMetrics    getMetricsService
+	svcCreateMetric  createMetricService
+	svcUpdateMetrics updateMetricService
+	svcDelete     deleteDatasetService
+}
+
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService, svcDelete deleteDatasetService) *Handler {
 	return &Handler{
-		svcPhysical:       svcPhysical,
-		svcVirtual:        svcVirtual,
-		svcList:           svcList,
-		svcGet:            svcGet,
-		svcUpdate:         svcUpdate,
-		svcUpdateCol:      svcUpdateCol,
-		svcMetrics:        svcMetrics,
-		svcCreateMetric:   svcCreateMetric,
-		svcUpdateMetrics:  svcUpdateMetrics,
+		svcPhysical:      svcPhysical,
+		svcVirtual:       svcVirtual,
+		svcList:          svcList,
+		svcGet:           svcGet,
+		svcUpdate:        svcUpdate,
+		svcUpdateCol:     svcUpdateCol,
+		svcMetrics:       svcMetrics,
+		svcCreateMetric:  svcCreateMetric,
+		svcUpdateMetrics: svcUpdateMetrics,
+		svcDelete:        svcDelete,
 	}
 }
 
@@ -413,11 +419,38 @@ func (h *Handler) BulkUpdateMetrics(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+func (h *Handler) DeleteDataset(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	idParam := c.Param("id")
+	var id uint
+	if _, err := fmt.Sscanf(idParam, "%d", &id); err != nil || id == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	force := c.Query("force") == "true"
+
+	_, err := h.svcDelete.DeleteDataset(c.Request.Context(), actor.ID, id, domain.DeleteDatasetRequest{Force: force})
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatasetDuplicate):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatasetReferencedByCharts):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrInvalidDataset), errors.Is(err, domain.ErrInvalidDatabase):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})

@@ -58,10 +58,11 @@ var (
 
 // Sentinel errors for dataset management.
 var (
-	ErrInvalidDataset     = errors.New("invalid dataset payload")
-	ErrDatasetDuplicate   = errors.New("dataset already exists")
-	ErrDatasetSyncEnqueue = errors.New("dataset sync enqueue failed")
-	ErrInvalidMainDttmCol = errors.New("invalid main_dttm_col: column not found or not a datetime column")
+	ErrInvalidDataset            = errors.New("invalid dataset payload")
+	ErrDatasetDuplicate          = errors.New("dataset already exists")
+	ErrDatasetSyncEnqueue        = errors.New("dataset sync enqueue failed")
+	ErrInvalidMainDttmCol        = errors.New("invalid main_dttm_col: column not found or not a datetime column")
+	ErrDatasetReferencedByCharts = errors.New("dataset is referenced by charts")
 )
 
 // Sentinel errors for virtual dataset SQL validation.
@@ -77,4 +78,11 @@ var (
 	ErrColumnNotFound    = errors.New("column not found")
 	ErrInvalidExpression = errors.New("invalid expression")
 	ErrInvalidDateFormat = errors.New("invalid python date format")
+)
+
+// Sentinel errors for metrics dataset validation.
+var (
+	ErrMetricDuplicate     = errors.New("metric name already exists")
+	ErrMetricNotFound      = errors.New("metric not found")
+	ErrNoAggregateFunction = errors.New("expression must contain an aggregate function")
 )

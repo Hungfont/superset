@@ -538,4 +538,34 @@ func (r *datasetRepo) MetricNameExists(ctx context.Context, tableID uint, metric
 	return count > 0, nil
 }
 
+func (r *datasetRepo) DeleteDataset(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("table_columns").Where("table_id = ?", id).Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting columns: %w", err)
+		}
+
+		if err := tx.Table("sql_metrics").Where("table_id = ?", id).Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting metrics: %w", err)
+		}
+
+		if err := tx.Table("tables").Where("id = ?", id).Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting dataset: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (r *datasetRepo) CountChartsByDatasetID(ctx context.Context, datasetID uint) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("slices").
+		Where("datasource_id = ?", datasetID).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("counting charts: %w", err)
+	}
+
+	return count, nil
+}
+
 var _ domain.Repository = (*datasetRepo)(nil)

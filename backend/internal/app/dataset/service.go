@@ -875,3 +875,60 @@ func normalizeMetricName(name string) string {
 	}
 	return trimmed
 }
+
+func (s *Service) DeleteDataset(ctx context.Context, actorUserID uint, id uint, req domain.DeleteDatasetRequest) (*domain.DeleteDatasetResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canDelete, err := s.canDeleteDataset(ctx, actorUserID, dataset, visibilityScope)
+	if err != nil {
+		return nil, err
+	}
+	if !canDelete {
+		return nil, domain.ErrForbidden
+	}
+
+	chartCount, err := s.repo.CountChartsByDatasetID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("counting charts: %w", err)
+	}
+
+	isAdmin := false
+	if visibilityScope == domain.VisibilityScopeAdmin {
+		isAdmin = true
+	}
+
+	if chartCount > 0 && (!req.Force || !isAdmin) {
+		return nil, domain.ErrDatasetReferencedByCharts
+	}
+
+	if err := s.repo.DeleteDataset(ctx, id); err != nil {
+		return nil, fmt.Errorf("deleting dataset: %w", err)
+	}
+
+	return &domain.DeleteDatasetResponse{
+		Deleted:          true,
+		ChartsDeleted: int(chartCount),
+	}, nil
+}
+
+func (s *Service) canDeleteDataset(ctx context.Context, actorUserID uint, dataset *domain.Dataset, scope domain.DatasetVisibilityScope) (bool, error) {
+	switch scope {
+	case domain.VisibilityScopeAdmin, domain.VisibilityScopeAlpha:
+		return true, nil
+	case domain.VisibilityScopeGamma:
+		return dataset.CreatedByFK == actorUserID, nil
+	default:
+		return dataset.CreatedByFK == actorUserID, nil
+	}
+}

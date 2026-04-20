@@ -44,4 +44,8 @@ type Repository interface {
 	BulkReplaceMetrics(ctx context.Context, tableID uint, metrics []SqlMetric) error
 	// MetricNameExists checks if a metric name already exists for a table.
 	MetricNameExists(ctx context.Context, tableID uint, metricName string, excludeID uint) (bool, error)
+	// DeleteDataset deletes a dataset and its related data in a transaction.
+	DeleteDataset(ctx context.Context, id uint) error
+	// CountChartsByDatasetID counts charts using this dataset.
+	CountChartsByDatasetID(ctx context.Context, datasetID uint) (int64, error)
 }
