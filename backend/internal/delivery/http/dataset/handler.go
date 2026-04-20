@@ -16,13 +16,18 @@ type createPhysicalDatasetService interface {
 	CreatePhysicalDataset(ctx context.Context, actorUserID uint, req domain.CreatePhysicalDatasetRequest) (*domain.CreatePhysicalDatasetResponse, error)
 }
 
-// Handler handles /api/v1/datasets endpoints.
-type Handler struct {
-	svc createPhysicalDatasetService
+type createVirtualDatasetService interface {
+	CreateVirtualDataset(ctx context.Context, actorUserID uint, req domain.CreateVirtualDatasetRequest) (*domain.CreateVirtualDatasetResponse, error)
 }
 
-func NewHandler(svc createPhysicalDatasetService) *Handler {
-	return &Handler{svc: svc}
+// Handler handles /api/v1/datasets endpoints.
+type Handler struct {
+	svcPhysical createPhysicalDatasetService
+	svcVirtual  createVirtualDatasetService
+}
+
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService) *Handler {
+	return &Handler{svcPhysical: svcPhysical, svcVirtual: svcVirtual}
 }
 
 func (h *Handler) CreatePhysicalDataset(c *gin.Context) {
@@ -38,7 +43,29 @@ func (h *Handler) CreatePhysicalDataset(c *gin.Context) {
 		return
 	}
 
-	created, err := h.svc.CreatePhysicalDataset(c.Request.Context(), actor.ID, req)
+	created, err := h.svcPhysical.CreatePhysicalDataset(c.Request.Context(), actor.ID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"data": created})
+}
+
+func (h *Handler) CreateVirtualDataset(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	var req domain.CreateVirtualDatasetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	created, err := h.svcVirtual.CreateVirtualDataset(c.Request.Context(), actor.ID, req)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -54,6 +81,8 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrDatasetDuplicate):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrInvalidDataset), errors.Is(err, domain.ErrInvalidDatabase):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrSQLNotSelect), errors.Is(err, domain.ErrSQLSemicolon), errors.Is(err, domain.ErrSQLSemanticError):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})

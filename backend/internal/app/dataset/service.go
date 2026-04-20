@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	domain "superset/auth-service/internal/domain/dataset"
@@ -139,4 +140,94 @@ func normalizeCreateRequest(req domain.CreatePhysicalDatasetRequest) (domain.Cre
 
 func buildPhysicalDatasetPerm(databaseName string, tableName string) string {
 	return fmt.Sprintf("[can_read].[%s].[%s]", strings.TrimSpace(databaseName), strings.TrimSpace(tableName))
+}
+
+var (
+	selectPattern    = regexp.MustCompile(`(?i)^\s*SELECT\s`)
+	semicolonPattern = regexp.MustCompile(`;`)
+)
+
+func (s *Service) CreateVirtualDataset(ctx context.Context, actorUserID uint, req domain.CreateVirtualDatasetRequest) (*domain.CreateVirtualDatasetResponse, error) {
+	normalizedReq, err := normalizeVirtualCreateRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	allowed, err := s.allowPhysicalDatasetCreation(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, domain.ErrForbidden
+	}
+
+	database, err := s.databaseRepo.GetDatabaseByID(ctx, normalizedReq.DatabaseID)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidDatabase) || errors.Is(err, dbdomain.ErrDatabaseNotFound) {
+			return nil, domain.ErrInvalidDatabase
+		}
+		return nil, fmt.Errorf("loading database by id: %w", err)
+	}
+	if database == nil || strings.TrimSpace(database.DatabaseName) == "" {
+		return nil, domain.ErrInvalidDatabase
+	}
+
+	sql := strings.TrimSpace(normalizedReq.SQL)
+	if !selectPattern.MatchString(sql) {
+		return nil, domain.ErrSQLNotSelect
+	}
+	if semicolonPattern.MatchString(sql) {
+		return nil, domain.ErrSQLSemicolon
+	}
+
+	exists, err := s.repo.ExistsVirtualDataset(ctx, normalizedReq.DatabaseID, normalizedReq.TableName)
+	if err != nil {
+		return nil, fmt.Errorf("checking virtual dataset duplicate: %w", err)
+	}
+	if exists {
+		return nil, domain.ErrDatasetDuplicate
+	}
+
+	created := domain.Dataset{
+		Name:        normalizedReq.TableName,
+		DatabaseID:  normalizedReq.DatabaseID,
+		SQL:        sql,
+		Perm:       buildPhysicalDatasetPerm(database.DatabaseName, normalizedReq.TableName),
+		CreatedByFK: actorUserID,
+		ChangedByFK: actorUserID,
+	}
+
+	if err := s.repo.CreateVirtualDataset(ctx, &created); err != nil {
+		if errors.Is(err, domain.ErrDatasetDuplicate) {
+			return nil, domain.ErrDatasetDuplicate
+		}
+		return nil, fmt.Errorf("creating virtual dataset: %w", err)
+	}
+
+	if _, err := s.queue.EnqueueSyncColumns(ctx, created.ID); err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrDatasetSyncEnqueue, err)
+	}
+
+	return &domain.CreateVirtualDatasetResponse{
+		ID:             created.ID,
+		TableName:       created.Name,
+		BackgroundSync: true,
+	}, nil
+}
+
+func normalizeVirtualCreateRequest(req domain.CreateVirtualDatasetRequest) (domain.CreateVirtualDatasetRequest, error) {
+	databaseID := req.DatabaseID
+	tableName := strings.TrimSpace(req.TableName)
+	sql := strings.TrimSpace(req.SQL)
+
+	if databaseID == 0 || tableName == "" || sql == "" {
+		return domain.CreateVirtualDatasetRequest{}, domain.ErrInvalidDataset
+	}
+
+	return domain.CreateVirtualDatasetRequest{
+		DatabaseID:  databaseID,
+		TableName:  tableName,
+		SQL:       sql,
+		ValidateSQL: req.ValidateSQL,
+	}, nil
 }

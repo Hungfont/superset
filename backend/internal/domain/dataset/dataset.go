@@ -39,3 +39,28 @@ type CreatePhysicalDatasetResponse struct {
 	TableName      string `json:"table_name"`
 	BackgroundSync bool   `json:"background_sync"`
 }
+
+// CreateVirtualDatasetRequest is used by POST /api/v1/datasets (virtual).
+type CreateVirtualDatasetRequest struct {
+	DatabaseID  uint   `json:"database_id" binding:"required"`
+	TableName   string `json:"table_name" binding:"required,max=255"`
+	SQL         string `json:"sql" binding:"required"`
+	ValidateSQL bool   `json:"validate_sql"`
+}
+
+// CreateVirtualDatasetResponse is returned by POST /api/v1/datasets (virtual).
+type CreateVirtualDatasetResponse struct {
+	ID               uint     `json:"id"`
+	TableName        string   `json:"table_name"`
+	BackgroundSync   bool     `json:"background_sync"`
+	Columns          []Column `json:"columns,omitempty"`
+}
+
+// Column represents a dataset column.
+type Column struct {
+	ID            uint   `json:"id"`
+	ColumnName    string `json:"column_name"`
+	Type          string `json:"type"`
+	IsDateTime    bool   `json:"is_dttm"`
+	IsActive      bool   `json:"is_active"`
+}

@@ -9,4 +9,8 @@ var (
 	ErrInvalidDataset     = pkgerrors.ErrInvalidDataset
 	ErrDatasetDuplicate   = pkgerrors.ErrDatasetDuplicate
 	ErrDatasetSyncEnqueue = pkgerrors.ErrDatasetSyncEnqueue
+	ErrInvalidSQL         = pkgerrors.ErrInvalidSQL
+	ErrSQLNotSelect       = pkgerrors.ErrSQLNotSelect
+	ErrSQLSemicolon       = pkgerrors.ErrSQLSemicolon
+	ErrSQLSemanticError   = pkgerrors.ErrSQLSemanticError
 )

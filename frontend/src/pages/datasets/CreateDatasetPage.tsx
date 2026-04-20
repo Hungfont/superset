@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, TableIcon } from "lucide-react";
+import { AlertCircle, CheckCircle2, Code2, Loader2, TableIcon } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { databasesApi, type DatabaseTable } from "@/api/databases";
@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
 function resolveTableType(table: DatabaseTable): string {
@@ -40,6 +41,12 @@ export default function CreateDatasetPage() {
   const [tableSearch, setTableSearch] = useState("");
   const [showViewsOnly, setShowViewsOnly] = useState(false);
   const [showTablesOnly, setShowTablesOnly] = useState(false);
+
+  const [virtualDbId, setVirtualDbId] = useState<number | null>(null);
+  const [virtualDatasetName, setVirtualDatasetName] = useState("");
+  const [virtualSQL, setVirtualSQL] = useState("");
+  const [validateSQL, setValidateSQL] = useState(false);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; message?: string } | null>(null);
 
   const databasesQuery = useQuery({
     queryKey: ["databases", "dataset-create"],
@@ -104,6 +111,51 @@ export default function CreateDatasetPage() {
   });
 
   const canSubmit = selectedDbId !== null && selectedSchema !== "" && selectedTable !== "" && !createMutation.isPending;
+
+  const virtualCreateMutation = useMutation({
+    mutationFn: datasetsApi.createVirtualDataset,
+    onSuccess: (created) => {
+      success("Virtual dataset created. Columns are being synced...");
+      navigate(`/admin/datasets/${created.id}/edit`);
+    },
+    onError: (err) => {
+      const requestError = err as Error & { status?: number; message?: string };
+      if (requestError.status === 403) {
+        error("Gamma role cannot create datasets");
+        return;
+      }
+      if (requestError.status === 409) {
+        error("Dataset already exists");
+        return;
+      }
+      if (requestError.status === 422) {
+        error(requestError.message || "Invalid SQL");
+        return;
+      }
+
+      error(requestError.message || "Failed to create virtual dataset");
+    },
+  });
+
+  const canSubmitVirtual =
+    virtualDbId !== null &&
+    virtualDatasetName.trim() !== "" &&
+    virtualSQL.trim() !== "" &&
+    !virtualCreateMutation.isPending;
+
+  const detectSQLIssues = (sql: string) => {
+    const issues: string[] = [];
+    const upperSQL = sql.toUpperCase().trim();
+    if (!upperSQL.startsWith("SELECT")) {
+      issues.push("SQL must start with SELECT");
+    }
+    if (sql.includes(";")) {
+      issues.push("SQL should not contain semicolons");
+    }
+    return issues;
+  };
+
+  const sqlIssues = detectSQLIssues(virtualSQL);
 
   if (isEditMode) {
     return (
@@ -270,8 +322,130 @@ export default function CreateDatasetPage() {
           <Card>
             <CardHeader>
               <CardTitle>Virtual SQL Dataset</CardTitle>
-              <CardDescription>This flow is scheduled for DS-002.</CardDescription>
+              <CardDescription>
+                Write a custom SELECT query to define a virtual dataset. The query will be validated before saving.
+              </CardDescription>
             </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium">1. Select Database</p>
+                {databasesQuery.isLoading ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(databasesQuery.data?.items ?? []).map((database) => (
+                      <Button
+                        key={database.id}
+                        type="button"
+                        variant={virtualDbId === database.id ? "default" : "outline"}
+                        onClick={() => {
+                          setVirtualDbId(database.id);
+                          setValidationResult(null);
+                        }}
+                      >
+                        {database.database_name}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium">2. Dataset Name</p>
+                <Input
+                  placeholder="e.g., revenue_by_month"
+                  value={virtualDatasetName}
+                  onChange={(e) => setVirtualDatasetName(e.target.value)}
+                  disabled={virtualDbId === null}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium">3. SQL Query</p>
+                <div className="rounded-md border">
+                  <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
+                    <Code2 className="h-4 w-4" />
+                    <span className="text-xs text-muted-foreground">SELECT * FROM ...</span>
+                  </div>
+                  <textarea
+                    className="min-h-48 w-full resize-none border-0 bg-transparent p-3 font-mono text-sm focus:outline-none focus:ring-0"
+                    placeholder="SELECT column1, column2 FROM table WHERE ..."
+                    value={virtualSQL}
+                    onChange={(e) => setVirtualSQL(e.target.value)}
+                    disabled={virtualDbId === null}
+                  />
+                </div>
+
+                {sqlIssues.length > 0 && (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>SQL Issues</AlertTitle>
+                    <AlertDescription>
+                      <ul className="list-inside list-disc">
+                        {sqlIssues.map((issue, i) => (
+                          <li key={i}>{issue}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {validationResult && (
+                  <Alert
+                    variant={validationResult.valid ? "default" : "destructive"}
+                    className={validationResult.valid ? "border-green-500 bg-green-50" : "border-red-500 bg-red-50"}
+                  >
+                    {validationResult.valid ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <AlertTitle>{validationResult.valid ? "SQL Valid" : "Validation Error"}</AlertTitle>
+                    <AlertDescription>{validationResult.message}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="validate-sql"
+                  checked={validateSQL}
+                  onCheckedChange={(checked) => {
+                    setValidateSQL(checked === true);
+                    setValidationResult(null);
+                  }}
+                  disabled={virtualDbId === null || sqlIssues.length > 0}
+                />
+                <label htmlFor="validate-sql" className="text-sm">
+                  Validate SQL before saving
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    !canSubmitVirtual ||
+                    sqlIssues.length > 0 ||
+                    (validateSQL && !validationResult?.valid)
+                  }
+                  onClick={() =>
+                    virtualCreateMutation.mutate({
+                      database_id: virtualDbId!,
+                      table_name: virtualDatasetName,
+                      sql: virtualSQL,
+                      validate_sql: validateSQL,
+                    })
+                  }
+                >
+                  {virtualCreateMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Create Virtual Dataset
+                </Button>
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>

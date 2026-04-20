@@ -62,3 +62,11 @@ var (
 	ErrDatasetDuplicate   = errors.New("dataset already exists")
 	ErrDatasetSyncEnqueue = errors.New("dataset sync enqueue failed")
 )
+
+// Sentinel errors for virtual dataset SQL validation.
+var (
+	ErrInvalidSQL            = errors.New("invalid SQL query")
+	ErrSQLNotSelect          = errors.New("SQL must be a SELECT statement")
+	ErrSQLSemicolon          = errors.New("SQL should not contain semicolons")
+	ErrSQLSemanticError      = errors.New("SQL semantic error")
+)
