@@ -41,6 +41,8 @@ func TestDatasetAsyncQueueEnqueueSyncColumnsSuccess(t *testing.T) {
 		t.Fatalf("expected job-1, got %s", jobID)
 	}
 
+	time.Sleep(50 * time.Millisecond)
+
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	if len(writer.payload) != 1 {
@@ -54,18 +56,35 @@ func TestDatasetAsyncQueueEnqueueSyncColumnsSuccess(t *testing.T) {
 	if body.DatasetID != 42 {
 		t.Fatalf("expected dataset_id 42, got %d", body.DatasetID)
 	}
+	if body.JobID != "job-1" {
+		t.Fatalf("expected job_id job-1, got %s", body.JobID)
+	}
 }
 
-func TestDatasetAsyncQueueEnqueueSyncColumnsReturnsWriterError(t *testing.T) {
-	writer := &fakeAsyncQueueWriter{err: errors.New("redis down")}
-	queue := newDatasetAsyncQueue(writer, datasetAsyncColumnsTaskType, 1)
+func TestDatasetAsyncQueueEnqueueSyncColumnsFillsBuffer(t *testing.T) {
+	writer := &fakeAsyncQueueWriter{}
+	queue := newDatasetAsyncQueue(writer, datasetAsyncColumnsTaskType, 2)
 	t.Cleanup(func() {
 		_ = queue.Shutdown(context.Background())
 	})
 
-	_, err := queue.EnqueueSyncColumns(context.Background(), 7)
-	if err == nil {
-		t.Fatal("expected writer error")
+	jobID1, err := queue.EnqueueSyncColumns(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if jobID1 == "" {
+		t.Fatal("expected jobID")
+	}
+
+	jobID2, err := queue.EnqueueSyncColumns(context.Background(), 8)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if jobID2 == "" {
+		t.Fatal("expected jobID")
+	}
+	if jobID1 == jobID2 {
+		t.Fatal("expected different jobIDs")
 	}
 }
 

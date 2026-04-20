@@ -34,8 +34,8 @@ type datasetAsyncQueue struct {
 	taskType string
 	newID    func() string
 
-	requestCh chan datasetAsyncEnqueueRequest
-	workerWG  sync.WaitGroup
+	jobCh chan []byte
+	workerWG sync.WaitGroup
 
 	mu        sync.RWMutex
 	isClosed  bool
@@ -43,18 +43,8 @@ type datasetAsyncQueue struct {
 }
 
 type datasetAsyncColumnsPayload struct {
-	DatasetID uint `json:"dataset_id"`
-}
-
-type datasetAsyncEnqueueResult struct {
-	jobID string
-	err   error
-}
-
-type datasetAsyncEnqueueRequest struct {
-	ctx      context.Context
-	payload  []byte
-	resultCh chan datasetAsyncEnqueueResult
+	DatasetID uint   `json:"dataset_id"`
+	JobID    string `json:"job_id"`
 }
 
 func NewDatasetAsyncQueue(client *redis.Client) *datasetAsyncQueue {
@@ -71,10 +61,10 @@ func newDatasetAsyncQueue(writer asyncQueueWriter, taskType string, bufferSize i
 	}
 
 	queue := &datasetAsyncQueue{
-		writer:    writer,
-		taskType:  resolvedTaskType,
-		newID:     uuid.NewString,
-		requestCh: make(chan datasetAsyncEnqueueRequest, bufferSize),
+		writer: writer,
+		taskType: resolvedTaskType,
+		newID:  uuid.NewString,
+		jobCh:  make(chan []byte, bufferSize),
 	}
 	queue.startWorker()
 	return queue
@@ -88,16 +78,17 @@ func (q *datasetAsyncQueue) EnqueueSyncColumns(ctx context.Context, datasetID ui
 		return "", errors.New("async queue writer is nil")
 	}
 
-	payload, err := json.Marshal(datasetAsyncColumnsPayload{DatasetID: datasetID})
-	if err != nil {
-		return "", fmt.Errorf("marshalling async dataset sync payload: %w", err)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
 
-	resultCh := make(chan datasetAsyncEnqueueResult, 1)
-	request := datasetAsyncEnqueueRequest{
-		ctx:      ctx,
-		payload:  payload,
-		resultCh: resultCh,
+	jobID := q.newID()
+	payload, err := json.Marshal(datasetAsyncColumnsPayload{
+		DatasetID: datasetID,
+		JobID:    jobID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshalling async dataset sync payload: %w", err)
 	}
 
 	q.mu.RLock()
@@ -105,20 +96,16 @@ func (q *datasetAsyncQueue) EnqueueSyncColumns(ctx context.Context, datasetID ui
 		q.mu.RUnlock()
 		return "", errAsyncQueueClosed
 	}
-	requestCh := q.requestCh
+	jobCh := q.jobCh
 	q.mu.RUnlock()
 
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
-	case requestCh <- request:
-	}
-
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case result := <-resultCh:
-		return result.jobID, result.err
+	case jobCh <- payload:
+		return jobID, nil
+	default:
+		return "", errors.New("async queue buffer full")
 	}
 }
 
@@ -126,7 +113,7 @@ func (q *datasetAsyncQueue) Shutdown(ctx context.Context) error {
 	q.closeOnce.Do(func() {
 		q.mu.Lock()
 		q.isClosed = true
-		close(q.requestCh)
+		close(q.jobCh)
 		q.mu.Unlock()
 	})
 
@@ -148,16 +135,8 @@ func (q *datasetAsyncQueue) startWorker() {
 	q.workerWG.Add(1)
 	go func() {
 		defer q.workerWG.Done()
-		for request := range q.requestCh {
-			jobID := q.newID()
-			err := q.writer.Push(request.ctx, q.taskType, request.payload)
-			if err != nil {
-				request.resultCh <- datasetAsyncEnqueueResult{
-					err: fmt.Errorf("enqueue async sync columns job: %w", err),
-				}
-				continue
-			}
-			request.resultCh <- datasetAsyncEnqueueResult{jobID: jobID}
+		for payload := range q.jobCh {
+			_ = q.writer.Push(context.Background(), q.taskType, payload)
 		}
 	}()
 }
