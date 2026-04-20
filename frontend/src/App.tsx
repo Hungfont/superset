@@ -31,8 +31,6 @@ export default function App() {
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
-          <Route path="/datasets/new" element={<CreateDatasetPage />} />
-          <Route path="/datasets/:id/edit" element={<CreateDatasetPage />} />
         </Route>
 
         {/* Admin routes (authorization enforced by backend APIs) */}
@@ -47,6 +45,8 @@ export default function App() {
             <Route path="settings/databases" element={<DatabasesPage />} />
             <Route path="settings/databases/new" element={<CreateDatabasePage />} />
             <Route path="settings/databases/:id" element={<EditDatabasePage />} />
+            <Route path="settings/datasets/new" element={<CreateDatasetPage />} />
+            <Route path="settings/datasets/:id/edit" element={<CreateDatasetPage />} />
             <Route path="settings/permissions" element={<PermissionsPage />} />
           </Route>
         </Route>

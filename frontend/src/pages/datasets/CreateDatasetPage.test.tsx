@@ -51,7 +51,7 @@ function renderPage() {
   });
 
   return render(
-    <MemoryRouter initialEntries={["/settings/datasets/new"]}>
+    <MemoryRouter initialEntries={["/admin/datasets/new"]}>
       <QueryClientProvider client={queryClient}>
         <CreateDatasetPage />
       </QueryClientProvider>
@@ -111,7 +111,7 @@ describe("CreateDatasetPage", () => {
     });
 
     expect(toastSuccessMock).toHaveBeenCalled();
-    expect(navigateMock).toHaveBeenCalledWith("/settings/datasets/42/edit");
+    expect(navigateMock).toHaveBeenCalledWith("/admin/datasets/42/edit");
   });
 
   it("shows error toast when create request fails", async () => {

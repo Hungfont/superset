@@ -82,7 +82,7 @@ export default function CreateDatasetPage() {
     mutationFn: datasetsApi.createDataset,
     onSuccess: (created) => {
       success("Dataset created. Columns are being synced...");
-      navigate(`/settings/datasets/${created.id}/edit`);
+      navigate(`/admin/datasets/${created.id}/edit`);
     },
     onError: (err) => {
       const requestError = err as Error & { status?: number };

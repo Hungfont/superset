@@ -91,7 +91,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - 422 - Invalid database_id. | 
 **??? Frontend Specification**
 **?? Route & Page**
-/datasets/new (wizard)
+/admin/settings/datasets/new (wizard)
 **?? shadcn/ui Components**
 - Dialog or Page wizard with Tabs [Physical Table &#124; Virtual SQL]
 - Step 1 of physical flow: Select (database) ? populated from GET /api/v1/databases
@@ -112,7 +112,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 **? UX Behaviors**
 - Wizard flow: DB dropdown ? Schema dropdown ? Table command search.
 - Table list: Command with CommandInput for real-time filter. Each item shows table name + type badge (table/view).
-- After create: navigate to /datasets/:id/edit with Toast "Columns are being synced. Refresh to see them."
+- After create: navigate to /admin/settings/datasets/:id/edit with Toast "Columns are being synced. Refresh to see them."
 - background_sync polling: useQuery on dataset columns with refetchInterval:3000 until columns.length>0.
 **??? Client-Side Validation**
 - database_id required.
@@ -135,7 +135,8 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 1. sqlparser.Parse ? SELECT check ? semicolon check ? optional LIMIT 0 ? GORM.Create ? (if validated: create columns inline, else: Asynq sync)
 **?? Go Implementation**
 1. sqlparser.Parse(sql) ? check *sqlparser.Select type
-2. db.QueryContext("SELECT * FROM ("+sql+") AS t LIMIT 0") ? rows.ColumnTypes() | **? Acceptance Criteria**
+2. db.QueryContext("SELECT * FROM ("+sql+") AS t LIMIT 0") ? rows.ColumnTypes() | 
+**? Acceptance Criteria**
 - 201.
 - Non-SELECT ? 422.
 - Semicolon ? 422.
@@ -173,7 +174,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-004** - **List and Get Datasets**
+**DS-003** - **List and Get Datasets**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**                      | **API / Route**                                 |
 | ----------------- | ------------ | --------- | ---------------------------------- | ----------------------------------------------- |
@@ -192,7 +193,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 **?? Error Responses**
 - 404 - Not found or no access. | **??? Frontend Specification**
 **?? Route & Page**
-/datasets
+/admin/settings/datasets
 **?? shadcn/ui Components**
 - DataTable - columns: Name, Type (Badge), Database, Schema, Owner, Columns, Metrics, Modified, Actions
 - Button ("+ Dataset") - opens /datasets/new wizard
@@ -219,7 +220,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-005** - **Update Dataset Metadata**
+**DS-004** - **Update Dataset Metadata**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**          |
 | ----------------- | ------------ | --------- | ------------- | ------------------------ |
@@ -268,7 +269,8 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-006** - **Update Column Metadata (Single + Bulk)**
+// TODO: unkown tasks
+**DS-005** - **Update Column Metadata (Single + Bulk)**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                                             |
 | ----------------- | ------------ | --------- | ------------- | --------------------------------------------------------------------------- |
@@ -323,7 +325,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-007** - **Create & Manage Dataset Metrics**
+**DS-006** - **Create & Manage Dataset Metrics**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables** | **API / Route**                                                                 |
 | ----------------- | ------------ | --------- | ------------- | ------------------------------------------------------------------------------- |
@@ -377,7 +379,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 | --- | --- | --- |
 
 
-**DS-008** - **Delete Dataset**
+**DS-006** - **Delete Dataset**
 
 | **Dependency**    | **Priority** | **Phase** | **DB Tables**                      | **API / Route**             |
 | ----------------- | ------------ | --------- | ---------------------------------- | --------------------------- |
