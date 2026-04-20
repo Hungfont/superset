@@ -71,3 +71,10 @@ var (
 	ErrSQLSemicolon     = errors.New("SQL should not contain semicolons")
 	ErrSQLSemanticError = errors.New("SQL semantic error")
 )
+
+// Sentinel errors for columns dataset validation.
+var (
+	ErrColumnNotFound    = errors.New("column not found")
+	ErrInvalidExpression = errors.New("invalid expression")
+	ErrInvalidDateFormat = errors.New("invalid python date format")
+)

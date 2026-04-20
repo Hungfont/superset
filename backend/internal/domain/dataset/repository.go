@@ -24,4 +24,10 @@ type Repository interface {
 	UpdateDatasetMetadata(ctx context.Context, id uint, req UpdateDatasetMetadataRequest) error
 	// GetColumnByName retrieves a column by table_id and column_name.
 	GetColumnByName(ctx context.Context, tableID uint, columnName string) (*Column, error)
+	// GetColumnByID retrieves a column by ID.
+	GetColumnByID(ctx context.Context, columnID uint) (*Column, error)
+	// UpdateColumn updates a single column.
+	UpdateColumn(ctx context.Context, columnID uint, req UpdateColumnRequest) error
+	// BulkUpdateColumns updates multiple columns in a transaction.
+	BulkUpdateColumns(ctx context.Context, columns []UpdateColumnRequest) error
 }

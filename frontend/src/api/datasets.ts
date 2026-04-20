@@ -43,6 +43,14 @@ export interface Column {
   type: string;
   is_dttm: boolean;
   is_active: boolean;
+  verbose_name?: string;
+  description?: string;
+  filterable?: boolean;
+  groupby?: boolean;
+  python_date_format?: string;
+  expression?: string;
+  column_type?: string;
+  exported?: boolean;
 }
 
 export interface SqlMetric {
@@ -123,6 +131,31 @@ function getAuthHeaders(contentType = false): HeadersInit {
   };
 }
 
+export interface UpdateColumnPayload {
+  id?: number;
+  verbose_name?: string;
+  description?: string;
+  filterable?: boolean;
+  groupby?: boolean;
+  is_dttm?: boolean;
+  python_date_format?: string;
+  expression?: string;
+  column_type?: string;
+  exported?: boolean;
+}
+
+export interface UpdateColumnResponse {
+  id: number;
+}
+
+export interface BulkUpdateColumnPayload {
+  columns: UpdateColumnPayload[];
+}
+
+export interface BulkUpdateColumnResponse {
+  updated_count: number;
+}
+
 export const datasetsApi = {
   async createDataset(payload: CreateDatasetPayload): Promise<CreateDatasetResponse> {
     const body = await request<ApiEnvelope<CreateDatasetResponse>>("/api/v1/datasets", {
@@ -186,6 +219,28 @@ export const datasetsApi = {
 
   async updateDataset(id: number, payload: UpdateDatasetMetadataPayload): Promise<UpdateDatasetMetadataResponse> {
     const body = await request<ApiEnvelope<UpdateDatasetMetadataResponse>>(`/api/v1/datasets/${id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
+  },
+
+  async updateColumn(datasetId: number, columnId: number, payload: UpdateColumnPayload): Promise<UpdateColumnResponse> {
+    const body = await request<ApiEnvelope<UpdateColumnResponse>>(`/api/v1/datasets/${datasetId}/columns/${columnId}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
+  },
+
+  async bulkUpdateColumns(datasetId: number, payload: BulkUpdateColumnPayload): Promise<BulkUpdateColumnResponse> {
+    const body = await request<ApiEnvelope<BulkUpdateColumnResponse>>(`/api/v1/datasets/${datasetId}/columns`, {
       method: "PUT",
       credentials: "include",
       headers: getAuthHeaders(true),

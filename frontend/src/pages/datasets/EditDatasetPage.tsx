@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DatasetMetadataFormData, datasetMetadataSchema } from "@/lib/validations/dataset";
+import { ColumnsTab } from "./ColumnsTab";
 
 export default function EditDatasetPage() {
   const { id } = useParams<{ id: string }>();
@@ -324,9 +325,11 @@ export default function EditDatasetPage() {
             </TabsContent>
 
             <TabsContent value="columns">
-              <p className="text-sm text-muted-foreground">
-                {dataset?.table_columns?.length ?? 0} columns. Column editing comes in DS-005.
-              </p>
+              {datasetId && dataset?.table_columns ? (
+                <ColumnsTab datasetId={datasetId} columns={dataset.table_columns} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Loading columns...</p>
+              )}
             </TabsContent>
 
             <TabsContent value="metrics">

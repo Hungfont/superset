@@ -303,4 +303,110 @@ func (r *datasetRepo) GetColumnByName(ctx context.Context, tableID uint, columnN
 	return &column, nil
 }
 
+func (r *datasetRepo) GetColumnByID(ctx context.Context, columnID uint) (*domain.Column, error) {
+	var column domain.Column
+	err := r.db.WithContext(ctx).Table("table_columns").
+		Where("id = ? AND is_active = true", columnID).
+		First(&column).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting column by id: %w", err)
+	}
+
+	return &column, nil
+}
+
+func (r *datasetRepo) UpdateColumn(ctx context.Context, columnID uint, req domain.UpdateColumnRequest) error {
+	updates := make(map[string]interface{})
+
+	if req.VerboseName != "" || req.VerboseName == "" {
+		updates["verbose_name"] = req.VerboseName
+	}
+	if req.Description != "" || req.Description == "" {
+		updates["description"] = req.Description
+	}
+	if req.Filterable != nil {
+		updates["filterable"] = *req.Filterable
+	}
+	if req.GroupBy != nil {
+		updates["groupby"] = *req.GroupBy
+	}
+	if req.IsDateTime != nil {
+		updates["is_dttm"] = *req.IsDateTime
+	}
+	if req.PythonDateFormat != "" {
+		updates["python_date_format"] = req.PythonDateFormat
+	}
+	if req.Expression != "" {
+		updates["expression"] = req.Expression
+	}
+	if req.ColumnType != "" {
+		updates["type"] = req.ColumnType
+	}
+	if req.Exported != nil {
+		updates["exported"] = *req.Exported
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	if err := r.db.WithContext(ctx).Table("table_columns").Where("id = ?", columnID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating column: %w", err)
+	}
+
+	return nil
+}
+
+func (r *datasetRepo) BulkUpdateColumns(ctx context.Context, columns []domain.UpdateColumnRequest) error {
+	if len(columns) == 0 {
+		return nil
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, col := range columns {
+			updates := make(map[string]interface{})
+
+			if col.VerboseName != "" || col.VerboseName == "" {
+				updates["verbose_name"] = col.VerboseName
+			}
+			if col.Description != "" || col.Description == "" {
+				updates["description"] = col.Description
+			}
+			if col.Filterable != nil {
+				updates["filterable"] = *col.Filterable
+			}
+			if col.GroupBy != nil {
+				updates["groupby"] = *col.GroupBy
+			}
+			if col.IsDateTime != nil {
+				updates["is_dttm"] = *col.IsDateTime
+			}
+			if col.PythonDateFormat != "" {
+				updates["python_date_format"] = col.PythonDateFormat
+			}
+			if col.Expression != "" {
+				updates["expression"] = col.Expression
+			}
+			if col.ColumnType != "" {
+				updates["type"] = col.ColumnType
+			}
+			if col.Exported != nil {
+				updates["exported"] = *col.Exported
+			}
+
+			if len(updates) == 0 {
+				continue
+			}
+
+			if err := tx.Table("table_columns").Where("id = ?", col.ID).Updates(updates).Error; err != nil {
+				return fmt.Errorf("updating column %d: %w", col.ID, err)
+			}
+		}
+		return nil
+	})
+}
+
 var _ domain.Repository = (*datasetRepo)(nil)

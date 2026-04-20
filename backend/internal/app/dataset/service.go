@@ -446,3 +446,136 @@ func (s *Service) canEditDataset(ctx context.Context, actorUserID uint, dataset 
 		return dataset.CreatedByFK == actorUserID, nil
 	}
 }
+
+func (s *Service) UpdateColumn(ctx context.Context, actorUserID uint, datasetID uint, columnID uint, req domain.UpdateColumnRequest) (*domain.UpdateColumnResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	column, err := s.repo.GetColumnByID(ctx, columnID)
+	if err != nil {
+		return nil, fmt.Errorf("getting column: %w", err)
+	}
+	if column == nil || column.ID == 0 {
+		return nil, domain.ErrColumnNotFound
+	}
+
+	if column.TableID != datasetID {
+		return nil, domain.ErrColumnNotFound
+	}
+
+	if err := s.validateColumnRequest(req); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.UpdateColumn(ctx, columnID, req); err != nil {
+		return nil, fmt.Errorf("updating column: %w", err)
+	}
+
+	return &domain.UpdateColumnResponse{ID: columnID}, nil
+}
+
+func (s *Service) BulkUpdateColumns(ctx context.Context, actorUserID uint, datasetID uint, req domain.BulkUpdateColumnRequest) (*domain.BulkUpdateColumnResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	for i := range req.Columns {
+		if err := s.validateColumnRequest(req.Columns[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	updatedIDs := make([]domain.UpdateColumnRequest, 0, len(req.Columns))
+	for _, col := range req.Columns {
+		column, err := s.repo.GetColumnByID(ctx, col.ID)
+		if err != nil {
+			return nil, fmt.Errorf("getting column %d: %w", col.ID, err)
+		}
+		if column == nil || column.ID == 0 {
+			return nil, domain.ErrColumnNotFound
+		}
+		if column.TableID != datasetID {
+			return nil, domain.ErrColumnNotFound
+		}
+		updatedIDs = append(updatedIDs, col)
+	}
+
+	if err := s.repo.BulkUpdateColumns(ctx, updatedIDs); err != nil {
+		return nil, fmt.Errorf("bulk updating columns: %w", err)
+	}
+
+	return &domain.BulkUpdateColumnResponse{UpdatedCount: len(updatedIDs)}, nil
+}
+
+func (s *Service) validateColumnRequest(req domain.UpdateColumnRequest) error {
+	if req.Expression != "" {
+		if !isValidSQLExpression(req.Expression) {
+			return domain.ErrInvalidExpression
+		}
+	}
+
+	if req.PythonDateFormat != "" {
+		if !isValidPythonDateFormat(req.PythonDateFormat) {
+			return domain.ErrInvalidDateFormat
+		}
+	}
+
+	return nil
+}
+
+var pythonDateFormatPattern = regexp.MustCompile(`^(\s*%[YymdHMScDbBApzZf_j]\s*)+$`)
+
+func isValidPythonDateFormat(format string) bool {
+	if format == "" {
+		return true
+	}
+	return pythonDateFormatPattern.MatchString(format)
+}
+
+var sqlExprKeywords = regexp.MustCompile(`(?i)^(\s*[[:alnum:]_]+\s*|COUNT|SUM|AVG|MIN|MAX|COALESCE|IFNULL|NULLIF|CASE|WHEN|THEN|ELSE|END|\+|\-|\*|\/|\\|<|>|=|!|AND|OR|NOT|IN|LIKE|BETWEEN|IS|NULL|\(|\)|\.)+$`)
+
+func isValidSQLExpression(expr string) bool {
+	if expr == "" {
+		return true
+	}
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return false
+	}
+	return sqlExprKeywords.MatchString(trimmed)
+}

@@ -65,12 +65,23 @@ type CreateVirtualDatasetResponse struct {
 
 // Column represents a dataset column.
 type Column struct {
-	ID            uint   `json:"id"`
-	ColumnName    string `json:"column_name"`
-	Type          string `json:"type"`
-	IsDateTime    bool   `json:"is_dttm"`
-	IsActive      bool   `json:"is_active"`
+	ID                uint   `json:"id"`
+	TableID           uint   `gorm:"column:table_id" json:"-"`
+	ColumnName        string `json:"column_name"`
+	Type              string `json:"type"`
+	IsDateTime        bool   `gorm:"column:is_dttm" json:"is_dttm"`
+	IsActive          bool   `gorm:"column:is_active" json:"is_active"`
+	VerboseName       string `gorm:"column:verbose_name" json:"verbose_name,omitempty"`
+	Description       string `gorm:"column:description" json:"description,omitempty"`
+	Filterable        bool   `gorm:"column:filterable" json:"filterable"`
+	GroupBy           bool   `gorm:"column:groupby" json:"groupby"`
+	PythonDateFormat  string `gorm:"column:python_date_format" json:"python_date_format,omitempty"`
+	Expression        string `gorm:"column:expression" json:"expression,omitempty"`
+	ColumnType        string `gorm:"column:type" json:"column_type,omitempty"`
+	Exported          bool   `gorm:"column:exported" json:"exported"`
 }
+
+func (Column) TableName() string { return "table_columns" }
 
 // DatasetWithCounts includes aggregate counts for list view.
 type DatasetWithCounts struct {
@@ -177,3 +188,34 @@ type UpdateDatasetMetadataResponse struct {
 	TableName     string `json:"table_name"`
 	BackgroundSync bool  `json:"background_sync,omitempty"`
 }
+
+// UpdateColumnRequest is used by PUT /api/v1/datasets/:id/columns/:col_id and bulk updates.
+type UpdateColumnRequest struct {
+	ID               uint   `json:"id"`
+	VerboseName      string `json:"verbose_name"`
+	Description     string `json:"description"`
+	Filterable       *bool  `json:"filterable"`
+	GroupBy          *bool  `json:"groupby"`
+	IsDateTime       *bool  `json:"is_dttm"`
+	PythonDateFormat string `json:"python_date_format"`
+	Expression       string `json:"expression"`
+	ColumnType       string `json:"column_type"`
+	Exported         *bool  `json:"exported"`
+}
+
+// UpdateColumnResponse is returned by PUT /api/v1/datasets/:id/columns/:col_id.
+type UpdateColumnResponse struct {
+	ID   uint `json:"id"`
+}
+
+// BulkUpdateColumnRequest is used by PUT /api/v1/datasets/:id/columns.
+type BulkUpdateColumnRequest struct {
+	Columns []UpdateColumnRequest `json:"columns" binding:"required"`
+}
+
+// BulkUpdateColumnResponse is returned by PUT /api/v1/datasets/:id/columns.
+type BulkUpdateColumnResponse struct {
+	UpdatedCount int `json:"updated_count"`
+}
+
+

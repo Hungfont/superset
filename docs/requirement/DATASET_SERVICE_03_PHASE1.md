@@ -291,7 +291,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - 403 - Not owner.
 - 422 - Invalid expression. | **??? Frontend Specification**
 **?? Route & Page**
-/datasets/:id/edit (Columns tab)
+/admin/datasets/:id/edit (Columns tab)
 **?? shadcn/ui Components**
 - DataTable - columns: Column Name, Verbose Name, Type, Is DateTime, Filterable, Group By, Expression, Actions
 - Inline editable cells (click to edit) using shadcn Popover + Input/Switch pattern

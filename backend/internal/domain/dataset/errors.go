@@ -16,4 +16,7 @@ var (
 	ErrSQLSemicolon       = pkgerrors.ErrSQLSemicolon
 	ErrSQLSemanticError   = pkgerrors.ErrSQLSemanticError
 	ErrInvalidMainDttmCol = pkgerrors.ErrInvalidMainDttmCol
+	ErrColumnNotFound     = pkgerrors.ErrColumnNotFound
+	ErrInvalidExpression  = pkgerrors.ErrInvalidExpression
+	ErrInvalidDateFormat  = pkgerrors.ErrInvalidDateFormat
 )
