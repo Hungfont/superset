@@ -409,4 +409,133 @@ func (r *datasetRepo) BulkUpdateColumns(ctx context.Context, columns []domain.Up
 	})
 }
 
+func (r *datasetRepo) GetMetricByID(ctx context.Context, metricID uint) (*domain.SqlMetric, error) {
+	var metric domain.SqlMetric
+	err := r.db.WithContext(ctx).Table("sql_metrics").
+		Where("id = ?", metricID).
+		First(&metric).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting metric by id: %w", err)
+	}
+
+	return &metric, nil
+}
+
+func (r *datasetRepo) GetMetricsByTableID(ctx context.Context, tableID uint) ([]domain.SqlMetric, error) {
+	var metrics []domain.SqlMetric
+	err := r.db.WithContext(ctx).Table("sql_metrics").
+		Where("table_id = ?", tableID).
+		Order("metric_name").
+		Scan(&metrics).Error
+	if err != nil {
+		return nil, fmt.Errorf("getting metrics by table id: %w", err)
+	}
+
+	if metrics == nil {
+		metrics = []domain.SqlMetric{}
+	}
+
+	return metrics, nil
+}
+
+func (r *datasetRepo) CreateMetric(ctx context.Context, metric *domain.SqlMetric) error {
+	if err := r.db.WithContext(ctx).Table("sql_metrics").Create(metric).Error; err != nil {
+		if isUniqueViolation(err) {
+			return domain.ErrMetricDuplicate
+		}
+		return fmt.Errorf("creating metric: %w", err)
+	}
+
+	return nil
+}
+
+func (r *datasetRepo) UpdateMetric(ctx context.Context, metricID uint, req domain.UpdateMetricRequest) error {
+	updates := make(map[string]interface{})
+
+	if req.MetricName != "" {
+		updates["metric_name"] = req.MetricName
+	}
+	if req.VerboseName != "" || req.VerboseName == "" {
+		updates["verbose_name"] = req.VerboseName
+	}
+	if req.MetricType != "" {
+		updates["metric_type"] = req.MetricType
+	}
+	if req.Expression != "" {
+		updates["expression"] = req.Expression
+	}
+	if req.D3Format != "" || req.D3Format == "" {
+		updates["d3_format"] = req.D3Format
+	}
+	if req.WarningText != "" || req.WarningText == "" {
+		updates["warning_text"] = req.WarningText
+	}
+	if req.IsRestricted != nil {
+		updates["is_restricted"] = *req.IsRestricted
+	}
+	if req.CertifiedBy != "" || req.CertifiedBy == "" {
+		updates["certified_by"] = req.CertifiedBy
+	}
+	if req.CertificationDetails != "" || req.CertificationDetails == "" {
+		updates["certification_details"] = req.CertificationDetails
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	if err := r.db.WithContext(ctx).Table("sql_metrics").Where("id = ?", metricID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("updating metric: %w", err)
+	}
+
+	return nil
+}
+
+func (r *datasetRepo) DeleteMetric(ctx context.Context, metricID uint) error {
+	if err := r.db.WithContext(ctx).Table("sql_metrics").Where("id = ?", metricID).Delete(nil).Error; err != nil {
+		return fmt.Errorf("deleting metric: %w", err)
+	}
+
+	return nil
+}
+
+func (r *datasetRepo) BulkReplaceMetrics(ctx context.Context, tableID uint, metrics []domain.SqlMetric) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("sql_metrics").Where("table_id = ?", tableID).Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting existing metrics: %w", err)
+		}
+
+		if len(metrics) == 0 {
+			return nil
+		}
+
+		if err := tx.Table("sql_metrics").Create(&metrics).Error; err != nil {
+			return fmt.Errorf("creating metrics: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (r *datasetRepo) MetricNameExists(ctx context.Context, tableID uint, metricName string, excludeID uint) (bool, error) {
+	var count int64
+	query := r.db.WithContext(ctx).Table("sql_metrics").
+		Where("table_id = ?", tableID).
+		Where("LOWER(metric_name) = LOWER(?)", metricName)
+
+	if excludeID > 0 {
+		query = query.Where("id != ?", excludeID)
+	}
+
+	err := query.Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("checking metric name exists: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 var _ domain.Repository = (*datasetRepo)(nil)

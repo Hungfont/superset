@@ -346,7 +346,7 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 - 409 - Duplicate name.
 - 422 - No aggregate function. | **??? Frontend Specification**
 **?? Route & Page**
-/datasets/:id/edit (Metrics tab)
+/admin/settings/datasets/:id/edit (Metrics tab)
 **?? shadcn/ui Components**
 - DataTable - columns: Metric Name, Verbose Name, Expression, Type, Format, Certified, Actions
 - Button ("+ Add Metric") - opens Dialog

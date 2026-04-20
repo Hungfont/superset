@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { DatasetMetadataFormData, datasetMetadataSchema } from "@/lib/validations/dataset";
 import { ColumnsTab } from "./ColumnsTab";
+import { MetricsTab } from "./MetricsTab";
 
 export default function EditDatasetPage() {
   const { id } = useParams<{ id: string }>();
@@ -325,17 +326,27 @@ export default function EditDatasetPage() {
             </TabsContent>
 
             <TabsContent value="columns">
-              {datasetId && dataset?.table_columns ? (
+              {datasetQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading columns...</p>
+              ) : datasetId && dataset?.table_columns?.length ? (
                 <ColumnsTab datasetId={datasetId} columns={dataset.table_columns} />
               ) : (
-                <p className="text-sm text-muted-foreground">Loading columns...</p>
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <p>No columns found for this dataset</p>
+                </div>
               )}
             </TabsContent>
 
             <TabsContent value="metrics">
-              <p className="text-sm text-muted-foreground">
-                {dataset?.sql_metrics?.length ?? 0} metrics. Metric management comes in DS-006.
-              </p>
+              {datasetQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading metrics...</p>
+              ) : datasetId && dataset?.sql_metrics?.length !== undefined ? (
+                <MetricsTab datasetId={datasetId} initialMetrics={dataset.sql_metrics} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <p>No metrics found for this dataset</p>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="settings">

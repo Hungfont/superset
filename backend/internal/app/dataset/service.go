@@ -579,3 +579,299 @@ func isValidSQLExpression(expr string) bool {
 	}
 	return sqlExprKeywords.MatchString(trimmed)
 }
+
+var aggregateFuncs = map[string]bool{
+	"sum":   true,
+	"count": true,
+	"avg":   true,
+	"max":   true,
+	"min":   true,
+	"stddev": true,
+	"variance": true,
+}
+
+func containsAggregateFunction(expr string) bool {
+	lower := strings.ToLower(expr)
+	for funcName := range aggregateFuncs {
+		if strings.Contains(lower, funcName+"(") {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) GetMetrics(ctx context.Context, actorUserID uint, datasetID uint) ([]domain.SqlMetric, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	metrics, err := s.repo.GetMetricsByTableID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting metrics: %w", err)
+	}
+
+	return metrics, nil
+}
+
+func (s *Service) CreateMetric(ctx context.Context, actorUserID uint, datasetID uint, req domain.CreateMetricRequest) (*domain.CreateMetricResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	normalizedName := normalizeMetricName(req.MetricName)
+	if normalizedName == "" {
+		return nil, domain.ErrInvalidDataset
+	}
+
+	exists, err := s.repo.MetricNameExists(ctx, datasetID, normalizedName, 0)
+	if err != nil {
+		return nil, fmt.Errorf("checking metric name: %w", err)
+	}
+	if exists {
+		return nil, domain.ErrMetricDuplicate
+	}
+
+	if !containsAggregateFunction(req.Expression) {
+		return nil, domain.ErrNoAggregateFunction
+	}
+
+	metric := domain.SqlMetric{
+		TableID:              datasetID,
+		MetricName:          normalizedName,
+		VerboseName:         req.VerboseName,
+		MetricType:          req.MetricType,
+		Expression:          req.Expression,
+		D3Format:            req.D3Format,
+		WarningText:         req.WarningText,
+		IsRestricted:       req.IsRestricted,
+		CertifiedBy:         req.CertifiedBy,
+		CertificationDetails: req.CertificationDetails,
+	}
+
+	if err := s.repo.CreateMetric(ctx, &metric); err != nil {
+		if errors.Is(err, domain.ErrMetricDuplicate) {
+			return nil, domain.ErrMetricDuplicate
+		}
+		return nil, fmt.Errorf("creating metric: %w", err)
+	}
+
+	return &domain.CreateMetricResponse{ID: metric.ID}, nil
+}
+
+func (s *Service) UpdateMetric(ctx context.Context, actorUserID uint, datasetID uint, metricID uint, req domain.UpdateMetricRequest) (*domain.UpdateMetricResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	metric, err := s.repo.GetMetricByID(ctx, metricID)
+	if err != nil {
+		return nil, fmt.Errorf("getting metric: %w", err)
+	}
+	if metric == nil || metric.ID == 0 {
+		return nil, domain.ErrMetricNotFound
+	}
+
+	if metric.TableID != datasetID {
+		return nil, domain.ErrMetricNotFound
+	}
+
+	if req.MetricName != "" {
+		normalizedName := normalizeMetricName(req.MetricName)
+		if normalizedName == "" {
+			return nil, domain.ErrInvalidDataset
+		}
+
+		exists, err := s.repo.MetricNameExists(ctx, datasetID, normalizedName, metricID)
+		if err != nil {
+			return nil, fmt.Errorf("checking metric name: %w", err)
+		}
+		if exists {
+			return nil, domain.ErrMetricDuplicate
+		}
+	}
+
+	if req.Expression != "" && !containsAggregateFunction(req.Expression) {
+		return nil, domain.ErrNoAggregateFunction
+	}
+
+	if err := s.repo.UpdateMetric(ctx, metricID, req); err != nil {
+		return nil, fmt.Errorf("updating metric: %w", err)
+	}
+
+	return &domain.UpdateMetricResponse{ID: metricID}, nil
+}
+
+func (s *Service) DeleteMetric(ctx context.Context, actorUserID uint, datasetID uint, metricID uint) (*domain.DeleteMetricResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	metric, err := s.repo.GetMetricByID(ctx, metricID)
+	if err != nil {
+		return nil, fmt.Errorf("getting metric: %w", err)
+	}
+	if metric == nil || metric.ID == 0 {
+		return nil, domain.ErrMetricNotFound
+	}
+
+	if metric.TableID != datasetID {
+		return nil, domain.ErrMetricNotFound
+	}
+
+	warnings := []string{}
+
+	if err := s.repo.DeleteMetric(ctx, metricID); err != nil {
+		return nil, fmt.Errorf("deleting metric: %w", err)
+	}
+
+	return &domain.DeleteMetricResponse{Warnings: warnings}, nil
+}
+
+func (s *Service) BulkUpdateMetrics(ctx context.Context, actorUserID uint, datasetID uint, req domain.BulkUpdateMetricsRequest) (*domain.BulkUpdateMetricsResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	seenNames := make(map[string]bool)
+	metrics := make([]domain.SqlMetric, 0, len(req.Metrics))
+
+	for _, m := range req.Metrics {
+		normalizedName := normalizeMetricName(m.MetricName)
+		if normalizedName == "" {
+			return nil, domain.ErrInvalidDataset
+		}
+
+		if seenNames[normalizedName] {
+			return nil, domain.ErrMetricDuplicate
+		}
+		seenNames[normalizedName] = true
+
+		if !containsAggregateFunction(m.Expression) {
+			return nil, domain.ErrNoAggregateFunction
+		}
+
+		var metricID uint
+		if m.ID != nil {
+			metricID = *m.ID
+		}
+
+		if metricID > 0 {
+			exists, err := s.repo.MetricNameExists(ctx, datasetID, normalizedName, metricID)
+			if err != nil {
+				return nil, fmt.Errorf("checking metric name: %w", err)
+			}
+			if exists {
+				return nil, domain.ErrMetricDuplicate
+			}
+		}
+
+		metric := domain.SqlMetric{
+			ID:                   metricID,
+			TableID:              datasetID,
+			MetricName:          normalizedName,
+			VerboseName:         m.VerboseName,
+			MetricType:          m.MetricType,
+			Expression:          m.Expression,
+			D3Format:            m.D3Format,
+			WarningText:         m.WarningText,
+			IsRestricted:       m.IsRestricted,
+			CertifiedBy:         m.CertifiedBy,
+			CertificationDetails: m.CertificationDetails,
+		}
+		metrics = append(metrics, metric)
+	}
+
+	if err := s.repo.BulkReplaceMetrics(ctx, datasetID, metrics); err != nil {
+		return nil, fmt.Errorf("bulk updating metrics: %w", err)
+	}
+
+	return &domain.BulkUpdateMetricsResponse{UpdatedCount: len(metrics)}, nil
+}
+
+var metricNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+func normalizeMetricName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return ""
+	}
+	if len(trimmed) < 3 {
+		return ""
+	}
+	if !metricNamePattern.MatchString(trimmed) {
+		return ""
+	}
+	return trimmed
+}

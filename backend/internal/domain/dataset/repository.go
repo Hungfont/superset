@@ -30,4 +30,18 @@ type Repository interface {
 	UpdateColumn(ctx context.Context, columnID uint, req UpdateColumnRequest) error
 	// BulkUpdateColumns updates multiple columns in a transaction.
 	BulkUpdateColumns(ctx context.Context, columns []UpdateColumnRequest) error
+	// GetMetricByID retrieves a metric by ID.
+	GetMetricByID(ctx context.Context, metricID uint) (*SqlMetric, error)
+	// GetMetricsByTableID retrieves all metrics for a dataset.
+	GetMetricsByTableID(ctx context.Context, tableID uint) ([]SqlMetric, error)
+	// CreateMetric inserts a new metric.
+	CreateMetric(ctx context.Context, metric *SqlMetric) error
+	// UpdateMetric updates a metric.
+	UpdateMetric(ctx context.Context, metricID uint, req UpdateMetricRequest) error
+	// DeleteMetric deletes a metric.
+	DeleteMetric(ctx context.Context, metricID uint) error
+	// BulkReplaceMetrics replaces all metrics for a dataset (transaction).
+	BulkReplaceMetrics(ctx context.Context, tableID uint, metrics []SqlMetric) error
+	// MetricNameExists checks if a metric name already exists for a table.
+	MetricNameExists(ctx context.Context, tableID uint, metricName string, excludeID uint) (bool, error)
 }

@@ -56,8 +56,14 @@ export interface Column {
 export interface SqlMetric {
   id: number;
   metric_name: string;
+  verbose_name?: string;
   metric_type: string;
   expression: string;
+  d3_format?: string;
+  warning_text?: string;
+  is_restricted?: boolean;
+  certified_by?: string;
+  certification_details?: string;
   created_on: string;
 }
 
@@ -249,4 +255,114 @@ export const datasetsApi = {
 
     return body.data;
   },
+
+  async getMetrics(datasetId: number): Promise<SqlMetric[]> {
+    const body = await request<ApiEnvelope<SqlMetric[]>>(`/api/v1/datasets/${datasetId}/metrics`, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+
+    return body.data;
+  },
+
+  async createMetric(datasetId: number, payload: CreateMetricPayload): Promise<CreateMetricResponse> {
+    const body = await request<ApiEnvelope<CreateMetricResponse>>(`/api/v1/datasets/${datasetId}/metrics`, {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
+  },
+
+  async updateMetric(datasetId: number, metricId: number, payload: UpdateMetricPayload): Promise<UpdateMetricResponse> {
+    const body = await request<ApiEnvelope<UpdateMetricResponse>>(`/api/v1/datasets/${datasetId}/metrics/${metricId}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
+  },
+
+  async deleteMetric(datasetId: number, metricId: number): Promise<DeleteMetricResponse> {
+    const body = await request<ApiEnvelope<DeleteMetricResponse>>(`/api/v1/datasets/${datasetId}/metrics/${metricId}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+
+    return body.data;
+  },
+
+  async bulkUpdateMetrics(datasetId: number, payload: BulkUpdateMetricsPayload): Promise<BulkUpdateMetricsResponse> {
+    const body = await request<ApiEnvelope<BulkUpdateMetricsResponse>>(`/api/v1/datasets/${datasetId}/metrics`, {
+      method: "PUT",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    return body.data;
+  },
 };
+
+export interface CreateMetricPayload {
+  metric_name: string;
+  verbose_name?: string;
+  metric_type: string;
+  expression: string;
+  d3_format?: string;
+  warning_text?: string;
+  is_restricted?: boolean;
+  certified_by?: string;
+  certification_details?: string;
+}
+
+export interface CreateMetricResponse {
+  id: number;
+}
+
+export interface UpdateMetricPayload {
+  metric_name?: string;
+  verbose_name?: string;
+  metric_type?: string;
+  expression?: string;
+  d3_format?: string;
+  warning_text?: string;
+  is_restricted?: boolean;
+  certified_by?: string;
+  certification_details?: string;
+}
+
+export interface UpdateMetricResponse {
+  id: number;
+}
+
+export interface DeleteMetricResponse {
+  warnings?: string[];
+}
+
+export interface MetricUpsertPayload {
+  id?: number;
+  metric_name: string;
+  verbose_name?: string;
+  metric_type: string;
+  expression: string;
+  d3_format?: string;
+  warning_text?: string;
+  is_restricted?: boolean;
+  certified_by?: string;
+  certification_details?: string;
+}
+
+export interface BulkUpdateMetricsPayload {
+  metrics: MetricUpsertPayload[];
+}
+
+export interface BulkUpdateMetricsResponse {
+  updated_count: number;
+}

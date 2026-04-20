@@ -38,18 +38,45 @@ type updateColumnService interface {
 	BulkUpdateColumns(ctx context.Context, actorUserID uint, datasetID uint, req domain.BulkUpdateColumnRequest) (*domain.BulkUpdateColumnResponse, error)
 }
 
+type getMetricsService interface {
+	GetMetrics(ctx context.Context, actorUserID uint, datasetID uint) ([]domain.SqlMetric, error)
+}
+
+type createMetricService interface {
+	CreateMetric(ctx context.Context, actorUserID uint, datasetID uint, req domain.CreateMetricRequest) (*domain.CreateMetricResponse, error)
+}
+
+type updateMetricService interface {
+	UpdateMetric(ctx context.Context, actorUserID uint, datasetID uint, metricID uint, req domain.UpdateMetricRequest) (*domain.UpdateMetricResponse, error)
+	DeleteMetric(ctx context.Context, actorUserID uint, datasetID uint, metricID uint) (*domain.DeleteMetricResponse, error)
+	BulkUpdateMetrics(ctx context.Context, actorUserID uint, datasetID uint, req domain.BulkUpdateMetricsRequest) (*domain.BulkUpdateMetricsResponse, error)
+}
+
 // Handler handles /api/v1/datasets endpoints.
 type Handler struct {
-	svcPhysical  createPhysicalDatasetService
+	svcPhysical   createPhysicalDatasetService
 	svcVirtual   createVirtualDatasetService
 	svcList      listDatasetsService
 	svcGet       getDatasetService
 	svcUpdate    updateDatasetService
 	svcUpdateCol updateColumnService
+	svcMetrics   getMetricsService
+	svcCreateMetric createMetricService
+	svcUpdateMetrics updateMetricService
 }
 
-func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService) *Handler {
-	return &Handler{svcPhysical: svcPhysical, svcVirtual: svcVirtual, svcList: svcList, svcGet: svcGet, svcUpdate: svcUpdate, svcUpdateCol: svcUpdateCol}
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService) *Handler {
+	return &Handler{
+		svcPhysical:       svcPhysical,
+		svcVirtual:        svcVirtual,
+		svcList:           svcList,
+		svcGet:            svcGet,
+		svcUpdate:         svcUpdate,
+		svcUpdateCol:      svcUpdateCol,
+		svcMetrics:        svcMetrics,
+		svcCreateMetric:   svcCreateMetric,
+		svcUpdateMetrics:  svcUpdateMetrics,
+	}
 }
 
 func (h *Handler) CreatePhysicalDataset(c *gin.Context) {
@@ -239,6 +266,153 @@ func (h *Handler) BulkUpdateColumns(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+func (h *Handler) GetMetrics(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	datasetIDParam := c.Param("id")
+	var datasetID uint
+	if _, err := fmt.Sscanf(datasetIDParam, "%d", &datasetID); err != nil || datasetID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	metrics, err := h.svcMetrics.GetMetrics(c.Request.Context(), actor.ID, datasetID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": metrics})
+}
+
+func (h *Handler) CreateMetric(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	datasetIDParam := c.Param("id")
+	var datasetID uint
+	if _, err := fmt.Sscanf(datasetIDParam, "%d", &datasetID); err != nil || datasetID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	var req domain.CreateMetricRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	created, err := h.svcCreateMetric.CreateMetric(c.Request.Context(), actor.ID, datasetID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"data": created})
+}
+
+func (h *Handler) UpdateMetric(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	datasetIDParam := c.Param("id")
+	var datasetID uint
+	if _, err := fmt.Sscanf(datasetIDParam, "%d", &datasetID); err != nil || datasetID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	metricIDParam := c.Param("metric_id")
+	var metricID uint
+	if _, err := fmt.Sscanf(metricIDParam, "%d", &metricID); err != nil || metricID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrMetricNotFound.Error()})
+		return
+	}
+
+	var req domain.UpdateMetricRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	updated, err := h.svcUpdateMetrics.UpdateMetric(c.Request.Context(), actor.ID, datasetID, metricID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": updated})
+}
+
+func (h *Handler) DeleteMetric(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	datasetIDParam := c.Param("id")
+	var datasetID uint
+	if _, err := fmt.Sscanf(datasetIDParam, "%d", &datasetID); err != nil || datasetID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	metricIDParam := c.Param("metric_id")
+	var metricID uint
+	if _, err := fmt.Sscanf(metricIDParam, "%d", &metricID); err != nil || metricID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrMetricNotFound.Error()})
+		return
+	}
+
+	result, err := h.svcUpdateMetrics.DeleteMetric(c.Request.Context(), actor.ID, datasetID, metricID)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *Handler) BulkUpdateMetrics(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	datasetIDParam := c.Param("id")
+	var datasetID uint
+	if _, err := fmt.Sscanf(datasetIDParam, "%d", &datasetID); err != nil || datasetID == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	var req domain.BulkUpdateMetricsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.svcUpdateMetrics.BulkUpdateMetrics(c.Request.Context(), actor.ID, datasetID, req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 func (h *Handler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
@@ -254,6 +428,12 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrColumnNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrInvalidExpression), errors.Is(err, domain.ErrInvalidDateFormat):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrMetricDuplicate):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrMetricNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrNoAggregateFunction):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})

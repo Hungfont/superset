@@ -61,6 +61,11 @@ func NewRouter(
 			protected.PUT("/datasets/:id", datasetHandler.UpdateDataset)
 			protected.PUT("/datasets/:id/columns/:col_id", datasetHandler.UpdateColumn)
 			protected.PUT("/datasets/:id/columns", datasetHandler.BulkUpdateColumns)
+			protected.GET("/datasets/:id/metrics", datasetHandler.GetMetrics)
+			protected.POST("/datasets/:id/metrics", datasetHandler.CreateMetric)
+			protected.PUT("/datasets/:id/metrics", datasetHandler.BulkUpdateMetrics)
+			protected.PUT("/datasets/:id/metrics/:metric_id", datasetHandler.UpdateMetric)
+			protected.DELETE("/datasets/:id/metrics/:metric_id", datasetHandler.DeleteMetric)
 
 			admin := protected.Group("/admin")
 			{

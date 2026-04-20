@@ -153,7 +153,7 @@ func main() {
 	userRoleHandler := httpauth.NewUserRoleHandler(userRoleSvc)
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
-	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
+	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
 
 	router := delivery.NewRouter(
 		registerHandler,
