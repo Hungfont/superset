@@ -54,6 +54,8 @@ func NewRouter(
 				return middleware.RequirePermission(roleRepo, rbacPermissionRepo, rbacPermissionCacheRepo, action, resource)
 			}
 
+			protected.GET("/datasets", datasetHandler.ListDatasets)
+			protected.GET("/datasets/:id", datasetHandler.GetDataset)
 			protected.POST("/datasets", datasetHandler.CreatePhysicalDataset)
 			protected.POST("/datasets/virtual", datasetHandler.CreateVirtualDataset)
 
@@ -66,7 +68,7 @@ func NewRouter(
 				admin.GET("/databases/:id/tables", databaseHandler.ListTables)
 				admin.GET("/databases/:id/columns", databaseHandler.ListColumns)
 				admin.PUT("/databases/:id", databaseHandler.Update)
-				admin.DELETE("/`databases`/:id", databaseHandler.Delete)
+				admin.DELETE("/databases/:id", databaseHandler.Delete)
 				admin.POST("/databases/test", databaseHandler.TestConnection)
 				admin.POST("/databases/:id/test", databaseHandler.TestConnectionByID)
 

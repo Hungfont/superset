@@ -16,4 +16,8 @@ type Repository interface {
 	GetDatasetByID(ctx context.Context, id uint) (*Dataset, error)
 	// CreateColumns inserts column rows for a dataset.
 	CreateColumns(ctx context.Context, columns []Column) error
+	// ListDatasets retrieves a paginated list of datasets with visibility filtering.
+	ListDatasets(ctx context.Context, actorUserID uint, filters DatasetListFilters) (*DatasetListResult, error)
+	// GetDatasetDetail retrieves a dataset with full columns and metrics.
+	GetDatasetDetail(ctx context.Context, id uint) (*DatasetDetail, error)
 }

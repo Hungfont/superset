@@ -13,7 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrSyncQueueRequired = errors.New("dataset sync queue is required")
+var (
+	ErrSyncQueueRequired = errors.New("dataset sync queue is required")
+
+	datasetListDefaultPage     = 1
+	datasetListDefaultPageSize = 10
+	datasetListMaxPageSize     = 100
+)
 
 // SyncQueue enqueues background column sync jobs.
 type SyncQueue interface {
@@ -230,4 +236,124 @@ func normalizeVirtualCreateRequest(req domain.CreateVirtualDatasetRequest) (doma
 		SQL:       sql,
 		ValidateSQL: req.ValidateSQL,
 	}, nil
+}
+
+func (s *Service) ListDatasets(ctx context.Context, actorUserID uint, query domain.DatasetListQuery) (*domain.DatasetListResult, error) {
+	normalized := normalizeDatasetListQuery(query)
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.repo.ListDatasets(ctx, actorUserID, domain.DatasetListFilters{
+		SearchQ:         normalized.Q,
+		DatabaseID:       normalized.DatabaseID,
+		Schema:           normalized.Schema,
+		Type:             normalized.Type,
+		Owner:            normalized.Owner,
+		VisibilityScope:  visibilityScope,
+		ActorUserID:      actorUserID,
+		Page:            normalized.Page,
+		PageSize:         normalized.PageSize,
+		Offset:          (normalized.Page - 1) * normalized.PageSize,
+		Limit:           normalized.PageSize,
+		OrderBy:         normalized.OrderBy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing datasets: %w", err)
+	}
+
+	return result, nil
+}
+
+func (s *Service) GetDatasetDetail(ctx context.Context, actorUserID uint, id uint) (*domain.DatasetDetail, error) {
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	detail, err := s.repo.GetDatasetDetail(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if detail == nil || detail.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	canView, err := s.canViewDataset(ctx, actorUserID, detail, visibilityScope)
+	if err != nil {
+		return nil, err
+	}
+	if !canView {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	return detail, nil
+}
+
+func (s *Service) resolveVisibilityScope(ctx context.Context, actorUserID uint) (domain.DatasetVisibilityScope, error) {
+	roleNames, err := s.databaseRepo.GetRoleNamesByUser(ctx, actorUserID)
+	if err != nil {
+		return "", fmt.Errorf("loading actor role names: %w", err)
+	}
+
+	for _, roleName := range roleNames {
+		value := strings.ToLower(strings.TrimSpace(roleName))
+		if value == "admin" {
+			return domain.VisibilityScopeAdmin, nil
+		}
+	}
+
+	for _, roleName := range roleNames {
+		value := strings.ToLower(strings.TrimSpace(roleName))
+		if value == "alpha" {
+			return domain.VisibilityScopeAlpha, nil
+		}
+	}
+
+	return domain.VisibilityScopeGamma, nil
+}
+
+func (s *Service) canViewDataset(ctx context.Context, actorUserID uint, detail *domain.DatasetDetail, scope domain.DatasetVisibilityScope) (bool, error) {
+	switch scope {
+	case domain.VisibilityScopeAdmin, domain.VisibilityScopeAlpha:
+		return true, nil
+	case domain.VisibilityScopeGamma:
+		return detail.CreatedByFK == actorUserID, nil
+	default:
+		return detail.CreatedByFK == actorUserID, nil
+	}
+}
+
+func normalizeDatasetListQuery(query domain.DatasetListQuery) domain.DatasetListQuery {
+	page := query.Page
+	if page < 1 {
+		page = datasetListDefaultPage
+	}
+
+	pageSize := query.PageSize
+	if pageSize < 1 {
+		pageSize = datasetListDefaultPageSize
+	}
+	if pageSize > datasetListMaxPageSize {
+		pageSize = datasetListMaxPageSize
+	}
+
+	orderBy := strings.TrimSpace(query.OrderBy)
+	if orderBy == "" {
+		orderBy = "changed_on desc"
+	}
+
+	return domain.DatasetListQuery{
+		Q:         strings.TrimSpace(query.Q),
+		DatabaseID: query.DatabaseID,
+		Schema:    strings.TrimSpace(query.Schema),
+		Type:      strings.TrimSpace(query.Type),
+		Owner:     query.Owner,
+		Page:      page,
+		PageSize:  pageSize,
+		OrderBy:   orderBy,
+	}
 }

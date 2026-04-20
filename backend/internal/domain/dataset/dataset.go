@@ -1,6 +1,9 @@
 package dataset
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Dataset maps to tables.
 type Dataset struct {
@@ -64,3 +67,83 @@ type Column struct {
 	IsDateTime    bool   `json:"is_dttm"`
 	IsActive      bool   `json:"is_active"`
 }
+
+// DatasetWithCounts includes aggregate counts for list view.
+type DatasetWithCounts struct {
+	ID            uint      `json:"id"`
+	TableName    string    `json:"table_name"`
+	Schema       string    `json:"schema,omitempty"`
+	DatabaseID   uint      `json:"database_id"`
+	DatabaseName string    `json:"database_name,omitempty"`
+	Type         string    `json:"type"`
+	Perm         string    `json:"perm"`
+	CreatedByFK  uint      `json:"created_by_fk"`
+	OwnerName    string    `json:"owner_name,omitempty"`
+	ColumnCount  int       `json:"column_count"`
+	MetricCount  int       `json:"metric_count"`
+	ChangedOn    time.Time `json:"changed_on"`
+}
+
+// DatasetDetail includes full columns/metrics for detail view.
+type DatasetDetail struct {
+	DatasetWithCounts
+	TableColumns []Column   `json:"table_columns"`
+	SqlMetrics  []SqlMetric `json:"sql_metrics"`
+}
+
+// SqlMetric maps to sql_metrics table.
+type SqlMetric struct {
+	ID            uint      `json:"id"`
+	MetricName   string    `json:"metric_name"`
+	MetricType   string    `json:"metric_type"`
+	Expression   string    `json:"expression"`
+	CreatedOn    time.Time `json:"created_on"`
+}
+
+// DatasetListQuery is used by GET /api/v1/datasets.
+type DatasetListQuery struct {
+	Q          string `form:"q"`
+	DatabaseID uint   `form:"database_id"`
+	Schema     string `form:"schema"`
+	Type       string `form:"type"`
+	Owner      uint   `form:"owner"`
+	Page       int    `form:"page"`
+	PageSize   int    `form:"page_size"`
+	OrderBy    string `form:"order_by"`
+}
+
+// DatasetListFilters is used by repository and service layer.
+type DatasetListFilters struct {
+	SearchQ          string
+	DatabaseID       uint
+	Schema          string
+	Type           string
+	Owner          uint
+	Page           int
+	PageSize       int
+	Offset         int
+	Limit          int
+	OrderBy        string
+	VisibilityScope DatasetVisibilityScope
+	ActorUserID      uint
+}
+
+// DatasetVisibilityScope determines which datasets a user can see.
+type DatasetVisibilityScope string
+
+const (
+	VisibilityScopeAdmin  DatasetVisibilityScope = "admin"
+	VisibilityScopeAlpha DatasetVisibilityScope = "alpha"
+	VisibilityScopeGamma DatasetVisibilityScope = "gamma"
+)
+
+// DatasetListResult is returned by list endpoints.
+type DatasetListResult struct {
+	Items    []DatasetWithCounts `json:"items"`
+	Total   int64              `json:"total"`
+	Page    int                `json:"page"`
+	PageSize int               `json:"page_size"`
+}
+
+// ErrDatasetNotFound is returned when dataset doesn't exist.
+var ErrDatasetNotFound = errors.New("dataset not found")
