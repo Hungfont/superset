@@ -162,6 +162,11 @@ export interface BulkUpdateColumnResponse {
   updated_count: number;
 }
 
+export interface RefreshDatasetResponse {
+  job_id: string;
+  background_sync: boolean;
+}
+
 export const datasetsApi = {
   async createDataset(payload: CreateDatasetPayload): Promise<CreateDatasetResponse> {
     const body = await request<ApiEnvelope<CreateDatasetResponse>>("/api/v1/datasets", {
@@ -221,6 +226,16 @@ export const datasetsApi = {
       credentials: "include",
       headers: getAuthHeaders(),
     });
+  },
+
+  async refreshDataset(id: number): Promise<RefreshDatasetResponse> {
+    const body = await request<ApiEnvelope<RefreshDatasetResponse>>(`/api/v1/datasets/${id}/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
+
+    return body.data;
   },
 
   async updateDataset(id: number, payload: UpdateDatasetMetadataPayload): Promise<UpdateDatasetMetadataResponse> {

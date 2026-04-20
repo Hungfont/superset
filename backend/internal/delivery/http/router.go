@@ -67,6 +67,7 @@ func NewRouter(
 			protected.PUT("/datasets/:id/metrics/:metric_id", datasetHandler.UpdateMetric)
 			protected.DELETE("/datasets/:id/metrics/:metric_id", datasetHandler.DeleteMetric)
 			protected.DELETE("/datasets/:id", datasetHandler.DeleteDataset)
+			protected.POST("/datasets/:id/refresh", datasetHandler.RefreshDataset)
 
 			admin := protected.Group("/admin")
 			{

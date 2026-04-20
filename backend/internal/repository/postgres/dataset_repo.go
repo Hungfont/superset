@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	domain "superset/auth-service/internal/domain/dataset"
 
@@ -566,6 +567,91 @@ func (r *datasetRepo) CountChartsByDatasetID(ctx context.Context, datasetID uint
 	}
 
 	return count, nil
+}
+
+func (r *datasetRepo) RefreshDatasetColumns(ctx context.Context, datasetID uint, columns []domain.Column) error {
+	if len(columns) == 0 {
+		return nil
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		existingColumns, err := r.getActiveColumnNames(ctx, tx, datasetID)
+		if err != nil {
+			return fmt.Errorf("getting existing columns: %w", err)
+		}
+
+		incomingColumnNames := make(map[string]bool)
+		for _, col := range columns {
+			incomingColumnNames[col.ColumnName] = true
+		}
+
+		for _, col := range existingColumns {
+			if !incomingColumnNames[col] {
+				if err := tx.Table("table_columns").
+					Where("table_id = ? AND column_name = ?", datasetID, col).
+					Update("is_active", false).Error; err != nil {
+					return fmt.Errorf("deactivating column %s: %w", col, err)
+				}
+			}
+		}
+
+		for _, col := range columns {
+			existing, err := r.getColumnByName(ctx, tx, datasetID, col.ColumnName)
+			if err != nil {
+				return fmt.Errorf("checking column %s: %w", col.ColumnName, err)
+			}
+
+			if existing != nil {
+				updates := map[string]interface{}{
+					"type":       col.Type,
+					"is_active":  true,
+					"changed_on": time.Now(),
+				}
+				if err := tx.Table("table_columns").
+					Where("table_id = ? AND column_name = ?", datasetID, col.ColumnName).
+					Updates(updates).Error; err != nil {
+					return fmt.Errorf("updating column %s: %w", col.ColumnName, err)
+				}
+			} else {
+				newCol := domain.Column{
+					TableID:     datasetID,
+					ColumnName: col.ColumnName,
+					Type:       col.Type,
+					IsActive:   true,
+				}
+				if err := tx.Table("table_columns").Create(&newCol).Error; err != nil {
+					return fmt.Errorf("creating column %s: %w", col.ColumnName, err)
+				}
+			}
+		}
+
+		return nil
+	})
+}
+
+func (r *datasetRepo) getActiveColumnNames(ctx context.Context, tx *gorm.DB, datasetID uint) ([]string, error) {
+	var columnNames []string
+	err := tx.Table("table_columns").
+		Where("table_id = ? AND is_active = true", datasetID).
+		Pluck("column_name", &columnNames).Error
+	if err != nil {
+		return nil, err
+	}
+	return columnNames, nil
+}
+
+func (r *datasetRepo) getColumnByName(ctx context.Context, tx *gorm.DB, datasetID uint, columnName string) (*domain.Column, error) {
+	var col domain.Column
+	err := tx.Table("table_columns").
+		Where("table_id = ? AND column_name = ?", datasetID, columnName).
+		First(&col).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &col, nil
 }
 
 var _ domain.Repository = (*datasetRepo)(nil)

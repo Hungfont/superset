@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, Save, RotateCcw, Calculator, AlertCircle } from "lucide-react";
+import { Loader2, Pencil, Save, RotateCcw, Calculator, AlertCircle, RefreshCw } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +81,27 @@ export function ColumnsTab({ datasetId, columns: initialColumns }: ColumnsTabPro
     },
   });
 
+  const refreshMutation = useMutation({
+    mutationFn: () => datasetsApi.refreshDataset(datasetId),
+    onSuccess: (data) => {
+      success(`Syncing columns... (Job: ${data.job_id})`);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+      }, 3000);
+    },
+    onError: (err: Error & { status?: number; message?: string }) => {
+      if (err.status === 403) {
+        error("You don't have permission to sync columns");
+        return;
+      }
+      if (err.status === 502) {
+        error("Database unreachable - please check connection");
+        return;
+      }
+      error(err.message || "Failed to sync columns");
+    },
+  });
+
   const handleFieldChange = useCallback((colId: number, field: keyof UpdateColumnPayload, value: unknown) => {
     setLocalEdits((prev) => {
       const existing = prev.get(colId);
@@ -152,8 +173,22 @@ export function ColumnsTab({ datasetId, columns: initialColumns }: ColumnsTabPro
                 {localEdits.size} unsaved change{localEdits.size !== 1 ? "s" : ""}
               </Badge>
             )}
+            {refreshMutation.isPending && (
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Syncing...
+              </Badge>
+            )}
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}>
+              {refreshMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Sync Columns
+            </Button>
             {isDirty && (
               <>
                 <Button variant="outline" size="sm" onClick={handleReset} disabled={bulkUpdateMutation.isPending}>

@@ -932,3 +932,36 @@ func (s *Service) canDeleteDataset(ctx context.Context, actorUserID uint, datase
 		return dataset.CreatedByFK == actorUserID, nil
 	}
 }
+
+func (s *Service) RefreshDataset(ctx context.Context, actorUserID uint, datasetID uint) (*domain.RefreshDatasetResponse, error) {
+	dataset, err := s.repo.GetDatasetByID(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("getting dataset: %w", err)
+	}
+	if dataset == nil || dataset.ID == 0 {
+		return nil, domain.ErrDatasetNotFound
+	}
+
+	visibilityScope, err := s.resolveVisibilityScope(ctx, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	canEdit, err := s.canEditDataset(ctx, actorUserID, dataset, visibilityScope, false)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit {
+		return nil, domain.ErrForbidden
+	}
+
+	jobID, err := s.queue.EnqueueSyncColumns(ctx, datasetID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrDatasetSyncEnqueue, err)
+	}
+
+	return &domain.RefreshDatasetResponse{
+		JobID:          jobID,
+		BackgroundSync: true,
+	}, nil
+}

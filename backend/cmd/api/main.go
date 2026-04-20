@@ -27,6 +27,7 @@ import (
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
 	reporedis "superset/auth-service/internal/repository/redis"
+	"superset/auth-service/internal/worker"
 
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
@@ -120,6 +121,17 @@ func main() {
 
 	mailer := email.NewSMTPSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
 
+	poolConfig := svcdb.ConnectionPoolManagerConfig{
+		MaxOpenConns:    10,
+		MaxIdleConns:     3,
+		ConnMaxLifetime: 30 * time.Minute,
+		HealthInterval:  60 * time.Second,
+		PingTimeout:      5 * time.Second,
+	}
+	poolManager := svcdb.NewConnectionPoolManager(nil, poolConfig)
+	schemaInspector := svcdb.NewDefaultSchemaInspector()
+	columnSyncRepo := worker.NewDatasetRepoWrapper(datasetRepo, databaseRepo)
+
 	registerSvc := svcauth.NewRegisterService(registerRepo, mailer, cfg.App.BaseURL)
 	verifySvc := svcauth.NewVerifyService(verifyRepo)
 	loginSvc := svcauth.NewLoginService(loginRepo, rateRepo, refreshRepo, privKey)
@@ -139,6 +151,9 @@ func main() {
 		log.Fatalf("failed to initialize dataset service: %v", err)
 	}
 	databaseSvc.SetSchemaCache(schemaCacheRepo)
+
+	columnSyncWorker := worker.NewColumnSyncWorker(redisClient, columnSyncRepo, poolManager, schemaInspector)
+	columnSyncWorker.Start()
 	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
 		log.Fatalf("failed to seed permission views: %v", err)
 	}
@@ -153,7 +168,7 @@ func main() {
 	userRoleHandler := httpauth.NewUserRoleHandler(userRoleSvc)
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
-	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
+	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
 
 	router := delivery.NewRouter(
 		registerHandler,
@@ -200,7 +215,11 @@ func main() {
 	if err := datasetAsyncQueue.Shutdown(shutdownCtx); err != nil {
 		log.Printf("failed to shutdown dataset async queue: %v", err)
 	}
+	if err := columnSyncWorker.Stop(); err != nil {
+		log.Printf("failed to shutdown column sync worker: %v", err)
+	}
 
+	log.Println("Shutdown complete")
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("server shutdown error: %v", err)
 	}

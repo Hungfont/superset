@@ -23,6 +23,10 @@ type SchemaInspector interface {
 
 type postgresSchemaInspector struct{}
 
+func NewDefaultSchemaInspector() SchemaInspector {
+	return postgresSchemaInspector{}
+}
+
 func newDefaultSchemaInspector() SchemaInspector {
 	return postgresSchemaInspector{}
 }

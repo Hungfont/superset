@@ -218,6 +218,11 @@ func (f *fakeDatasetRepository) CountChartsByDatasetID(_ context.Context, _ uint
 	return f.chartCount, nil
 }
 
+func (f *fakeDatasetRepository) RefreshDatasetColumns(_ context.Context, _ uint, _ []domain.Column) error {
+	f.init()
+	return nil
+}
+
 type fakeDatabaseLookupRepository struct {
 	roleNames   []string
 	database    *dbdomain.Database

@@ -56,32 +56,38 @@ type deleteDatasetService interface {
 	DeleteDataset(ctx context.Context, actorUserID uint, id uint, req domain.DeleteDatasetRequest) (*domain.DeleteDatasetResponse, error)
 }
 
-// Handler handles /api/v1/datasets endpoints.
-type Handler struct {
-	svcPhysical    createPhysicalDatasetService
-	svcVirtual    createVirtualDatasetService
-	svcList       listDatasetsService
-	svcGet        getDatasetService
-	svcUpdate     updateDatasetService
-	svcUpdateCol  updateColumnService
-	svcMetrics    getMetricsService
-	svcCreateMetric  createMetricService
-	svcUpdateMetrics updateMetricService
-	svcDelete     deleteDatasetService
+type refreshDatasetService interface {
+	RefreshDataset(ctx context.Context, actorUserID uint, datasetID uint) (*domain.RefreshDatasetResponse, error)
 }
 
-func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService, svcDelete deleteDatasetService) *Handler {
+// Handler handles /api/v1/datasets endpoints.
+type Handler struct {
+	svcPhysical     createPhysicalDatasetService
+	svcVirtual     createVirtualDatasetService
+	svcList        listDatasetsService
+	svcGet         getDatasetService
+	svcUpdate      updateDatasetService
+	svcUpdateCol   updateColumnService
+	svcMetrics     getMetricsService
+	svcCreateMetric   createMetricService
+	svcUpdateMetrics  updateMetricService
+	svcDelete      deleteDatasetService
+	svcRefresh    refreshDatasetService
+}
+
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService, svcDelete deleteDatasetService, svcRefresh refreshDatasetService) *Handler {
 	return &Handler{
-		svcPhysical:      svcPhysical,
-		svcVirtual:       svcVirtual,
-		svcList:          svcList,
-		svcGet:           svcGet,
-		svcUpdate:        svcUpdate,
-		svcUpdateCol:     svcUpdateCol,
-		svcMetrics:       svcMetrics,
-		svcCreateMetric:  svcCreateMetric,
+		svcPhysical:     svcPhysical,
+		svcVirtual:      svcVirtual,
+		svcList:         svcList,
+		svcGet:          svcGet,
+		svcUpdate:       svcUpdate,
+		svcUpdateCol:    svcUpdateCol,
+		svcMetrics:      svcMetrics,
+		svcCreateMetric: svcCreateMetric,
 		svcUpdateMetrics: svcUpdateMetrics,
-		svcDelete:        svcDelete,
+		svcDelete:       svcDelete,
+		svcRefresh:      svcRefresh,
 	}
 }
 
@@ -444,6 +450,29 @@ func (h *Handler) DeleteDataset(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) RefreshDataset(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	idParam := c.Param("id")
+	var id uint
+	if _, err := fmt.Sscanf(idParam, "%d", &id); err != nil || id == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	result, err := h.svcRefresh.RefreshDataset(c.Request.Context(), actor.ID, id)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"data": result})
+}
+
 func (h *Handler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
@@ -452,6 +481,8 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatasetReferencedByCharts):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatasetNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrInvalidDataset), errors.Is(err, domain.ErrInvalidDatabase):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrSQLNotSelect), errors.Is(err, domain.ErrSQLSemicolon), errors.Is(err, domain.ErrSQLSemanticError):
@@ -468,6 +499,10 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrNoAggregateFunction):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatasetSyncEnqueue):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatabaseUnreachable):
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 	}

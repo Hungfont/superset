@@ -48,4 +48,6 @@ type Repository interface {
 	DeleteDataset(ctx context.Context, id uint) error
 	// CountChartsByDatasetID counts charts using this dataset.
 	CountChartsByDatasetID(ctx context.Context, datasetID uint) (int64, error)
+	// RefreshDatasetColumns syncs columns from remote database.
+	RefreshDatasetColumns(ctx context.Context, datasetID uint, columns []Column) error
 }

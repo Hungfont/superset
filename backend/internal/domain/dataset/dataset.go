@@ -328,3 +328,21 @@ type ChartRef struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
 }
+
+// RefreshDatasetResponse is returned by POST /api/v1/datasets/:id/refresh.
+type RefreshDatasetResponse struct {
+	JobID          string `json:"job_id"`
+	BackgroundSync bool   `json:"background_sync"`
+}
+
+// SyncColumnsPayload describes the payload for async column sync.
+type SyncColumnsPayload struct {
+	DatasetID uint `json:"dataset_id"`
+}
+
+// SyncResult describes the result of a column sync operation.
+type SyncResult struct {
+	NewColumns      int `json:"new_columns"`
+	DeactivatedColumns int `json:"deactivated_columns"`
+	UpdatedColumns  int `json:"updated_columns"`
+}
