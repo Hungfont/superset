@@ -11,6 +11,7 @@ import (
 
 	svcdb "superset/auth-service/internal/app/db"
 	"superset/auth-service/internal/domain/dataset"
+	svcdomain "superset/auth-service/internal/domain/db"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -18,17 +19,17 @@ import (
 const (
 	columnSyncQueueKey     = "queue:dataset:sync_columns"
 	columnSyncPollInterval = 1 * time.Second
-	columnSyncTimeout     = 5 * time.Minute
+	columnSyncTimeout      = 5 * time.Minute
 )
 
 type ColumnSyncWorker struct {
-	redisClient       *redis.Client
+	redisClient     *redis.Client
 	datasetRepo     datasetRepoWithDB
+	databaseSvc    *svcdb.DatabaseService
 	poolManager     *svcdb.ConnectionPoolManager
-	schemaInspector svcdb.SchemaInspector
-	wg             sync.WaitGroup
-	ctx            context.Context
-	cancel         func()
+	wg              sync.WaitGroup
+	ctx             context.Context
+	cancel          func()
 }
 
 type ColumnSyncPayload struct {
@@ -38,17 +39,17 @@ type ColumnSyncPayload struct {
 func NewColumnSyncWorker(
 	redisClient *redis.Client,
 	repo datasetRepoWithDB,
+	databaseSvc *svcdb.DatabaseService,
 	poolManager *svcdb.ConnectionPoolManager,
-	inspector svcdb.SchemaInspector,
 ) *ColumnSyncWorker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ColumnSyncWorker{
-		redisClient:       redisClient,
-		datasetRepo:     repo,
-		poolManager:     poolManager,
-		schemaInspector: inspector,
-		ctx:            ctx,
-		cancel:         cancel,
+		redisClient:  redisClient,
+		datasetRepo:  repo,
+		databaseSvc: databaseSvc,
+		poolManager: poolManager,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
@@ -142,26 +143,21 @@ func (w *ColumnSyncWorker) processSync(datasetID uint) {
 }
 
 func (w *ColumnSyncWorker) getPhysicalColumns(ctx context.Context, ds *dataset.Dataset) []dataset.Column {
-	dbRec, err := w.datasetRepo.GetDatabaseByID(ctx, ds.DatabaseID)
-	if err != nil {
-		log.Printf("[column_sync_worker] error getting database %d: %v", ds.DatabaseID, err)
-		return nil
-	}
-	if dbRec == nil {
-		log.Printf("[column_sync_worker] database %d not found", ds.DatabaseID)
-		return nil
-	}
-
-	conn, err := w.poolManager.Get(ctx, ds.DatabaseID, dbRec.SQLAlchemyURI)
-	if err != nil {
-		log.Printf("[column_sync_worker] error getting connection for database %d: %v", ds.DatabaseID, err)
+	if w.databaseSvc == nil {
+		log.Println("[column_sync_worker] database service not initialized")
 		return nil
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	remoteColumns, err := w.schemaInspector.ListColumns(timeoutCtx, conn, ds.Schema, ds.Name)
+	req := svcdomain.ListDatabaseColumnsRequest{
+		Schema: ds.Schema,
+		Table:  ds.Name,
+	}
+
+	forceRefresh := false
+	remoteColumns, err := w.databaseSvc.ListColumns(timeoutCtx, 0, ds.DatabaseID, req, forceRefresh, "")
 	if err != nil {
 		log.Printf("[column_sync_worker] error listing columns for %s.%s: %v", ds.Schema, ds.Name, err)
 		return nil
@@ -176,7 +172,7 @@ func (w *ColumnSyncWorker) getPhysicalColumns(ctx context.Context, ds *dataset.D
 		}
 
 		columns = append(columns, dataset.Column{
-			TableID:     ds.ID,
+			TableID:    ds.ID,
 			ColumnName: col.Name,
 			Type:       col.DataType,
 			IsDateTime: isDttm,
@@ -246,7 +242,7 @@ func (w *ColumnSyncWorker) getVirtualColumns(ctx context.Context, ds *dataset.Da
 		}
 
 		result = append(result, dataset.Column{
-			TableID:     ds.ID,
+			TableID:    ds.ID,
 			ColumnName: colName,
 			Type:       colType,
 			IsDateTime: isDttm,

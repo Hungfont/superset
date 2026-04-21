@@ -2,18 +2,16 @@ package auth
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
+	"log"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"superset/auth-service/internal/pkg/crypto"
 
 	domain "superset/auth-service/internal/domain/db"
 
@@ -69,11 +67,24 @@ type databaseRateLimitState struct {
 
 type noopDatabaseAuditLogger struct{}
 
-func (defaultDatabaseConnectionTester) TestConnection(_ context.Context, sqlalchemyURI string) error {
-	if _, err := parseSQLAlchemyURI(sqlalchemyURI); err != nil {
+func (defaultDatabaseConnectionTester) TestConnection(ctx context.Context, sqlalchemyURI string) error {
+	parsedURI, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI)
+	if err != nil {
 		return err
 	}
-	return nil
+
+	driverName, _, err := resolveSQLDriver(parsedURI.Scheme)
+	if err != nil {
+		return err
+	}
+
+	db, err := sql.Open(driverName, sqlalchemyURI)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	return db.PingContext(ctx)
 }
 
 func (noopDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, _ uint) {}
@@ -104,7 +115,8 @@ func (l *defaultDatabaseTestRateLimiter) Allow(_ context.Context, key string, ca
 }
 
 func (defaultDatabaseConnectionProber) Probe(ctx context.Context, sqlalchemyURI string) (domain.TestConnectionResult, error) {
-	parsedURI, err := parseSQLAlchemyURI(sqlalchemyURI)
+	log.Println("[database_prober] sqlalchemyURI:" + sqlalchemyURI)
+	parsedURI, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI)
 	if err != nil {
 		return domain.TestConnectionResult{}, err
 	}
@@ -176,9 +188,9 @@ type DatabaseService struct {
 }
 
 func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectionTester, auditLogger DatabaseAuditLogger, encryptionKey string) (*DatabaseService, error) {
-	parsedKey, err := parseDatabaseEncryptionKey(encryptionKey)
+	parsedKey, err := crypto.ParseEncryptionKey(encryptionKey)
 	if err != nil {
-		return nil, err
+		return nil, domain.ErrDatabaseCredentialEncryption
 	}
 
 	resolvedTester := tester
@@ -193,7 +205,10 @@ func NewDatabaseService(repo domain.DatabaseRepository, tester DatabaseConnectio
 
 	resolvedProber := DatabaseConnectionProber(defaultDatabaseConnectionProber{})
 	resolvedRateLimiter := DatabaseTestRateLimiter(newDefaultDatabaseTestRateLimiter())
-	resolvedPoolManager := DatabaseConnectionPool(NewConnectionPoolManager(nil, ConnectionPoolManagerConfig{}))
+	resolvedPoolManager, err := NewConnectionPoolManager(nil, ConnectionPoolManagerConfig{}, encryptionKey)
+	if err != nil {
+		return nil, err
+	}
 	resolvedSchemaInspector := newDefaultSchemaInspector()
 	resolvedSchemaCache := newInMemorySchemaCache()
 
@@ -276,7 +291,7 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		return nil, domain.ErrDatabaseNameExists
 	}
 
-	encryptedURI, err := encryptSQLAlchemyURIPassword(normalizedReq.SQLAlchemyURI, s.encryptionKey)
+	encryptedURI, err := crypto.EncryptSQLAlchemyURIPassword(normalizedReq.SQLAlchemyURI, s.encryptionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -287,9 +302,15 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		}
 	}
 
+	encryptedPassword, err := encryptPasswordField(normalizedReq.Password, s.encryptionKey)
+	if err != nil {
+		return nil, err
+	}
+
 	database := domain.Database{
 		DatabaseName:    normalizedReq.DatabaseName,
 		SQLAlchemyURI:   encryptedURI,
+		Password:        encryptedPassword,
 		AllowDML:        normalizedReq.AllowDML,
 		ExposeInSQLLab:  normalizedReq.ExposeInSQLLab,
 		AllowRunAsync:   normalizedReq.AllowRunAsync,
@@ -304,7 +325,7 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		return nil, fmt.Errorf("creating database: %w", err)
 	}
 
-	maskedURI, err := maskSQLAlchemyURI(normalizedReq.SQLAlchemyURI)
+	maskedURI, err := crypto.MaskSQLAlchemyURI(normalizedReq.SQLAlchemyURI)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +365,7 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, actorUserID uint, q
 
 	items := make([]domain.DatabaseListItem, 0, len(result.Items))
 	for _, record := range result.Items {
-		maskedURI, maskErr := maskSQLAlchemyURI(record.SQLAlchemyURI)
+		maskedURI, maskErr := crypto.MaskSQLAlchemyURI(record.SQLAlchemyURI)
 		if maskErr != nil {
 			return nil, maskErr
 		}
@@ -381,7 +402,7 @@ func (s *DatabaseService) GetDatabase(ctx context.Context, actorUserID uint, dat
 		return nil, err
 	}
 
-	maskedURI, err := maskSQLAlchemyURI(record.SQLAlchemyURI)
+	maskedURI, err := crypto.MaskSQLAlchemyURI(record.SQLAlchemyURI)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +457,7 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 	}
 
 	if normalizedReq.SQLAlchemyURI != nil {
-		decryptedExistingURI, decryptErr := decryptSQLAlchemyURIPassword(existing.SQLAlchemyURI, s.encryptionKey)
+		decryptedExistingURI, decryptErr := crypto.DecryptSQLAlchemyURIPassword(existing.SQLAlchemyURI, s.encryptionKey)
 		if decryptErr != nil {
 			return nil, decryptErr
 		}
@@ -452,7 +473,7 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 			}
 		}
 
-		encryptedURI, encryptErr := encryptSQLAlchemyURIPassword(mergedURI, s.encryptionKey)
+		encryptedURI, encryptErr := crypto.EncryptSQLAlchemyURIPassword(mergedURI, s.encryptionKey)
 		if encryptErr != nil {
 			return nil, encryptErr
 		}
@@ -472,7 +493,7 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 		}
 	}
 
-	maskedURI, err := maskSQLAlchemyURI(updated.SQLAlchemyURI)
+	maskedURI, err := crypto.MaskSQLAlchemyURI(updated.SQLAlchemyURI)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +555,7 @@ func (s *DatabaseService) TestConnection(ctx context.Context, actorUserID uint, 
 		return domain.TestConnectionResult{}, domain.ErrInvalidDatabaseURI
 	}
 
-	if _, err := parseSQLAlchemyURI(sqlalchemyURI); err != nil {
+	if _, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI); err != nil {
 		return domain.TestConnectionResult{}, err
 	}
 
@@ -551,7 +572,7 @@ func (s *DatabaseService) TestConnectionByID(ctx context.Context, actorUserID ui
 		return domain.TestConnectionResult{}, err
 	}
 
-	decryptedURI, err := decryptSQLAlchemyURIPassword(database.SQLAlchemyURI, s.encryptionKey)
+	decryptedURI, err := crypto.DecryptSQLAlchemyURIPassword(database.SQLAlchemyURI, s.encryptionKey)
 	if err != nil {
 		return domain.TestConnectionResult{}, err
 	}
@@ -665,7 +686,7 @@ func normalizeCreateDatabaseRequest(req domain.CreateDatabaseRequest) (domain.Cr
 		return domain.CreateDatabaseRequest{}, false, domain.ErrInvalidDatabase
 	}
 
-	if _, err := parseSQLAlchemyURI(sqlalchemyURI); err != nil {
+	if _, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI); err != nil {
 		return domain.CreateDatabaseRequest{}, false, err
 	}
 
@@ -674,9 +695,12 @@ func normalizeCreateDatabaseRequest(req domain.CreateDatabaseRequest) (domain.Cr
 		strictTest = *req.StrictTest
 	}
 
+	password := strings.TrimSpace(req.Password)
+
 	return domain.CreateDatabaseRequest{
 		DatabaseName:    databaseName,
 		SQLAlchemyURI:   sqlalchemyURI,
+		Password:        password,
 		AllowDML:        req.AllowDML,
 		ExposeInSQLLab:  req.ExposeInSQLLab,
 		AllowRunAsync:   req.AllowRunAsync,
@@ -705,7 +729,7 @@ func normalizeUpdateDatabaseRequest(req domain.UpdateDatabaseRequest) (domain.Up
 		if sqlalchemyURI == "" {
 			return domain.UpdateDatabaseRequest{}, false, domain.ErrInvalidDatabaseURI
 		}
-		if _, err := parseSQLAlchemyURI(sqlalchemyURI); err != nil {
+		if _, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI); err != nil {
 			return domain.UpdateDatabaseRequest{}, false, err
 		}
 		normalized.SQLAlchemyURI = &sqlalchemyURI
@@ -715,7 +739,7 @@ func normalizeUpdateDatabaseRequest(req domain.UpdateDatabaseRequest) (domain.Up
 }
 
 func mergeSQLAlchemyURIWithMaskedPassword(nextURI string, existingURI string) (string, error) {
-	nextParsedURI, err := parseSQLAlchemyURI(nextURI)
+	nextParsedURI, err := crypto.ParseSQLAlchemyURI(nextURI)
 	if err != nil {
 		return "", err
 	}
@@ -729,7 +753,7 @@ func mergeSQLAlchemyURIWithMaskedPassword(nextURI string, existingURI string) (s
 		return nextParsedURI.String(), nil
 	}
 
-	existingParsedURI, err := parseSQLAlchemyURI(existingURI)
+	existingParsedURI, err := crypto.ParseSQLAlchemyURI(existingURI)
 	if err != nil {
 		return "", err
 	}
@@ -747,136 +771,6 @@ func mergeSQLAlchemyURIWithMaskedPassword(nextURI string, existingURI string) (s
 	return nextParsedURI.String(), nil
 }
 
-func parseDatabaseEncryptionKey(rawKey string) ([]byte, error) {
-	trimmed := strings.TrimSpace(rawKey)
-	if trimmed == "" {
-		return nil, domain.ErrDatabaseCredentialEncryption
-	}
-
-	if decoded, err := base64.StdEncoding.DecodeString(trimmed); err == nil && len(decoded) == 32 {
-		return decoded, nil
-	}
-
-	if len(trimmed) == 32 {
-		return []byte(trimmed), nil
-	}
-
-	return nil, domain.ErrDatabaseCredentialEncryption
-}
-
-func decryptField(encryptedText string, encryptionKey []byte) (string, error) {
-	combined, err := base64.StdEncoding.DecodeString(encryptedText)
-	if err != nil {
-		return "", err
-	}
-
-	block, err := aes.NewCipher(encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(combined) < nonceSize {
-		return "", errors.New("invalid ciphertext")
-	}
-
-	nonce := combined[:nonceSize]
-	cipherText := combined[nonceSize:]
-	plain, err := gcm.Open(nil, nonce, cipherText, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plain), nil
-}
-
-func parseSQLAlchemyURI(sqlalchemyURI string) (*url.URL, error) {
-	parsedURI, err := url.Parse(sqlalchemyURI)
-	if err != nil {
-		return nil, domain.ErrInvalidDatabaseURI
-	}
-	if parsedURI.Scheme == "" || parsedURI.Host == "" {
-		return nil, domain.ErrInvalidDatabaseURI
-	}
-	return parsedURI, nil
-}
-
-func decryptSQLAlchemyURIPassword(sqlalchemyURI string, encryptionKey []byte) (string, error) {
-	parsedURI, err := parseSQLAlchemyURI(sqlalchemyURI)
-	if err != nil {
-		return "", err
-	}
-
-	if parsedURI.User == nil {
-		return parsedURI.String(), nil
-	}
-
-	username := parsedURI.User.Username()
-	encryptedPassword, hasPassword := parsedURI.User.Password()
-	if !hasPassword || encryptedPassword == "" {
-		return parsedURI.String(), nil
-	}
-
-	plainPassword, err := decryptField(encryptedPassword, encryptionKey)
-	if err != nil {
-		return "", domain.ErrDatabaseCredentialEncryption
-	}
-
-	parsedURI.User = url.UserPassword(username, plainPassword)
-	return parsedURI.String(), nil
-}
-
-func encryptSQLAlchemyURIPassword(sqlalchemyURI string, encryptionKey []byte) (string, error) {
-	parsedURI, err := parseSQLAlchemyURI(sqlalchemyURI)
-	if err != nil {
-		return "", err
-	}
-
-	if parsedURI.User == nil {
-		return parsedURI.String(), nil
-	}
-
-	username := parsedURI.User.Username()
-	password, hasPassword := parsedURI.User.Password()
-	if !hasPassword || password == "" {
-		return parsedURI.String(), nil
-	}
-
-	encryptedPassword, err := encryptField(password, encryptionKey)
-	if err != nil {
-		return "", domain.ErrDatabaseCredentialEncryption
-	}
-
-	parsedURI.User = url.UserPassword(username, encryptedPassword)
-	return parsedURI.String(), nil
-}
-
-func maskSQLAlchemyURI(sqlalchemyURI string) (string, error) {
-	parsedURI, err := parseSQLAlchemyURI(sqlalchemyURI)
-	if err != nil {
-		return "", err
-	}
-
-	if parsedURI.User == nil {
-		return parsedURI.String(), nil
-	}
-
-	username := parsedURI.User.Username()
-	_, hasPassword := parsedURI.User.Password()
-	if !hasPassword {
-		return parsedURI.String(), nil
-	}
-
-	parsedURI.User = url.UserPassword(username, "***")
-	maskedURI := parsedURI.String()
-	return strings.Replace(maskedURI, "%2A%2A%2A", "***", 1), nil
-}
-
 func sanitizeError(err error, sqlalchemyURI string) string {
 	if err == nil {
 		return ""
@@ -891,7 +785,7 @@ func sanitizeError(err error, sqlalchemyURI string) string {
 			message = strings.ReplaceAll(message, username+":"+password+"@", username+":***@")
 		}
 
-		maskedURI, maskErr := maskSQLAlchemyURI(sqlalchemyURI)
+		maskedURI, maskErr := crypto.MaskSQLAlchemyURI(sqlalchemyURI)
 		if maskErr == nil {
 			message = strings.ReplaceAll(message, sqlalchemyURI, maskedURI)
 		}
@@ -902,30 +796,16 @@ func sanitizeError(err error, sqlalchemyURI string) string {
 
 // EncryptSQLAlchemyURIPasswordForTest exposes URI password encryption for black-box tests.
 func EncryptSQLAlchemyURIPasswordForTest(sqlalchemyURI string, rawKey string) (string, error) {
-	key, err := parseDatabaseEncryptionKey(rawKey)
+	key, err := crypto.ParseEncryptionKey(rawKey)
 	if err != nil {
 		return "", err
 	}
-	return encryptSQLAlchemyURIPassword(sqlalchemyURI, key)
+	return crypto.EncryptSQLAlchemyURIPassword(sqlalchemyURI, key)
 }
 
-func encryptField(plainText string, encryptionKey []byte) (string, error) {
-	block, err := aes.NewCipher(encryptionKey)
-	if err != nil {
-		return "", err
+func encryptPasswordField(password string, encryptionKey []byte) (string, error) {
+	if password == "" {
+		return "", nil
 	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	cipherText := gcm.Seal(nil, nonce, []byte(plainText), nil)
-	combined := append(nonce, cipherText...)
-	return base64.StdEncoding.EncodeToString(combined), nil
+	return crypto.Encrypt(password, encryptionKey)
 }

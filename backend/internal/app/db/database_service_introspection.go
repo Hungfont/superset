@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"strings"
 
+	"superset/auth-service/internal/pkg/crypto"
+
 	domain "superset/auth-service/internal/domain/db"
 )
 
 func (s *DatabaseService) ListSchemas(ctx context.Context, actorUserID uint, databaseID uint, forceRefresh bool, rateLimitKey string) ([]string, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
 	if databaseID == 0 {
 		return nil, domain.ErrInvalidDatabase
 	}
@@ -47,9 +46,6 @@ func (s *DatabaseService) ListSchemas(ctx context.Context, actorUserID uint, dat
 }
 
 func (s *DatabaseService) ListTables(ctx context.Context, actorUserID uint, databaseID uint, req domain.ListDatabaseTablesRequest, forceRefresh bool, rateLimitKey string) (*domain.DatabaseTableListResponse, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
 	if databaseID == 0 {
 		return nil, domain.ErrInvalidDatabase
 	}
@@ -95,9 +91,6 @@ func (s *DatabaseService) ListTables(ctx context.Context, actorUserID uint, data
 }
 
 func (s *DatabaseService) ListColumns(ctx context.Context, actorUserID uint, databaseID uint, req domain.ListDatabaseColumnsRequest, forceRefresh bool, rateLimitKey string) ([]domain.DatabaseColumn, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
 	if databaseID == 0 {
 		return nil, domain.ErrInvalidDatabase
 	}
@@ -162,7 +155,7 @@ func (s *DatabaseService) loadDatabaseConnectionForIntrospection(ctx context.Con
 		return nil, err
 	}
 
-	decryptedURI, err := decryptSQLAlchemyURIPassword(database.SQLAlchemyURI, s.encryptionKey)
+	decryptedURI, err := crypto.DecryptSQLAlchemyURIPassword(database.SQLAlchemyURI, s.encryptionKey)
 	if err != nil {
 		return nil, mapSchemaIntrospectionError(err)
 	}

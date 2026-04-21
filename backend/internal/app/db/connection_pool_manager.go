@@ -8,6 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"superset/auth-service/internal/pkg/crypto"
+
+	domain "superset/auth-service/internal/domain/db"
+
 	"golang.org/x/sync/singleflight"
 )
 
@@ -59,6 +63,7 @@ type DatabaseConnectionPool interface {
 // ConnectionPoolManager provides lazy init, singleflight protection, and health checks.
 type ConnectionPoolManager struct {
 	opener         SQLConnectionOpener
+	encryptionKey []byte
 	maxOpenConns   int
 	maxIdleConns   int
 	connMaxLife    time.Duration
@@ -72,14 +77,20 @@ type ConnectionPoolManager struct {
 	stopCh   chan struct{}
 }
 
-func NewConnectionPoolManager(opener SQLConnectionOpener, config ConnectionPoolManagerConfig) *ConnectionPoolManager {
+func NewConnectionPoolManager(opener SQLConnectionOpener, config ConnectionPoolManagerConfig, encryptionKey string) (*ConnectionPoolManager, error) {
 	resolvedOpener := opener
 	if resolvedOpener == nil {
 		resolvedOpener = defaultSQLConnectionOpener{}
 	}
 
+	parsedKey, err := crypto.ParseEncryptionKey(encryptionKey)
+	if err != nil {
+		return nil, domain.ErrDatabaseCredentialEncryption
+	}
+
 	manager := &ConnectionPoolManager{
 		opener:         resolvedOpener,
+		encryptionKey: parsedKey,
 		maxOpenConns:   resolveInt(config.MaxOpenConns, poolManagerDefaultMaxOpenConns),
 		maxIdleConns:   resolveInt(config.MaxIdleConns, poolManagerDefaultMaxIdleConns),
 		connMaxLife:    resolveDuration(config.ConnMaxLifetime, poolManagerDefaultConnMaxLifetime),
@@ -90,7 +101,7 @@ func NewConnectionPoolManager(opener SQLConnectionOpener, config ConnectionPoolM
 
 	go manager.healthMonitor()
 
-	return manager
+	return manager, nil
 }
 
 func (m *ConnectionPoolManager) Get(ctx context.Context, databaseID uint, sqlalchemyURI string) (SQLConnection, error) {
@@ -108,7 +119,12 @@ func (m *ConnectionPoolManager) Get(ctx context.Context, databaseID uint, sqlalc
 			return existing.(SQLConnection), nil
 		}
 
-		parsedURI, parseErr := parseSQLAlchemyURI(sqlalchemyURI)
+		decryptedURI, decryptErr := crypto.DecryptSQLAlchemyURIPassword(sqlalchemyURI, m.encryptionKey)
+		if decryptErr != nil {
+			return nil, decryptErr
+		}
+
+		parsedURI, parseErr := crypto.ParseSQLAlchemyURI(decryptedURI)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -118,7 +134,7 @@ func (m *ConnectionPoolManager) Get(ctx context.Context, databaseID uint, sqlalc
 			return nil, resolveErr
 		}
 
-		connection, openErr := m.opener.Open(driverName, sqlalchemyURI)
+		connection, openErr := m.opener.Open(driverName, decryptedURI)
 		if openErr != nil {
 			return nil, openErr
 		}

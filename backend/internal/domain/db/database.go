@@ -6,6 +6,7 @@ import "time"
 type Database struct {
 	ID              uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	DatabaseName    string    `gorm:"column:database_name;uniqueIndex;not null" json:"database_name"`
+	Password        string    `gorm:"column:password" json:"password"`
 	SQLAlchemyURI   string    `gorm:"column:sqlalchemy_uri;not null" json:"sqlalchemy_uri"`
 	AllowDML        bool      `gorm:"column:allow_dml;default:false" json:"allow_dml"`
 	ExposeInSQLLab  bool      `gorm:"column:expose_in_sqllab;default:false" json:"expose_in_sqllab"`
@@ -22,6 +23,7 @@ func (Database) TableName() string { return "dbs" }
 type CreateDatabaseRequest struct {
 	DatabaseName    string `json:"database_name" binding:"required,max=128"`
 	SQLAlchemyURI   string `json:"sqlalchemy_uri" binding:"required"`
+	Password        string `gorm:"column:password" json:"password"`
 	AllowDML        bool   `json:"allow_dml"`
 	ExposeInSQLLab  bool   `json:"expose_in_sqllab"`
 	AllowRunAsync   bool   `json:"allow_run_async"`

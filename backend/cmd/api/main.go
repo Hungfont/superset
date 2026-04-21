@@ -123,13 +123,15 @@ func main() {
 
 	poolConfig := svcdb.ConnectionPoolManagerConfig{
 		MaxOpenConns:    10,
-		MaxIdleConns:     3,
+		MaxIdleConns:    3,
 		ConnMaxLifetime: 30 * time.Minute,
 		HealthInterval:  60 * time.Second,
-		PingTimeout:      5 * time.Second,
+		PingTimeout:     5 * time.Second,
 	}
-	poolManager := svcdb.NewConnectionPoolManager(nil, poolConfig)
-	schemaInspector := svcdb.NewDefaultSchemaInspector()
+	poolManager, err := svcdb.NewConnectionPoolManager(nil, poolConfig, cfg.DB.CredentialsEncryptionKey)
+	if err != nil {
+		log.Fatal("failed to create pool manager:", err)
+	}
 	columnSyncRepo := worker.NewDatasetRepoWrapper(datasetRepo, databaseRepo)
 
 	registerSvc := svcauth.NewRegisterService(registerRepo, mailer, cfg.App.BaseURL)
@@ -152,7 +154,7 @@ func main() {
 	}
 	databaseSvc.SetSchemaCache(schemaCacheRepo)
 
-	columnSyncWorker := worker.NewColumnSyncWorker(redisClient, columnSyncRepo, poolManager, schemaInspector)
+	columnSyncWorker := worker.NewColumnSyncWorker(redisClient, columnSyncRepo, databaseSvc, poolManager)
 	columnSyncWorker.Start()
 	if err := permissionSvc.SeedDefaults(context.Background()); err != nil {
 		log.Fatalf("failed to seed permission views: %v", err)

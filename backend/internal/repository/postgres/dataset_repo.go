@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -560,7 +561,7 @@ func (r *datasetRepo) DeleteDataset(ctx context.Context, id uint) error {
 func (r *datasetRepo) CountChartsByDatasetID(ctx context.Context, datasetID uint) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Table("slices").
-		Where("datasource_id = ?", datasetID).
+		Where("datasource_id = ?", strconv.FormatUint(uint64(datasetID), 10)).
 		Count(&count).Error
 	if err != nil {
 		return 0, fmt.Errorf("counting charts: %w", err)

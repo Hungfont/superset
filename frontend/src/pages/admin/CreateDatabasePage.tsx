@@ -40,6 +40,7 @@ function maskSQLAlchemyURI(sqlalchemyURI: string): string {
 function toCreatePayload(values: CreateDatabaseFormValues): CreateDatabasePayload {
   return {
     database_name: values.database_name,
+    password: values.password,
     sqlalchemy_uri: buildSQLAlchemyURI(values),
     allow_dml: values.allow_dml,
     expose_in_sqllab: values.expose_in_sqllab,
@@ -52,6 +53,7 @@ function toCreatePayload(values: CreateDatabaseFormValues): CreateDatabasePayloa
 function toUpdatePayload(values: UpdateDatabaseFormValues): UpdateDatabasePayload {
   const payload: UpdateDatabasePayload = {
     database_name: values.database_name,
+    password: values.password,
     allow_dml: values.allow_dml,
     expose_in_sqllab: values.expose_in_sqllab,
     allow_run_async: values.allow_run_async,

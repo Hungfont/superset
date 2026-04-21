@@ -7,6 +7,7 @@ interface ApiEnvelope<T> {
 
 export interface CreateDatabasePayload {
   database_name: string;
+  password: string;
   sqlalchemy_uri: string;
   allow_dml: boolean;
   expose_in_sqllab: boolean;
@@ -17,6 +18,7 @@ export interface CreateDatabasePayload {
 
 export interface UpdateDatabasePayload {
   database_name?: string;
+  password?: string;
   sqlalchemy_uri?: string;
   allow_dml?: boolean;
   expose_in_sqllab?: boolean;

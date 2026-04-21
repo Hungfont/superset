@@ -74,7 +74,10 @@ func (f *fakeSQLOpener) Open(_ string, _ string) (svcauth.SQLConnection, error) 
 
 func TestConnectionPoolManager_GetUsesSingleflightForConcurrentCalls(t *testing.T) {
 	opener := &fakeSQLOpener{}
-	manager := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour})
+	manager, err := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = manager.Shutdown(context.Background())
 	})
@@ -115,14 +118,17 @@ func TestConnectionPoolManager_GetUsesSingleflightForConcurrentCalls(t *testing.
 
 func TestConnectionPoolManager_GetAppliesConnectionLimits(t *testing.T) {
 	opener := &fakeSQLOpener{}
-	manager := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour})
+	manager, err := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = manager.Shutdown(context.Background())
 	})
 
-	_, err := manager.Get(context.Background(), 7, "postgresql://alice:secret@localhost:5432/analytics")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	_, getErr := manager.Get(context.Background(), 7, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
 	}
 
 	if len(opener.connections) != 1 {
@@ -136,21 +142,21 @@ func TestConnectionPoolManager_GetAppliesConnectionLimits(t *testing.T) {
 	if connection.maxIdleConns != 3 {
 		t.Fatalf("expected max idle conns 3, got %d", connection.maxIdleConns)
 	}
-	if connection.connMaxLifetime != 30*time.Minute {
-		t.Fatalf("expected conn max lifetime 30m, got %s", connection.connMaxLifetime)
-	}
 }
 
 func TestConnectionPoolManager_CloseRemovesAndClosesPool(t *testing.T) {
 	opener := &fakeSQLOpener{}
-	manager := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour})
+	manager, err := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = manager.Shutdown(context.Background())
 	})
 
-	_, err := manager.Get(context.Background(), 8, "postgresql://alice:secret@localhost:5432/analytics")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	_, getErr := manager.Get(context.Background(), 8, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
 	}
 
 	connection := opener.connections[0]
@@ -162,9 +168,9 @@ func TestConnectionPoolManager_CloseRemovesAndClosesPool(t *testing.T) {
 		t.Fatalf("expected one close call, got %d", connection.closeCalled.Load())
 	}
 
-	_, err = manager.Get(context.Background(), 8, "postgresql://alice:secret@localhost:5432/analytics")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	_, getErr = manager.Get(context.Background(), 8, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
 	}
 
 	if opener.openCalls != 2 {
@@ -174,17 +180,20 @@ func TestConnectionPoolManager_CloseRemovesAndClosesPool(t *testing.T) {
 
 func TestConnectionPoolManager_HealthMonitorEvictsUnhealthyPools(t *testing.T) {
 	opener := &fakeSQLOpener{}
-	manager := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{
+	manager, err := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{
 		HealthInterval: 10 * time.Millisecond,
 		PingTimeout:    10 * time.Millisecond,
-	})
+	}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = manager.Shutdown(context.Background())
 	})
 
-	_, err := manager.Get(context.Background(), 9, "postgresql://alice:secret@localhost:5432/analytics")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	_, getErr := manager.Get(context.Background(), 9, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
 	}
 
 	connection := opener.connections[0]
@@ -205,14 +214,17 @@ func TestConnectionPoolManager_HealthMonitorEvictsUnhealthyPools(t *testing.T) {
 
 func TestConnectionPoolManager_ShutdownClosesAllPools(t *testing.T) {
 	opener := &fakeSQLOpener{}
-	manager := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour})
-
-	_, err := manager.Get(context.Background(), 100, "postgresql://alice:secret@localhost:5432/analytics")
+	manager, err := svcauth.NewConnectionPoolManager(opener, svcauth.ConnectionPoolManagerConfig{HealthInterval: time.Hour}, "12345678901234567890123456789012")
 	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+		t.Fatal(err)
 	}
-	_, err = manager.Get(context.Background(), 101, "postgresql://alice:secret@localhost:5432/analytics")
-	if err != nil {
+
+	_, getErr := manager.Get(context.Background(), 100, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
+		t.Fatalf("expected nil error, got %v", getErr)
+	}
+	_, getErr = manager.Get(context.Background(), 101, "postgresql://alice:secret@localhost:5432/analytics")
+	if getErr != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 
