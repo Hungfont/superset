@@ -274,10 +274,6 @@ func (s *DatabaseService) SetSchemaCache(cache domain.SchemaCacheRepository) {
 }
 
 func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, req domain.CreateDatabaseRequest) (*domain.DatabaseDetail, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
-
 	normalizedReq, strictTest, err := normalizeCreateDatabaseRequest(req)
 	if err != nil {
 		return nil, err
@@ -421,10 +417,6 @@ func (s *DatabaseService) GetDatabase(ctx context.Context, actorUserID uint, dat
 }
 
 func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, databaseID uint, req domain.UpdateDatabaseRequest) (*domain.DatabaseDetail, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return nil, err
-	}
-
 	if databaseID == 0 {
 		return nil, domain.ErrInvalidDatabase
 	}
@@ -511,10 +503,6 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 }
 
 func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, databaseID uint) error {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return err
-	}
-
 	if databaseID == 0 {
 		return domain.ErrInvalidDatabase
 	}
@@ -546,10 +534,6 @@ func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, 
 }
 
 func (s *DatabaseService) TestConnection(ctx context.Context, actorUserID uint, req domain.TestDatabaseConnectionRequest, rateLimitKey string) (domain.TestConnectionResult, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return domain.TestConnectionResult{}, err
-	}
-
 	sqlalchemyURI := strings.TrimSpace(req.SQLAlchemyURI)
 	if sqlalchemyURI == "" {
 		return domain.TestConnectionResult{}, domain.ErrInvalidDatabaseURI
@@ -563,10 +547,6 @@ func (s *DatabaseService) TestConnection(ctx context.Context, actorUserID uint, 
 }
 
 func (s *DatabaseService) TestConnectionByID(ctx context.Context, actorUserID uint, databaseID uint, rateLimitKey string) (domain.TestConnectionResult, error) {
-	if err := s.ensureAdmin(ctx, actorUserID); err != nil {
-		return domain.TestConnectionResult{}, err
-	}
-
 	database, err := s.repo.GetDatabaseByID(ctx, databaseID)
 	if err != nil {
 		return domain.TestConnectionResult{}, err
@@ -610,17 +590,6 @@ func (s *DatabaseService) runProbeWithRateLimit(ctx context.Context, sqlalchemyU
 	}
 
 	return result, nil
-}
-
-func (s *DatabaseService) ensureAdmin(ctx context.Context, actorUserID uint) error {
-	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
-	if err != nil {
-		return fmt.Errorf("checking admin role: %w", err)
-	}
-	if !isAdmin {
-		return domain.ErrForbidden
-	}
-	return nil
 }
 
 func (s *DatabaseService) resolveVisibilityScope(ctx context.Context, actorUserID uint) (domain.DatabaseVisibilityScope, error) {
