@@ -120,12 +120,17 @@ type SqlMetric struct {
 	VerboseName          string    `gorm:"column:verbose_name" json:"verbose_name,omitempty"`
 	MetricType           string    `gorm:"column:metric_type;not null" json:"metric_type"`
 	Expression           string    `gorm:"column:expression;not null" json:"expression"`
-	D3Format             string    `gorm:"column:d3_format" json:"d3_format,omitempty"`
+	Description          string    `gorm:"column:description" json:"description,omitempty"`
+	D3Format             string    `gorm:"column:d3format" json:"d3_format,omitempty"`
 	WarningText          string    `gorm:"column:warning_text" json:"warning_text,omitempty"`
 	IsRestricted         bool      `gorm:"column:is_restricted;default:false" json:"is_restricted"`
+	Extra                string    `gorm:"column:extra" json:"extra,omitempty"`
 	CertifiedBy          string    `gorm:"column:certified_by" json:"certified_by,omitempty"`
 	CertificationDetails string    `gorm:"column:certification_details" json:"certification_details,omitempty"`
 	CreatedOn            time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
+	ChangedOn            time.Time `gorm:"column:changed_on;autoCreateTime" json:"changed_on"`
+	CreatedByFK          uint      `gorm:"column:created_by_fk" json:"created_by_fk"`
+	ChangedByFK          uint      `gorm:"column:changed_by_fk" json:"changed_by_fk"`
 }
 
 func (SqlMetric) TableName() string { return "sql_metrics" }
@@ -233,9 +238,11 @@ type CreateMetricRequest struct {
 	VerboseName          string `json:"verbose_name"`
 	MetricType           string `json:"metric_type" binding:"required"`
 	Expression           string `json:"expression" binding:"required"`
+	Description         string `json:"description"`
 	D3Format             string `json:"d3_format"`
 	WarningText          string `json:"warning_text"`
 	IsRestricted         bool   `json:"is_restricted"`
+	Extra                string `json:"extra"`
 	CertifiedBy          string `json:"certified_by"`
 	CertificationDetails string `json:"certification_details"`
 }
@@ -346,3 +353,54 @@ type SyncResult struct {
 	DeactivatedColumns int `json:"deactivated_columns"`
 	UpdatedColumns  int `json:"updated_columns"`
 }
+
+const (
+	MetricTypeSum          = "SUM"
+	MetricTypeCount        = "COUNT"
+	MetricTypeAverage      = "AVG"
+	MetricTypeMax         = "MAX"
+	MetricTypeMin         = "MIN"
+	MetricTypeCountDistinct = "COUNT_DISTINCT"
+	MetricTypeCustom    = "CUSTOM"
+)
+
+var aggregateFunctions = map[string]bool{
+	"sum":           true,
+	"count":         true,
+	"avg":           true,
+	"average":       true,
+	"max":           true,
+	"min":           true,
+	"array_agg":     true,
+	"bool_and":      true,
+	"bool_or":       true,
+	"every":         true,
+	"count_distinct": true,
+	"string_agg":    true,
+	"json_agg":      true,
+	"jsonb_agg":     true,
+	"json_object_agg": true,
+	"jsonb_object_agg": true,
+}
+
+var metricTypeToFunction = map[string]string{
+	MetricTypeSum:          "SUM()",
+	MetricTypeCount:        "COUNT(*)",
+	MetricTypeAverage:      "AVG()",
+	MetricTypeMax:          "MAX()",
+	MetricTypeMin:          "MIN()",
+	MetricTypeCountDistinct: "COUNT(DISTINCT )",
+	MetricTypeCustom:       "",
+}
+
+var metricTypeToPattern = map[string]string{
+	MetricTypeSum:          "%s(%s)",
+	MetricTypeCount:        "COUNT(%s)",
+	MetricTypeAverage:      "AVG(%s)",
+	MetricTypeMax:         "MAX(%s)",
+	MetricTypeMin:         "MIN(%s)",
+	MetricTypeCountDistinct: "COUNT(DISTINCT %s)",
+	MetricTypeCustom:     "%s",
+}
+
+

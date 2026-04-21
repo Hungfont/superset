@@ -328,7 +328,7 @@ export default function EditDatasetPage() {
             <TabsContent value="columns">
               {datasetQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Loading columns...</p>
-              ) : datasetId && dataset?.table_columns?.length ? (
+              ) : datasetId && dataset?.table_columns !== undefined ? (
                 <ColumnsTab datasetId={datasetId} columns={dataset.table_columns} />
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
@@ -340,7 +340,7 @@ export default function EditDatasetPage() {
             <TabsContent value="metrics">
               {datasetQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Loading metrics...</p>
-              ) : datasetId && dataset?.sql_metrics?.length !== undefined ? (
+              ) : datasetId && dataset?.sql_metrics !== undefined ? (
                 <MetricsTab datasetId={datasetId} initialMetrics={dataset.sql_metrics} />
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">

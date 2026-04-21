@@ -470,7 +470,7 @@ func (r *datasetRepo) UpdateMetric(ctx context.Context, metricID uint, req domai
 		updates["expression"] = req.Expression
 	}
 	if req.D3Format != "" || req.D3Format == "" {
-		updates["d3_format"] = req.D3Format
+		updates["d3format"] = req.D3Format
 	}
 	if req.WarningText != "" || req.WarningText == "" {
 		updates["warning_text"] = req.WarningText

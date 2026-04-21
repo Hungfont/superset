@@ -662,11 +662,15 @@ func (s *Service) CreateMetric(ctx context.Context, actorUserID uint, datasetID 
 		VerboseName:         req.VerboseName,
 		MetricType:          req.MetricType,
 		Expression:          req.Expression,
+		Description:         req.Description,
 		D3Format:            req.D3Format,
 		WarningText:         req.WarningText,
 		IsRestricted:       req.IsRestricted,
+		Extra:               req.Extra,
 		CertifiedBy:         req.CertifiedBy,
 		CertificationDetails: req.CertificationDetails,
+		CreatedByFK:         actorUserID,
+		ChangedByFK:         actorUserID,
 	}
 
 	if err := s.repo.CreateMetric(ctx, &metric); err != nil {
