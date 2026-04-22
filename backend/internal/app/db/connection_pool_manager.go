@@ -63,7 +63,7 @@ type DatabaseConnectionPool interface {
 // ConnectionPoolManager provides lazy init, singleflight protection, and health checks.
 type ConnectionPoolManager struct {
 	opener         SQLConnectionOpener
-	encryptionKey []byte
+	encryptionKey  []byte
 	maxOpenConns   int
 	maxIdleConns   int
 	connMaxLife    time.Duration
@@ -90,7 +90,7 @@ func NewConnectionPoolManager(opener SQLConnectionOpener, config ConnectionPoolM
 
 	manager := &ConnectionPoolManager{
 		opener:         resolvedOpener,
-		encryptionKey: parsedKey,
+		encryptionKey:  parsedKey,
 		maxOpenConns:   resolveInt(config.MaxOpenConns, poolManagerDefaultMaxOpenConns),
 		maxIdleConns:   resolveInt(config.MaxIdleConns, poolManagerDefaultMaxIdleConns),
 		connMaxLife:    resolveDuration(config.ConnMaxLifetime, poolManagerDefaultConnMaxLifetime),

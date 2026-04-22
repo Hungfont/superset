@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"superset/auth-service/internal/pkg/crypto"
-
 	domain "superset/auth-service/internal/domain/db"
 )
 
@@ -155,16 +153,11 @@ func (s *DatabaseService) loadDatabaseConnectionForIntrospection(ctx context.Con
 		return nil, err
 	}
 
-	decryptedURI, err := crypto.DecryptSQLAlchemyURIPassword(database.SQLAlchemyURI, s.encryptionKey)
-	if err != nil {
-		return nil, mapSchemaIntrospectionError(err)
-	}
-
 	if s.poolManager == nil {
 		return nil, domain.ErrDatabaseUnreachable
 	}
 
-	connection, err := s.poolManager.Get(ctx, databaseID, decryptedURI)
+	connection, err := s.poolManager.Get(ctx, databaseID, database.SQLAlchemyURI)
 	if err != nil {
 		return nil, mapSchemaIntrospectionError(err)
 	}
