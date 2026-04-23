@@ -21,6 +21,7 @@ import (
 	httpauth "superset/auth-service/internal/delivery/http/auth"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
+	httpsrls "superset/auth-service/internal/delivery/http/rls"
 	"superset/auth-service/internal/domain/auth"
 	domaindataset "superset/auth-service/internal/domain/dataset"
 	domaindb "superset/auth-service/internal/domain/db"
@@ -112,6 +113,7 @@ func main() {
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	databaseRepo := repopostgres.NewDatabaseRepository(db)
 	datasetRepo := repopostgres.NewDatasetRepository(db)
+	rlsFilterRepo := repopostgres.NewRLSFilterRepository(db, redisClient)
 	schemaCacheRepo := reporedis.NewDatabaseSchemaCacheRepository(redisClient)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
@@ -172,6 +174,9 @@ func main() {
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
 	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
 
+	rlsSvc := svcauth.NewRLSService(rlsFilterRepo)
+	rlsHandler := httpsrls.NewHandler(rlsSvc)
+
 	router := delivery.NewRouter(
 		registerHandler,
 		verifyHandler,
@@ -184,6 +189,7 @@ func main() {
 		permissionHandler,
 		databaseHandler,
 		datasetHandler,
+		rlsHandler,
 		pubKey,
 		jwtRepo,
 		userRepo,

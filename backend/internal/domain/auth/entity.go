@@ -1,6 +1,10 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	datasetdomain "superset/auth-service/internal/domain/dataset"
+)
 
 // RegisterUser maps to ab_register_user — pending email verification.
 type RegisterUser struct {
@@ -224,4 +228,136 @@ type PermissionViewSeed struct {
 type PermissionTuple struct {
 	Action   string
 	Resource string
+}
+
+type RLSFilterType string
+
+const (
+	RLSFilterTypeRegular RLSFilterType = "Regular"
+	RLSFilterTypeBase   RLSFilterType = "Base"
+)
+
+type RLSFilter struct {
+	ID           uint          `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name        string       `gorm:"column:name;uniqueIndex;not null" json:"name"`
+	FilterType RLSFilterType `gorm:"column:filter_type;not null" json:"filter_type"`
+	Clause     string       `gorm:"column:clause;not null" json:"clause"`
+	GroupKey   string       `gorm:"column:group_key;default:''" json:"group_key"`
+	Description string    `gorm:"column:description" json:"description"`
+	CreatedByFK uint        `gorm:"column:created_by_fk" json:"created_by_fk"`
+	ChangedByFK uint        `gorm:"column:changed_by_fk" json:"changed_by_fk"`
+	CreatedOn  time.Time   `gorm:"column:created_on;autoCreateTime" json:"created_on"`
+	ChangedOn  time.Time   `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
+	Roles      []Role     `gorm:"many2many:rls_filter_roles" json:"roles"`
+	Tables     []RLSFilterTableJunction `gorm:"foreignKey:RLSID;references:ID" json:"tables"`
+}
+
+func (RLSFilter) TableName() string { return "row_level_security_filters" }
+
+type RLSFilterRoleJunction struct {
+	ID     uint `gorm:"primaryKey;autoIncrement" json:"id"`
+	RLSID  uint `gorm:"column:rls_id;not null" json:"rls_id"`
+	RoleID uint `gorm:"column:role_id;not null" json:"role_id"`
+}
+
+func (RLSFilterRoleJunction) TableName() string { return "rls_filter_roles" }
+
+type RLSFilterTableJunction struct {
+	ID              uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	RLSID           uint   `gorm:"column:rls_id;not null" json:"rls_id"`
+	DatasourceID   uint   `gorm:"column:datasource_id;not null" json:"datasource_id"`
+	DatasourceType string `gorm:"column:datasource_type;not null" json:"datasource_type"`
+	Table           string `gorm:"column:table_name;not null" json:"table_name"`
+	DbName         string `gorm:"column:database_name;not null" json:"database_name"`
+}
+
+func (RLSFilterTableJunction) TableName() string { return "rls_filter_tables" }
+
+func FromDataset(ds *datasetdomain.Dataset, rlsID uint) RLSFilterTableJunction {
+	return RLSFilterTableJunction{
+		RLSID:           rlsID,
+		DatasourceID:   ds.ID,
+		DatasourceType: "table",
+		Table:        ds.Name,
+		DbName:       ds.Schema,
+	}
+}
+
+type RLSAuditEventType string
+
+const (
+	RLSAuditEventFilterCreated RLSAuditEventType = "filter_created"
+	RLSAuditEventFilterUpdated RLSAuditEventType = "filter_updated"
+	RLSAuditEventFilterDeleted RLSAuditEventType = "filter_deleted"
+)
+
+type RLSAuditLog struct {
+	ID          uint           `gorm:"primaryKey;autoIncrement" json:"id"`
+	FilterID   uint           `gorm:"column:rls_id;not null" json:"rls_id"`
+	FilterName string         `gorm:"column:rls_name;not null" json:"rls_name"`
+	EventType RLSAuditEventType `gorm:"column:event_type;not null" json:"event_type"`
+	OldValue   string         `gorm:"column:old_value" json:"old_value"`
+	NewValue   string         `gorm:"column:new_value" json:"new_value"`
+	ChangedBy  uint           `gorm:"column:changed_by;not null" json:"changed_by"`
+	IPAddress  string         `gorm:"column:ip_address" json:"ip_address"`
+	CreatedOn  time.Time      `gorm:"column:created_on;autoCreateTime" json:"created_on"`
+}
+
+func (RLSAuditLog) TableName() string { return "rls_audit_log" }
+
+type CreateRLSFilterRequest struct {
+	Name        string `json:"name" binding:"required,max=255"`
+	FilterType string `json:"filter_type" binding:"required,oneof=Regular Base"`
+	Clause     string `json:"clause" binding:"required,max=5000"`
+	GroupKey   string `json:"group_key"`
+	Description string `json:"description"`
+	RoleIDs    []uint `json:"role_ids" binding:"required,min=1"`
+	TableIDs   []uint `json:"table_ids" binding:"required,min=1"`
+}
+
+type UpdateRLSFilterRequest struct {
+	Name        string `json:"name" binding:"max=255"`
+	FilterType string `json:"filter_type" binding:"oneof=Regular Base"`
+	Clause     string `json:"clause" binding:"max=5000"`
+	GroupKey   string `json:"group_key"`
+	Description string `json:"description"`
+	RoleIDs    []uint `json:"role_ids"`
+	TableIDs  []uint `json:"table_ids"`
+}
+
+type RLSFilterTableInfo struct {
+	DatasourceID   uint   `json:"datasource_id"`
+	DatasourceType string `json:"datasource_type"`
+	TableName     string `json:"table_name"`
+	DatabaseName string `json:"database_name"`
+}
+
+type RLSFilterResponse struct {
+	ID           uint               `json:"id"`
+	Name        string             `json:"name"`
+	FilterType string             `json:"filter_type"`
+	Clause     string             `json:"clause"`
+	GroupKey   string             `json:"group_key"`
+	Description string           `json:"description"`
+	Roles      []Role             `json:"roles"`
+	Tables     []RLSFilterTableInfo `json:"tables"`
+	CreatedBy  uint               `json:"created_by"`
+	CreatedOn  time.Time         `json:"created_on"`
+	ChangedOn  time.Time         `json:"changed_on"`
+}
+
+type RLSFilterListParams struct {
+	Page        int    `form:"page"`
+	PageSize   int    `form:"page_size"`
+	Q          string `form:"q"`
+	FilterType string `form:"filter_type"`
+	RoleID    uint   `form:"role_id"`
+	DatasourceID uint `form:"datasource_id"`
+}
+
+type RLSFilterListResult struct {
+	Total  int64               `json:"total"`
+	Page   int                `json:"page"`
+	Pages int                `json:"pages"`
+	Data  []RLSFilterResponse `json:"data"`
 }

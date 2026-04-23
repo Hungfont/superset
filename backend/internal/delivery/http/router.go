@@ -6,6 +6,7 @@ import (
 	httpauth "superset/auth-service/internal/delivery/http/auth"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
+	httpsrls "superset/auth-service/internal/delivery/http/rls"
 	"superset/auth-service/internal/delivery/http/middleware"
 	domain "superset/auth-service/internal/domain/auth"
 
@@ -25,6 +26,7 @@ func NewRouter(
 	permissionHandler *httpauth.PermissionHandler,
 	databaseHandler *httpdb.DatabaseHandler,
 	datasetHandler *httpdataset.Handler,
+	rlsHandler *httpsrls.Handler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -109,6 +111,16 @@ func NewRouter(
 				admin.GET("/permission-views", require("can_read", "PermissionView"), permissionHandler.ListPermissionViews)
 				admin.POST("/permission-views", permissionHandler.CreatePermissionView)
 				admin.DELETE("/permission-views/:id", permissionHandler.DeletePermissionView)
+
+				rls := admin.Group("/rls")
+				rls.Use(middleware.AuthorizeAdminRole(roleRepo))
+				{
+					rls.GET("", rlsHandler.List)
+					rls.GET("/:id", rlsHandler.Get)
+					rls.POST("", rlsHandler.Create)
+					rls.PUT("/:id", rlsHandler.Update)
+					rls.DELETE("/:id", rlsHandler.Delete)
+				}
 			}
 		}
 	}

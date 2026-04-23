@@ -190,3 +190,12 @@ type PermissionRepository interface {
 
 	SeedPermissionViews(ctx context.Context, seeds []PermissionViewSeed) error
 }
+
+type RLSFilterRepository interface {
+	List(ctx context.Context, params RLSFilterListParams) ([]RLSFilterResponse, int64, error)
+	GetByID(ctx context.Context, id uint) (*RLSFilter, error)
+	Create(ctx context.Context, actorUserID uint, req CreateRLSFilterRequest) (*RLSFilterResponse, error)
+	Update(ctx context.Context, actorUserID uint, id uint, req UpdateRLSFilterRequest) (*RLSFilterResponse, error)
+	Delete(ctx context.Context, actorUserID uint, id uint) error
+	GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error)
+}

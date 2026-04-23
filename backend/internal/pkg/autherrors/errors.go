@@ -86,3 +86,8 @@ var (
 	ErrMetricNotFound      = errors.New("metric not found")
 	ErrNoAggregateFunction = errors.New("expression must contain an aggregate function")
 )
+
+// Sentinel errors for general cases.
+var (
+	ErrNotFound = errors.New("not found")
+)
