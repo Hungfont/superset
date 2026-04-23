@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface AuthUser {
   id: number;
@@ -18,25 +19,37 @@ interface AuthState {
   setRefreshTimer: (timer: ReturnType<typeof setTimeout> | null) => void;
 }
 
-export const useAuthStore = create<AuthState>()((set, get) => ({
-  user: null,
-  accessToken: null,
-  isAuthenticated: false,
-  refreshTimer: null,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+      refreshTimer: null,
 
-  setAuth: (user, accessToken) => {
-    const prev = get().refreshTimer;
-    if (prev !== null) clearTimeout(prev);
-    set({ user, accessToken, isAuthenticated: true, refreshTimer: null });
-  },
+      setAuth: (user, accessToken) => {
+        const prev = get().refreshTimer;
+        if (prev !== null) clearTimeout(prev);
+        set({ user, accessToken, isAuthenticated: true, refreshTimer: null });
+      },
 
-  clearAuth: () => {
-    const prev = get().refreshTimer;
-    if (prev !== null) clearTimeout(prev);
-    set({ user: null, accessToken: null, isAuthenticated: false, refreshTimer: null });
-  },
+      clearAuth: () => {
+        const prev = get().refreshTimer;
+        if (prev !== null) clearTimeout(prev);
+        set({ user: null, accessToken: null, isAuthenticated: false, refreshTimer: null });
+      },
 
-  setAccessToken: (accessToken) => set({ accessToken }),
+      setAccessToken: (accessToken) => set({ accessToken }),
 
-  setRefreshTimer: (timer) => set({ refreshTimer: timer }),
-}));
+      setRefreshTimer: (timer) => set({ refreshTimer: timer }),
+    }),
+    {
+      name: "auth-storage",
+      partialize: (state) => ({
+        user: state.user,
+        accessToken: state.accessToken,
+        isAuthenticated: state.isAuthenticated,
+      }),
+    }
+  )
+);

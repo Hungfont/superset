@@ -112,8 +112,8 @@ export default function RLSFiltersPage() {
   });
 
   const { data: datasetsData } = useQuery<DatasetListResponse>({
-    queryKey: ["datasets", { page: 1, page_size: 1000 }],
-    queryFn: () => datasetsApi.getDatasets({ page: 1, page_size: 1000 }),
+    queryKey: ["datasets", { page: 1, page_size: 100 }],
+    queryFn: () => datasetsApi.getDatasets({ page: 1, page_size: 100 }),
     staleTime: 60000,
   });
 
