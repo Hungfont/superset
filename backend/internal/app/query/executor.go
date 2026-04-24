@@ -406,9 +406,11 @@ func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo auth.RLSFilterRepository
 		rdb:         rdb,
 	}
 
+	// Connect RLS injector to real repository with Redis cache
 	if rlsInjector != nil && rdb != nil {
 		repoAdapter := &rlsRepoAdapter{
 			rlsRepo: rlsRepo,
+			rdb:    rdb,
 		}
 		executor.rlsInjector = NewRLSInjectorWithRedis(repoAdapter, rdb)
 	}
@@ -418,6 +420,7 @@ func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo auth.RLSFilterRepository
 
 type rlsRepoAdapter struct {
 	rlsRepo auth.RLSFilterRepository
+	rdb    *redis.Client
 }
 
 func (a *rlsRepoAdapter) GetFiltersByDatasourceAndRoles(ctx context.Context, datasourceID int, roleNames []string) ([]RLSFilterClause, error) {
@@ -434,9 +437,14 @@ func (a *rlsRepoAdapter) GetFiltersByDatasourceAndRoles(ctx context.Context, dat
 		}
 	}
 
+	// Call real repository to fetch RLS filters from database
 	filters, err := a.rlsRepo.GetFiltersByDatasourceAndRoles(ctx, uint(datasourceID), roleIDs)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(filters) == 0 {
+		return nil, nil
 	}
 
 	clauses := make([]RLSFilterClause, len(filters))
@@ -452,11 +460,36 @@ func (a *rlsRepoAdapter) GetFiltersByDatasourceAndRoles(ctx context.Context, dat
 }
 
 func (a *rlsRepoAdapter) CacheGet(ctx context.Context, key string) ([]RLSFilterClause, error) {
-	return nil, nil
+	if a.rdb == nil {
+		return nil, nil
+	}
+
+	data, err := a.rdb.Get(ctx, "rls:"+key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var clauses []RLSFilterClause
+	if err := json.Unmarshal(data, &clauses); err != nil {
+		return nil, err
+	}
+	return clauses, nil
 }
 
 func (a *rlsRepoAdapter) CacheSet(ctx context.Context, key string, clauses []RLSFilterClause) error {
-	return nil
+	if a.rdb == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(clauses)
+	if err != nil {
+		return err
+	}
+	// Cache RLS clauses for 5 minutes
+	return a.rdb.Set(ctx, "rls:"+key, data, 5*time.Minute).Err()
 }
 
 type ExecuteRequest struct {
