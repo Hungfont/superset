@@ -11,3 +11,13 @@ export const rlsFilterSchema = z.object({
 });
 
 export type RLSFilterFormValues = z.infer<typeof rlsFilterSchema>;
+
+export const DEFAULT_FORM_VALUES: RLSFilterFormValues = {
+     name: "",
+      filter_type: "Regular",
+      clause: "",
+      group_key: "",
+      description: "",
+      role_ids: [],
+      table_ids: [],
+}

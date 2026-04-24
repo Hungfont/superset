@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Pencil, Plus, Shield, Trash2, Users, Table, Search } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
-import { z } from "zod";
 
 import { rlsFiltersApi, type RLSFilter, type CreateRLSFilterRequest } from "@/api/rlsFilters";
 import { rolesApi } from "@/api/roles";
@@ -68,7 +67,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RLSFilterFormValues, rlsFilterSchema } from "@/lib/validations/rls";
+import { DEFAULT_FORM_VALUES, RLSFilterFormValues, rlsFilterSchema } from "@/lib/validations/rls";
 
 
 const columnHelper = createColumnHelper<RLSFilter>();
@@ -80,23 +79,15 @@ export default function RLSFiltersPage() {
   const [page] = useState(1);
   const pageSize = 20;
 
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<RLSFilter | null>(null);
   const [deleteFilterId, setDeleteFilterId] = useState<number | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [selectedTables, setSelectedTables] = useState<number[]>([]);
+  const [isUpsertOpen, setIsUpsertOpen] = useState(false);
 
   const form = useForm<RLSFilterFormValues>({
     resolver: zodResolver(rlsFilterSchema),
-    defaultValues: {
-      name: "",
-      filter_type: "Regular",
-      clause: "",
-      group_key: "",
-      description: "",
-      role_ids: [],
-      table_ids: [],
-    },
+    defaultValues: DEFAULT_FORM_VALUES,
   });
 
   const { data: filtersData, isLoading: filtersLoading } = useQuery({
@@ -122,7 +113,7 @@ export default function RLSFiltersPage() {
     onSuccess: () => {
       sonnerToast("Filter created successfully");
       queryClient.invalidateQueries({ queryKey: ["rls-filters"] });
-      setDialogOpen(false);
+      setIsUpsertOpen(false);
       form.reset();
     },
     onError: (error: Error) => {
@@ -135,7 +126,7 @@ export default function RLSFiltersPage() {
     onSuccess: () => {
       sonnerToast("Filter updated successfully");
       queryClient.invalidateQueries({ queryKey: ["rls-filters"] });
-      setDialogOpen(false);
+      setIsUpsertOpen(false);
       setEditingFilter(null);
       form.reset();
     },
@@ -309,7 +300,7 @@ export default function RLSFiltersPage() {
     });
     setSelectedRoles(filter.roles?.map((r) => r.id) || []);
     setSelectedTables(filter.tables?.map((t) => t.datasource_id) || []);
-    setDialogOpen(true);
+    setIsUpsertOpen(true);
   };
 
   const handleCreate = () => {
@@ -325,12 +316,12 @@ export default function RLSFiltersPage() {
     });
     setSelectedRoles([]);
     setSelectedTables([]);
-    setDialogOpen(true);
+    setIsUpsertOpen(true);
   };
 
   const onSubmit = (data: RLSFilterFormValues) => {
     if (editingFilter) {
-      updateMutation.mutate({ id: editingFilter.id, ...data });
+      updateMutation.mutate({ id: editingFilter?.id, ...data });
     } else {
       createMutation.mutate(data);
     }
@@ -431,7 +422,13 @@ export default function RLSFiltersPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={isUpsertOpen} onOpenChange={(open) => {
+        setIsUpsertOpen(open);
+            if (!open) {
+              setEditingFilter(null);
+              form.reset({ name: "" });
+            }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
