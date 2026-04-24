@@ -198,4 +198,5 @@ type RLSFilterRepository interface {
 	Update(ctx context.Context, actorUserID uint, id uint, req UpdateRLSFilterRequest) (*RLSFilterResponse, error)
 	Delete(ctx context.Context, actorUserID uint, id uint) error
 	GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error)
+	GetFiltersByDatasourceAndRoles(ctx context.Context, datasourceID uint, roleIDs []uint) ([]RLSFilter, error)
 }

@@ -17,11 +17,13 @@ import (
 	svcauth "superset/auth-service/internal/app/auth"
 	svcdataset "superset/auth-service/internal/app/dataset"
 	svcdb "superset/auth-service/internal/app/db"
+	svcquery "superset/auth-service/internal/app/query"
 	delivery "superset/auth-service/internal/delivery/http"
 	httpauth "superset/auth-service/internal/delivery/http/auth"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
+	httpquery "superset/auth-service/internal/delivery/http/query"
 	"superset/auth-service/internal/domain/auth"
 	domaindataset "superset/auth-service/internal/domain/dataset"
 	domaindb "superset/auth-service/internal/domain/db"
@@ -172,10 +174,14 @@ func main() {
 	userRoleHandler := httpauth.NewUserRoleHandler(userRoleSvc)
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
-	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc)
 
 	rlsSvc := svcauth.NewRLSService(rlsFilterRepo)
 	rlsHandler := httpsrls.NewHandler(rlsSvc)
+
+	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, redisClient)
+	queryHandler := httpquery.NewHandler(queryExecutor)
+
+	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, queryExecutor)
 
 	router := delivery.NewRouter(
 		registerHandler,
@@ -190,6 +196,7 @@ func main() {
 		databaseHandler,
 		datasetHandler,
 		rlsHandler,
+		queryHandler,
 		pubKey,
 		jwtRepo,
 		userRepo,

@@ -60,6 +60,10 @@ type refreshDatasetService interface {
 	RefreshDataset(ctx context.Context, actorUserID uint, datasetID uint) (*domain.RefreshDatasetResponse, error)
 }
 
+type flushCacheService interface {
+	FlushCache(ctx context.Context, datasetID uint) (int64, error)
+}
+
 // Handler handles /api/v1/datasets endpoints.
 type Handler struct {
 	svcPhysical     createPhysicalDatasetService
@@ -73,9 +77,10 @@ type Handler struct {
 	svcUpdateMetrics  updateMetricService
 	svcDelete      deleteDatasetService
 	svcRefresh    refreshDatasetService
+	svcFlushCache flushCacheService
 }
 
-func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService, svcDelete deleteDatasetService, svcRefresh refreshDatasetService) *Handler {
+func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtualDatasetService, svcList listDatasetsService, svcGet getDatasetService, svcUpdate updateDatasetService, svcUpdateCol updateColumnService, svcMetrics getMetricsService, svcCreateMetric createMetricService, svcUpdateMetrics updateMetricService, svcDelete deleteDatasetService, svcRefresh refreshDatasetService, svcFlushCache flushCacheService) *Handler {
 	return &Handler{
 		svcPhysical:     svcPhysical,
 		svcVirtual:      svcVirtual,
@@ -88,6 +93,7 @@ func NewHandler(svcPhysical createPhysicalDatasetService, svcVirtual createVirtu
 		svcUpdateMetrics: svcUpdateMetrics,
 		svcDelete:       svcDelete,
 		svcRefresh:      svcRefresh,
+		svcFlushCache:   svcFlushCache,
 	}
 }
 
@@ -471,6 +477,29 @@ func (h *Handler) RefreshDataset(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"data": result})
+}
+
+func (h *Handler) FlushCache(c *gin.Context) {
+	_, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrTokenInvalid.Error()})
+		return
+	}
+
+	idParam := c.Param("id")
+	var id uint
+	if _, err := fmt.Sscanf(idParam, "%d", &id); err != nil || id == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrDatasetNotFound.Error()})
+		return
+	}
+
+	deleted, err := h.svcFlushCache.FlushCache(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cache flush failed", "detail": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "keys_deleted": deleted})
 }
 
 func (h *Handler) handleError(c *gin.Context, err error) {

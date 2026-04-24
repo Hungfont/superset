@@ -7,6 +7,7 @@ import (
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
+	httpquery "superset/auth-service/internal/delivery/http/query"
 	"superset/auth-service/internal/delivery/http/middleware"
 	domain "superset/auth-service/internal/domain/auth"
 
@@ -27,6 +28,7 @@ func NewRouter(
 	databaseHandler *httpdb.DatabaseHandler,
 	datasetHandler *httpdataset.Handler,
 	rlsHandler *httpsrls.Handler,
+	queryHandler *httpquery.Handler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -70,6 +72,7 @@ func NewRouter(
 			protected.DELETE("/datasets/:id/metrics/:metric_id", datasetHandler.DeleteMetric)
 			protected.DELETE("/datasets/:id", datasetHandler.DeleteDataset)
 			protected.POST("/datasets/:id/refresh", datasetHandler.RefreshDataset)
+			protected.POST("/datasets/:id/cache/flush", datasetHandler.FlushCache)
 
 			admin := protected.Group("/admin")
 			{
@@ -121,6 +124,8 @@ func NewRouter(
 					rls.PUT("/:id", rlsHandler.Update)
 					rls.DELETE("/:id", rlsHandler.Delete)
 				}
+
+				protected.POST("/query/execute", queryHandler.Execute)
 			}
 		}
 	}

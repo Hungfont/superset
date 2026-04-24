@@ -375,6 +375,27 @@ func (r *rlsFilterRepo) GetRoleNamesByUser(ctx context.Context, userID uint) ([]
 	return roles, nil
 }
 
+func (r *rlsFilterRepo) GetFiltersByDatasourceAndRoles(ctx context.Context, datasourceID uint, roleIDs []uint) ([]domain.RLSFilter, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+
+	var filters []domain.RLSFilter
+	err := r.db.WithContext(ctx).
+		Table("row_level_security_filters rls").
+		Joins("JOIN rls_filter_roles rfr ON rfr.rls_id = rls.id").
+		Joins("JOIN rls_filter_tables rft ON rft.rls_id = rls.id").
+		Where("rfr.role_id IN ?", roleIDs).
+		Where("rft.datasource_id = ?", datasourceID).
+		Preload("Roles").
+		Preload("Tables").
+		Find(&filters).Error
+	if err != nil {
+		return nil, fmt.Errorf("getting RLS filters: %w", err)
+	}
+	return filters, nil
+}
+
 func (r *rlsFilterRepo) bustCache(ctx context.Context, tx *gorm.DB, filterID uint) error {
 	var dsIDs []uint
 	if err := tx.Table("rls_filter_tables").Where("rls_id = ?", filterID).Pluck("datasource_id", &dsIDs).Error; err != nil {
