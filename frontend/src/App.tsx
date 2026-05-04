@@ -19,6 +19,7 @@ import EditDatasetPage from "@/pages/datasets/EditDatasetPage";
 import DatasetsPage from "@/pages/admin/DatasetsPage";
 import RLSFiltersPage from "@/pages/security/RLSFiltersPage";
 import SQLLabPage from "@/pages/sqllab/SQLLabPage";
+import ExplorePage from "@/pages/explore/ExplorePage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -36,6 +37,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/sqllab" element={<SQLLabPage />} />
+          <Route path="/explore" element={<ExplorePage />} />
         </Route>
 
         {/* Admin routes (authorization enforced by backend APIs) */}

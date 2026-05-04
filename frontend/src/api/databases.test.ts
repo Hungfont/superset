@@ -44,6 +44,7 @@ describe("databasesApi", () => {
 
     const result = await databasesApi.testConnection({
       database_name: "analytics",
+      password: "",
       sqlalchemy_uri: "postgresql://alice:secret@localhost:5432/analytics",
       allow_dml: false,
       expose_in_sqllab: true,
@@ -77,6 +78,7 @@ describe("databasesApi", () => {
 
     const created = await databasesApi.createDatabase({
       database_name: "analytics",
+      password: "secret",
       sqlalchemy_uri: "postgresql://alice:secret@localhost:5432/analytics",
       allow_dml: false,
       expose_in_sqllab: true,
@@ -99,6 +101,7 @@ describe("databasesApi", () => {
 
     await databasesApi.testConnection({
       database_name: "analytics",
+      password: "",
       sqlalchemy_uri: "postgresql://alice:secret@localhost:5432/analytics",
       allow_dml: false,
       expose_in_sqllab: true,

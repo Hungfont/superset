@@ -49,6 +49,38 @@ main.tsx
       -> Toaster
 ```
 
+## API Calling Conventions
+
+### Two HTTP clients:
+- **`request`** (`utils/request.ts`): Simple fetch wrapper for public/unauthenticated endpoints. Does not add Authorization header.
+- **`apiFetch`** (`lib/api/client.ts`): Adds Bearer token automatically, handles token refresh. Use for authenticated endpoints.
+
+### Pattern for new API files:
+```typescript
+import { request } from "@/utils/request";
+import { useAuthStore } from "@/stores/authStore";
+
+function getAuthHeaders(contentType = false): HeadersInit {
+  const accessToken = useAuthStore.getState().accessToken;
+  return {
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
+export const myApi = {
+  fetch: () => request("/api/endpoint", {
+    method: "GET",
+    credentials: "include",
+    headers: getAuthHeaders(),
+  }),
+};
+```
+
+### When to use which:
+- Use **`request`** when you need manual control over headers or don't need auth.
+- Use **`apiFetch`** for most authenticated API calls (auto-bearer + refresh).
+
 ## State and API
 
 ```

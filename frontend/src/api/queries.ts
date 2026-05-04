@@ -1,4 +1,7 @@
-import { apiFetch } from "@/lib/api/client";
+import { request } from "@/utils/request";
+import { useAuthStore } from "@/stores/authStore";
+
+
 
 export interface QueryColumn {
   name: string;
@@ -32,18 +35,71 @@ export interface ExecuteQueryResponse {
   query: QueryMeta;
 }
 
+// Async query types
+export interface SubmitQueryRequest {
+  database_id: number;
+  sql: string;
+  limit?: number;
+  schema?: string;
+  client_id?: string;
+  force_refresh?: boolean;
+}
+
+export interface SubmitQueryResponse {
+  query_id: string;
+  status: string;
+  queue: string;
+}
+
+export interface QueryStatusResponse {
+  query_id: string;
+  status: string;
+  start_time?: string;
+  end_time?: string;
+  rows: number;
+  results_key?: string;
+  error?: string;
+  elapsed_ms: number;
+}
+
+function getAuthHeaders(contentType = false): HeadersInit {
+  const accessToken = useAuthStore.getState().accessToken;
+  return {
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
 export const queriesApi = {
   execute: (data: ExecuteQueryRequest): Promise<ExecuteQueryResponse> =>
-    apiFetch("/api/v1/query/execute", {
+    request("/api/v1/query/execute", {
       method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
       body: JSON.stringify(data),
     }),
 
-  getStatus: (queryId: string): Promise<{ status: string; progress?: number }> =>
-    apiFetch(`/api/v1/query/${queryId}/status`, { method: "GET" }),
+  submit: (data: SubmitQueryRequest): Promise<SubmitQueryResponse> =>
+    request("/api/v1/query/submit", {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(data),
+    }),
+
+  getStatus: (queryId: string): Promise<QueryStatusResponse> =>
+    request(`/api/v1/query/${queryId}/status`, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    }),
 
   cancel: (queryId: string): Promise<{ status: string }> =>
-    apiFetch(`/api/v1/query/${queryId}`, { method: "DELETE" }),
+    request(`/api/v1/query/${queryId}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    }),
 
   getHistory: (params?: {
     status?: string;
@@ -65,11 +121,19 @@ export const queriesApi = {
         }
       });
     }
-    return apiFetch(`/api/v1/query/history?${searchParams}`, { method: "GET" });
+    return request(`/api/v1/query/history?${searchParams}`, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    });
   },
 
   getResult: (
     queryId: string
   ): Promise<{ data: Record<string, unknown>[]; columns: QueryColumn[]; rows: number }> =>
-    apiFetch(`/api/v1/query/${queryId}/result`, { method: "GET" }),
+    request(`/api/v1/query/${queryId}/result`, {
+      method: "GET",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    }),
 };

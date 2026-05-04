@@ -6,9 +6,9 @@ import (
 	httpauth "superset/auth-service/internal/delivery/http/auth"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
-	httpsrls "superset/auth-service/internal/delivery/http/rls"
-	httpquery "superset/auth-service/internal/delivery/http/query"
 	"superset/auth-service/internal/delivery/http/middleware"
+	httpquery "superset/auth-service/internal/delivery/http/query"
+	httpsrls "superset/auth-service/internal/delivery/http/rls"
 	domain "superset/auth-service/internal/domain/auth"
 
 	"github.com/gin-gonic/gin"
@@ -126,6 +126,10 @@ func NewRouter(
 				}
 
 				protected.POST("/query/execute", queryHandler.Execute)
+				protected.POST("/query/submit", queryHandler.Submit)
+				protected.GET("/query/:id/status", queryHandler.GetStatus)
+				protected.GET("/query/:id/result", queryHandler.GetResult)
+				protected.DELETE("/query/:id", queryHandler.Cancel)
 			}
 		}
 	}

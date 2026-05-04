@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,15 +12,27 @@ import (
 	"strings"
 	"time"
 
-	"superset/auth-service/internal/domain/auth"
+	"github.com/google/uuid"
+	dbpool "superset/auth-service/internal/app/db"
+	authdomain "superset/auth-service/internal/domain/auth"
 	"superset/auth-service/internal/domain/dataset"
+	domdb "superset/auth-service/internal/domain/db"
+	"superset/auth-service/internal/domain/query"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	MaxCacheSize     = 10 * 1024 * 1024 // 10MB
+	MaxCacheSize    = 10 * 1024 * 1024 // 10MB
 	DefaultCacheTTL = 24 * time.Hour
+
+	// Role-based row limits (QE-001 #3)
+	RowLimitGamma = 10000
+	RowLimitAlpha = 100000
+	RowLimitAdmin = 10000000
+
+	// Query timeout (QE-001 #4)
+	QueryTimeout = 30 * time.Second
 )
 
 type RLSFilterClause struct {
@@ -391,26 +404,45 @@ func filterNonAdminRoles(roles []string) []string {
 	return result
 }
 
-type QueryExecutor struct {
-	rlsInjector *RLSInjector
-	rlsRepo     auth.RLSFilterRepository
-	datasetRepo dataset.Repository
-	rdb         *redis.Client
+// getRowLimit returns the row limit based on user role
+func getRowLimit(roles []string) int {
+	for _, role := range roles {
+		if role == "Admin" {
+			return RowLimitAdmin
+		}
+		if role == "Alpha" {
+			return RowLimitAlpha
+		}
+	}
+	return RowLimitGamma
 }
 
-func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo auth.RLSFilterRepository, datasetRepo dataset.Repository, rdb *redis.Client) *QueryExecutor {
+type QueryExecutor struct {
+	rlsInjector      *RLSInjector
+	rlsRepo          authdomain.RLSFilterRepository
+	datasetRepo      dataset.Repository
+	databaseRepo     domdb.DatabaseRepository // For DB permission check (QE-001 #5)
+	queryRepo       query.Repository        // For query recording (QE-001)
+	rdb             *redis.Client
+	connectionPool  dbpool.DatabaseConnectionPool // Connection pool for query execution
+}
+
+func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo authdomain.RLSFilterRepository, datasetRepo dataset.Repository, databaseRepo domdb.DatabaseRepository, queryRepo query.Repository, rdb *redis.Client, connectionPool dbpool.DatabaseConnectionPool) *QueryExecutor {
 	executor := &QueryExecutor{
-		rlsInjector: rlsInjector,
-		rlsRepo:     rlsRepo,
-		datasetRepo: datasetRepo,
-		rdb:         rdb,
+		rlsInjector:      rlsInjector,
+		rlsRepo:          rlsRepo,
+		datasetRepo:      datasetRepo,
+		databaseRepo:     databaseRepo,
+		queryRepo:       queryRepo,
+		rdb:             rdb,
+		connectionPool:  connectionPool,
 	}
 
 	// Connect RLS injector to real repository with Redis cache
 	if rlsInjector != nil && rdb != nil {
 		repoAdapter := &rlsRepoAdapter{
 			rlsRepo: rlsRepo,
-			rdb:    rdb,
+			rdb:     rdb,
 		}
 		executor.rlsInjector = NewRLSInjectorWithRedis(repoAdapter, rdb)
 	}
@@ -419,8 +451,8 @@ func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo auth.RLSFilterRepository
 }
 
 type rlsRepoAdapter struct {
-	rlsRepo auth.RLSFilterRepository
-	rdb    *redis.Client
+	rlsRepo authdomain.RLSFilterRepository
+	rdb     *redis.Client
 }
 
 func (a *rlsRepoAdapter) GetFiltersByDatasourceAndRoles(ctx context.Context, datasourceID int, roleNames []string) ([]RLSFilterClause, error) {
@@ -492,44 +524,18 @@ func (a *rlsRepoAdapter) CacheSet(ctx context.Context, key string, clauses []RLS
 	return a.rdb.Set(ctx, "rls:"+key, data, 5*time.Minute).Err()
 }
 
-type ExecuteRequest struct {
-	DatabaseID   uint   `json:"database_id" binding:"required"`
-	SQL          string `json:"sql" binding:"required"`
-	Limit        *int   `json:"limit"`
-	Schema       string `json:"schema"`
-	ForceRefresh bool   `json:"force_refresh"`
-}
-
-type QueryResult struct {
-	Data       interface{} `json:"data"`
-	Columns    []string    `json:"columns"`
-	FromCache  bool        `json:"from_cache"`
-	Query      QueryMeta   `json:"query"`
-}
-
-type QueryMeta struct {
-	ExecutedSQL string    `json:"executed_sql"`
-	RLSApplied  bool      `json:"rls_applied"`
-	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time"`
-}
-
-type ExecuteResponse struct {
-	Data      interface{} `json:"data"`
-	Columns   []string    `json:"columns"`
-	FromCache bool        `json:"from_cache"`
-	Query     struct {
-		ExecutedSQL string    `json:"executed_sql"`
-		RLSApplied  bool      `json:"rls_applied"`
-		StartTime   time.Time `json:"start_time"`
-		EndTime     time.Time `json:"end_time"`
-	} `json:"query"`
+// cachedResult is the internal type for caching - uses domain ExecuteResponse.Query
+type cachedResult struct {
+	Data      interface{}        `json:"data"`
+	Columns   []query.ColumnInfo `json:"columns"`
+	FromCache bool             `json:"from_cache"`
+	Query    query.ExecuteMeta `json:"query"`
 }
 
 var (
 	singleLineCommentRE = regexp.MustCompile(`--[^\n]*`)
 	multiLineCommentRE  = regexp.MustCompile(`/\*[\s\S]*?\*/`)
-	whitespaceRE      = regexp.MustCompile(`\s+`)
+	whitespaceRE        = regexp.MustCompile(`\s+`)
 )
 
 func normalizeSQL(sql string) string {
@@ -606,11 +612,54 @@ func (e *QueryExecutor) FlushCache(ctx context.Context, dbID uint) (int64, error
 	return deleted, nil
 }
 
-func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx auth.UserContext) (*ExecuteResponse, error) {
+func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx authdomain.UserContext) (*ExecuteResponse, error) {
 	startTime := time.Now()
+
+	// Get user roles
 	roleNames, err := e.rlsRepo.GetRoleNamesByUser(ctx, userCtx.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting user roles: %w", err)
+	}
+
+	// QE-001 #5: Check database permission
+	db, err := e.databaseRepo.GetDatabaseByID(ctx, uint(req.DatabaseID))
+	if err != nil {
+		return nil, fmt.Errorf("database not found: %w", err)
+	}
+	if db == nil {
+		return nil, fmt.Errorf("database not found")
+	}
+	// Check: user is creator OR database exposes in sqllab
+	isCreator := db.CreatedByFK == userCtx.ID
+	if !isCreator && !db.ExposeInSQLLab {
+		return nil, fmt.Errorf("access denied to database")
+	}
+
+	// QE-001 #8: Client ID deduplication (check for existing running query)
+	if req.ClientID != "" && e.rdb != nil {
+		existingKey := "query:dedup:" + req.ClientID
+		existingStatus, err := e.rdb.Get(ctx, existingKey).Result()
+		if err == nil && existingStatus != "" {
+			// Return cached result if available
+			resultKey := "query:result:" + req.ClientID
+			resultData, err := e.rdb.Get(ctx, resultKey).Bytes()
+			if err == nil {
+				var result cachedResult
+				if err := json.Unmarshal(resultData, &result); err == nil {
+					return &ExecuteResponse{
+						Data:      result.Data,
+						Columns:   result.Columns,
+						FromCache: true,
+						Query: query.ExecuteMeta{
+							ExecutedSQL: req.SQL,
+							RLSApplied:  false,
+							StartTime:   startTime,
+							EndTime:     time.Now(),
+						},
+					}, nil
+				}
+			}
+		}
 	}
 
 	executedSQL, rlsClauses, err := e.rlsInjector.InjectRLSWithClauses(ctx, req.SQL, int(req.DatabaseID), roleNames, WithUserID(int(userCtx.ID)), WithUsername(userCtx.Username))
@@ -627,71 +676,242 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 	}
 
 	cacheTimeout := 0
-	if e.datasetRepo != nil {
-		ds, err := e.datasetRepo.GetDatasetByID(ctx, uint(req.DatabaseID))
-		if err == nil && ds != nil {
-			cacheTimeout = ds.CacheTimeout
-		}
+	ds, err := e.datasetRepo.GetDatasetByID(ctx, uint(req.DatabaseID))
+	if err == nil && ds != nil {
+		cacheTimeout = ds.CacheTimeout
 	}
 
 	if cacheTimeout == -1 || req.ForceRefresh {
-		return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false)
+		// QE-001 #2: Create query record with status="running"
+		var queryID string
+		if e.queryRepo != nil && req.ClientID != "" {
+			q := &query.Query{
+				ID:          uuid.New().String(),
+				ClientID:    req.ClientID,
+				DatabaseID:  req.DatabaseID,
+				UserID:      userCtx.ID,
+				SQL:         req.SQL,
+				ExecutedSQL: executedSQL,
+				Status:      "running",
+				StartTime:   &startTime,
+				Schema:      schema,
+			}
+			if err := e.queryRepo.Create(ctx, q); err != nil {
+				fmt.Printf("failed to create query record: %v\n", err)
+			} else {
+				queryID = q.ID
+			}
+		}
+		return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
 	}
 
-	if e.rdb != nil {
-		cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
-		if err != nil {
-			fmt.Printf("cache check error: %v\n", err)
-		} else if cacheHit {
-			var result QueryResult
-			if err := json.Unmarshal(cachedData, &result); err == nil {
-				result.Query.StartTime = startTime
-				result.Query.EndTime = time.Now()
-				return &ExecuteResponse{
-					Data:      result.Data,
-					Columns:   result.Columns,
-					FromCache: true,
-					Query: struct {
-						ExecutedSQL string    `json:"executed_sql"`
-						RLSApplied  bool      `json:"rls_applied"`
-						StartTime   time.Time `json:"start_time"`
-						EndTime     time.Time `json:"end_time"`
-					}{
-						ExecutedSQL: executedSQL,
-						RLSApplied:  rlsApplied,
-						StartTime:   startTime,
-						EndTime:     time.Now(),
-					},
-				}, nil
+	cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
+	if err != nil {
+		fmt.Printf("cache check error: %v\n", err)
+	} else if cacheHit {
+		var result cachedResult
+		if err := json.Unmarshal(cachedData, &result); err == nil {
+			rowCount := 0
+			if dataSlice, ok := result.Data.([]interface{}); ok {
+				rowCount = len(dataSlice)
 			}
+			return &ExecuteResponse{
+				Data:              result.Data,
+				Columns:           result.Columns,
+				FromCache:        true,
+				ResultsTruncated: false,
+				Query: query.ExecuteMeta{
+					ExecutedSQL: executedSQL,
+					RLSApplied:  rlsApplied,
+					Rows:       rowCount,
+					StartTime:   startTime,
+					EndTime:     time.Now(),
+				},
+			}, nil
 		}
 	}
 
-	return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false)
+	// QE-001 #2: Create query record with status="running"
+	var queryID string
+	if e.queryRepo != nil && req.ClientID != "" {
+		q := &query.Query{
+			ID:          uuid.New().String(),
+			ClientID:    req.ClientID,
+			DatabaseID:  req.DatabaseID,
+			UserID:      userCtx.ID,
+			SQL:         req.SQL,
+			ExecutedSQL: executedSQL,
+			Status:      "running",
+			StartTime:   &startTime,
+			Schema:      schema,
+		}
+		if err := e.queryRepo.Create(ctx, q); err != nil {
+			fmt.Printf("failed to create query record: %v\n", err)
+		} else {
+			queryID = q.ID
+		}
+	}
+
+	return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
 }
 
-func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteRequest, userCtx auth.UserContext, executedSQL string, rlsApplied bool, startTime time.Time, fromCache bool) (*ExecuteResponse, error) {
-	resultData := []interface{}{}
-	columns := []string{}
+func (e *QueryExecutor) executeSQL(ctx context.Context, databaseID uint, querySQL string) ([]interface{}, []string, int, error) {
+	dbInfo, err := e.databaseRepo.GetDatabaseByID(ctx, databaseID)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("getting database: %w", err)
+	}
 
-	result := QueryResult{
+	dbConn, err := sql.Open("postgres", dbInfo.SQLAlchemyURI)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("opening database connection: %w", err)
+	}
+	defer dbConn.Close()
+
+	rows, err := dbConn.QueryContext(ctx, querySQL)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("executing query: %w", err)
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("getting columns: %w", err)
+	}
+
+	var result []interface{}
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, nil, 0, fmt.Errorf("scanning row: %w", err)
+		}
+		result = append(result, values)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, nil, 0, fmt.Errorf("iterating rows: %w", err)
+	}
+
+	return result, columns, len(result), nil
+}
+
+func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteRequest, userCtx authdomain.UserContext, executedSQL string, rlsApplied bool, startTime time.Time, fromCache bool, roleNames []string, queryID string, rlsHash string) (*ExecuteResponse, error) {
+	// QE-001 #3: Apply role-based row limit
+	rowLimit := getRowLimit(roleNames)
+	effectiveLimit := rowLimit
+	if req.Limit != nil && *req.Limit < rowLimit {
+		effectiveLimit = *req.Limit
+	}
+
+	// Check if results will be truncated (user asked for more than role allows)
+	resultsTruncated := req.Limit != nil && *req.Limit > rowLimit
+
+	// Apply LIMIT to SQL
+	if effectiveLimit > 0 {
+		executedSQL = fmt.Sprintf("SELECT * FROM (%s) AS _sub LIMIT %d", executedSQL, effectiveLimit)
+	}
+
+	// QE-001 #4: Apply 30s timeout with proper context handling
+	execCtx, cancel := context.WithTimeout(ctx, QueryTimeout)
+	defer cancel()
+
+	var resultData []interface{}
+	var columns []string
+	var columnInfos []query.ColumnInfo
+	var rowCount int
+	var execErr error
+
+	// Actually execute the query using connection pool
+	if e.connectionPool != nil {
+		dbInfo, err := e.databaseRepo.GetDatabaseByID(ctx, uint(req.DatabaseID))
+		if err != nil {
+			return e.buildErrorResponse(execCtx, err, queryID, "getting database", 500)
+		}
+
+		conn, err := e.connectionPool.Get(execCtx, uint(req.DatabaseID), dbInfo.SQLAlchemyURI)
+		if err != nil {
+			return e.buildErrorResponse(execCtx, err, queryID, "getting connection", 500)
+		}
+
+		rows, err := conn.QueryContext(execCtx, executedSQL)
+		if err != nil {
+			// QE-001 #6: Handle SQL errors as 400 Bad Request
+			return e.buildErrorResponse(execCtx, err, queryID, "executing query", 400)
+		}
+		defer rows.Close()
+
+		cols, err := rows.Columns()
+		if err != nil {
+			return e.buildErrorResponse(execCtx, err, queryID, "getting columns", 500)
+		}
+		columns = cols
+
+		// Convert column names to ColumnInfo type
+		columnInfos := make([]query.ColumnInfo, len(cols))
+		for i, col := range cols {
+			columnInfos[i] = query.ColumnInfo{Name: col}
+		}
+
+		for rows.Next() {
+			values := make([]interface{}, len(columns))
+			valuePtrs := make([]interface{}, len(columns))
+			for i := range values {
+				valuePtrs[i] = &values[i]
+			}
+
+			if err := rows.Scan(valuePtrs...); err != nil {
+				return e.buildErrorResponse(execCtx, err, queryID, "scanning row", 500)
+			}
+			resultData = append(resultData, values)
+		}
+
+		if err := rows.Err(); err != nil {
+			return e.buildErrorResponse(execCtx, err, queryID, "iterating rows", 500)
+		}
+		rowCount = len(resultData)
+	} else {
+		// Fallback: use direct SQL connection if no pool
+		resultData, columns, rowCount, execErr = e.executeSQL(execCtx, req.DatabaseID, executedSQL)
+		if execErr != nil {
+			// Check if it's a timeout error (QE-001 #4)
+			if execCtx.Err() == context.DeadlineExceeded {
+				e.updateQueryStatus(ctx, queryID, "timed_out", 0)
+				return nil, &QueryError{Code: 408, Message: "Query exceeded 30s timeout"}
+			}
+			// Check for SQL syntax errors (QE-001 #6)
+			return e.buildErrorResponse(execCtx, execErr, queryID, "executing query", 400)
+		}
+
+		// Convert column names to ColumnInfo type
+		columnInfos = make([]query.ColumnInfo, len(columns))
+		for i, col := range columns {
+			columnInfos[i] = query.ColumnInfo{Name: col}
+		}
+	}
+
+	endTime := time.Now()
+
+	result := cachedResult{
 		Data:      resultData,
-		Columns:   columns,
+		Columns:   columnInfos,
 		FromCache: fromCache,
-		Query: QueryMeta{
+		Query: query.ExecuteMeta{
 			ExecutedSQL: executedSQL,
-			RLSApplied:  rlsApplied,
-			StartTime:   startTime,
-			EndTime:     time.Now(),
+			RLSApplied: rlsApplied,
+			Rows:      rowCount,
+			StartTime: startTime,
+			EndTime:   endTime,
 		},
 	}
 
+	// QE-003: Cache result if not from cache and result is small enough
 	if e.rdb != nil && !fromCache {
 		resultBytes, err := json.Marshal(result)
 		if err == nil && len(resultBytes) <= MaxCacheSize {
-			roleNames, _ := e.rlsRepo.GetRoleNamesByUser(ctx, userCtx.ID)
-			_, rlsClauses, _ := e.rlsInjector.InjectRLSWithClauses(ctx, req.SQL, int(req.DatabaseID), roleNames, WithUserID(int(userCtx.ID)), WithUsername(userCtx.Username))
-			rlsHash := computeRLSHash(rlsClauses)
 			normSQL := normalizeSQL(req.SQL)
 			schema := req.Schema
 			if schema == "" {
@@ -700,8 +920,8 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 
 			cacheTimeout := 0
 			if e.datasetRepo != nil {
-				ds, err := e.datasetRepo.GetDatasetByID(ctx, uint(req.DatabaseID))
-				if err == nil && ds != nil {
+				ds, _ := e.datasetRepo.GetDatasetByID(ctx, uint(req.DatabaseID))
+				if ds != nil {
 					cacheTimeout = ds.CacheTimeout
 				}
 			}
@@ -712,24 +932,15 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 		}
 	}
 
-	result.Query.StartTime = startTime
-	result.Query.EndTime = time.Now()
+	// QE-001 #4: Update query record with status, rows, end_time
+	e.updateQueryStatus(ctx, queryID, "success", rowCount)
 
 	return &ExecuteResponse{
-		Data:      result.Data,
-		Columns:   result.Columns,
-		FromCache: fromCache,
-		Query: struct {
-			ExecutedSQL string    `json:"executed_sql"`
-			RLSApplied  bool      `json:"rls_applied"`
-			StartTime   time.Time `json:"start_time"`
-			EndTime     time.Time `json:"end_time"`
-		}{
-			ExecutedSQL: executedSQL,
-			RLSApplied:  rlsApplied,
-			StartTime:   startTime,
-			EndTime:     result.Query.EndTime,
-		},
+		Data:              result.Data,
+		Columns:           result.Columns,
+		FromCache:        fromCache,
+		ResultsTruncated: resultsTruncated,
+		Query:           result.Query,
 	}, nil
 }
 
@@ -744,4 +955,67 @@ func computeRLSHash(clauses []RLSFilterClause) string {
 	sort.Strings(sortedClauses)
 	hash := sha256.Sum256([]byte(strings.Join(sortedClauses, "|")))
 	return hex.EncodeToString(hash[:])
+}
+
+// QueryError represents a query execution error with HTTP status code
+type QueryError struct {
+	Code    int
+	Message string
+}
+
+func (e *QueryError) Error() string {
+	return e.Message
+}
+
+// buildErrorResponse creates an error response and updates query status
+func (e *QueryExecutor) buildErrorResponse(ctx context.Context, err error, queryID string, operation string, statusCode int) (*ExecuteResponse, error) {
+	errMsg := err.Error()
+
+	// Update query status to failed
+	if queryID != "" {
+		e.updateQueryStatus(ctx, queryID, "failed", 0)
+	}
+
+	// Map common PostgreSQL errors to 400
+	if strings.Contains(errMsg, "syntax error at") ||
+		strings.Contains(errMsg, "42601") || // syntax_error
+		strings.Contains(errMsg, "42P01") || // undefined_table
+		strings.Contains(errMsg, "42703") || // undefined_column
+		strings.Contains(errMsg, "22P02") { // invalid_text_representation
+		return nil, &QueryError{
+			Code:    400,
+			Message: fmt.Sprintf("invalid_sql: %s", errMsg),
+		}
+	}
+
+	return nil, &QueryError{
+		Code:    statusCode,
+		Message: fmt.Sprintf("%s: %s", operation, errMsg),
+	}
+}
+
+// updateQueryStatus updates the query record in the database
+func (e *QueryExecutor) updateQueryStatus(ctx context.Context, queryID string, status string, rowCount int) {
+	if e.queryRepo == nil || queryID == "" {
+		return
+	}
+
+	q, err := e.queryRepo.GetByID(ctx, queryID)
+	if err != nil || q == nil {
+		return
+	}
+
+	q.Status = status
+	if status == "success" {
+		q.Rows = rowCount
+	}
+	now := time.Now()
+	q.EndTime = &now
+	if e.rdb != nil && rowCount > 0 {
+		q.ResultsKey = fmt.Sprintf("query:result:%s", queryID)
+	}
+
+	if err := e.queryRepo.Update(ctx, q); err != nil {
+		fmt.Printf("failed to update query status: %v\n", err)
+	}
 }

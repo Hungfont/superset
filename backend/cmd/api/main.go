@@ -27,6 +27,7 @@ import (
 	"superset/auth-service/internal/domain/auth"
 	domaindataset "superset/auth-service/internal/domain/dataset"
 	domaindb "superset/auth-service/internal/domain/db"
+	domainquery "superset/auth-service/internal/domain/query"
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
 	reporedis "superset/auth-service/internal/repository/redis"
@@ -66,6 +67,7 @@ func main() {
 		&auth.PermissionView{},
 		&domaindb.Database{},
 		&domaindataset.Dataset{},
+		&domainquery.Query{},
 	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
@@ -116,6 +118,7 @@ func main() {
 	databaseRepo := repopostgres.NewDatabaseRepository(db)
 	datasetRepo := repopostgres.NewDatasetRepository(db)
 	rlsFilterRepo := repopostgres.NewRLSFilterRepository(db, redisClient)
+	queryRepo := repopostgres.NewQueryRepository(db)
 	schemaCacheRepo := reporedis.NewDatabaseSchemaCacheRepository(redisClient)
 	rateRepo := reporedis.NewRateLimitRepository(redisClient)
 	jwtRepo := reporedis.NewJWTRepository(redisClient)
@@ -178,7 +181,7 @@ func main() {
 	rlsSvc := svcauth.NewRLSService(rlsFilterRepo)
 	rlsHandler := httpsrls.NewHandler(rlsSvc)
 
-	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, redisClient)
+	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
 	queryHandler := httpquery.NewHandler(queryExecutor)
 
 	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, queryExecutor)

@@ -651,7 +651,7 @@ export default function RLSFiltersPage() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIsUpsertOpen(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isFormLoading}>
