@@ -1,10 +1,10 @@
-<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~560 -->
+<!-- Generated: 2026-05-04 | Files scanned: 180 | Token estimate: ~620 -->
 
 # Data Codemap
 
 ## Postgres Entities (AutoMigrate)
 
-Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/api/main.go`
+Source: `backend/internal/domain/auth/entity.go` + `backend/internal/domain/dataset/dataset.go`, bootstrapped in `backend/cmd/api/main.go`
 
 ### `ab_register_user`
 
@@ -42,6 +42,31 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 - Purpose: role-to-permission_view join table used for assignment checks.
 - Key columns: `role_id`, `permission_view_id`.
 
+### `ab_database`
+
+- Purpose: configured database connections (connection string stored encrypted).
+- Key columns: `id`, `name`, `type`, `host`, `port`, `database`, `username`, `encrypted_password`, `extra`, `created_on`, `changed_on`.
+
+### `ab_dataset`
+
+- Purpose: virtual or physical datasets backed by databases.
+- Key columns: `id`, `uuid`, `database_id`, `schema`, `table_name`, `type` (physical/virtual), `sql`, `description`, `cache_timeout`, `created_on`, `changed_on`, `created_by`, `changed_by`, `workspace_id`.
+
+### `ab_dataset_column`
+
+- Purpose: column metadata for datasets.
+- Key columns: `id`, `dataset_id`, `column_name`, `type`, `is_dttm`, `is_inetrum`, `is_boolean`, `filter_select`, `filter_equals`, `enable_no_cache`, `python_date_format`, `json_data`.
+
+### `ab_dataset_metric`
+
+- Purpose: metrics defined on datasets.
+- Key columns: `id`, `dataset_id`, `metric_name`, `expression`, `description`, `metric_type`, `d3format`, `warning_markdown`.
+
+### `ab_rls_filter`
+
+- Purpose: Row-Level Security filter rules.
+- Key columns: `id`, `dataset_id`, `filter_type`, `group_key`, `user_key`, `clause`.
+
 ## Redis Key Spaces
 
 - `jwt:blacklist:<jti>`: revoked access-token JTIs.
@@ -55,6 +80,13 @@ Source: `backend/internal/domain/auth/entity.go`, bootstrapped in `backend/cmd/a
 - `schema:<dbID>:schemas`: cached schema list for one configured database (TTL 10 minutes).
 - `schema:<dbID>:<schema>:tables:<page>:<pageSize>`: cached paginated table list (TTL 10 minutes).
 - `schema:<dbID>:<schema>:<table>:columns`: cached column metadata list (TTL 10 minutes).
+- `dataset_sync:<datasetID>`: sync queue for dataset refresh (Redis list).
+- `dataset_async:<datasetID>`: async queue for background dataset operations (Redis list).
+- `query:<queryID>`: cached query results (TTL configurable).
+- `qcache:<cacheKey>`: query result cache (QE-003), 10MB max size, RLS hash + normalizeSQL as key, TTL from dataset config.
+- `queue:query:<priority>`: async query queue (QE-004), priority: critical/default/low based on user role.
+- `query:status:<queryID>`: async query status (pending/running/completed/failed/cancelled), pub/sub events.
+- `query:cancel:<queryID>`: async query cancellation request flag.
 
 ## Data Flow Summary
 
@@ -67,6 +99,10 @@ roles    -> read/write ab_role + invalidate Redis rbac:* namespace
 permissions/view-menus -> read/write ab_permission + ab_view_menu + invalidate Redis rbac:* namespace
 permission-views -> read/write ab_permission_view, join ab_permission + ab_view_menu for display names, check ab_permission_view_role usage, invalidate Redis rbac:* namespace
 database schema introspection -> read dbs (connection config), open/reuse pool, query external DB INFORMATION_SCHEMA, cache payload under schema:* keys, bypass cache when force_refresh=true (rate limited)
+datasets -> read/write ab_dataset + push to sync/async Redis queues for column/metric sync
+queries -> execute SQL against dataset's database, inject RLS filters, cache results (QE-003: qcache: prefix, 10MB max, force refresh bypasses cache)
+async queries -> submit to queue by priority (QE-004: Admin->critical, Alpha->default, Gamma->low), worker polls and processes, status via pub/sub, result retrieval via GET, cancellation via DELETE
+rls filters -> read/write ab_rls_filter, used in query execution pipeline
 ```
 
 ## Domain Types Used in API
@@ -79,6 +115,10 @@ database schema introspection -> read dbs (connection config), open/reuse pool, 
 - `Database`, `DatabaseDetail`, `DatabaseListItem`
 - `ListDatabaseTablesRequest`, `ListDatabaseColumnsRequest`
 - `DatabaseTable`, `DatabaseTableListResponse`, `DatabaseColumn`
+- `Dataset`, `DatasetDetail`, `DatasetListItem`, `CreateDatasetRequest`, `UpdateDatasetRequest`
+- `DatasetColumn`, `DatasetColumnUpdateRequest`, `BulkColumnUpdateRequest`
+- `DatasetMetric`, `CreateMetricRequest`, `UpdateMetricRequest`, `BulkMetricRequest`
+- `RLSFilter`, `CreateRLSFilterRequest`, `UpdateRLSFilterRequest`
 
 ## Extended Docs
 

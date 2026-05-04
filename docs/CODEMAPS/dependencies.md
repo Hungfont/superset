@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~610 -->
+<!-- Generated: 2026-05-04 | Files scanned: 180 | Token estimate: ~650 -->
 
 # Dependencies Codemap
 
@@ -17,6 +17,11 @@ Core runtime deps:
 Testing:
 
 - `github.com/stretchr/testify v1.11.1`.
+
+Additional runtime:
+
+- `database/sql`: built-in SQL driver interface.
+- `github.com/lib/pq`: Postgres driver (used via GORM).
 
 ## Frontend (`frontend/package.json`)
 
@@ -43,7 +48,8 @@ Tooling/test deps:
 ## External Services and Infra
 
 - PostgreSQL: primary relational store.
-- Redis: blocklist, refresh sessions, role cache, rate limiting.
+- Redis: blocklist, refresh sessions, role cache, rate limiting, dataset queues, query result cache.
+- External databases: connection via pool manager, query execution, schema introspection.
 - SMTP server: verification email delivery.
 
 ## Environment Contract
@@ -58,4 +64,5 @@ Tooling/test deps:
 
 - JWT correctness depends on valid RSA PEM env values at startup.
 - Redis availability impacts refresh/logout/rate-limiting and role caching.
+- External DB pools require careful lifecycle management to prevent connection leaks.
 - SMTP failures affect registration completion path.

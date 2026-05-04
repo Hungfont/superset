@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-14 | Files scanned: 120 | Token estimate: ~640 -->
+<!-- Generated: 2026-05-04 | Files scanned: 120 | Token estimate: ~780 -->
 
 # Frontend Codemap
 
@@ -14,20 +14,25 @@ Public
 /register/success                   -> RegisterSuccessPage
 /auth/verify                        -> VerifyPage
 
-Protected
+Protected (session required)
 /                                   -> HomePage
+/sqllab                            -> SQLLabPage
+/datasets                          -> ListDatasetsPage
+/datasets/new                      -> CreateDatasetPage
+/datasets/:id                      -> EditDatasetPage
 
-Admin area (session-protected in frontend; role enforced by backend APIs)
-/admin                              -> AdminLayout
-/admin/dashboard                    -> AdminDashboardPage
-/admin/settings/roles               -> RolesPage
-/admin/settings/roles/:id/permissions -> RolePermissionsPage
-/admin/settings/users               -> UsersPage
-/admin/settings/users/:id           -> UserRolesPage
-/admin/settings/databases           -> DatabasesPage
-/admin/settings/databases/new       -> CreateDatabasePage
-/admin/settings/databases/:id       -> EditDatabasePage
-/admin/settings/permissions         -> PermissionsPage
+Admin (role-checked in backend)
+* /admin                              -> AdminLayout
+* /admin/dashboard                    -> AdminDashboardPage
+* /admin/settings/roles               -> RolesPage
+* /admin/settings/roles/:id/permissions -> RolePermissionsPage
+* /admin/settings/users               -> UsersPage
+* /admin/settings/users/:id           -> UserRolesPage
+* /admin/settings/databases           -> DatabasesPage
+* /admin/settings/databases/new       -> CreateDatabasePage
+* /admin/settings/databases/:id       -> EditDatabasePage
+* /admin/settings/permissions         -> PermissionsPage
+* /admin/settings/rls                 -> RLSFiltersPage
 
 Fallback
 * -> redirect /login
@@ -51,14 +56,25 @@ stores/authStore.ts
   - auth/session state
   - login/logout/setSession style actions
 
+stores/sqlLabStore.ts
+  - SQL Lab query state
+  - query history, results cache
+  - from_cache badge display (QE-003)
+  - force refresh capability
+  - async query status polling (QE-004)
+
 hooks/useLogin.ts
 hooks/useRegister.ts
 hooks/useLogout.ts
 hooks/useTokenRefresh.ts
 hooks/useDatabaseIntrospection.ts
+hooks/useAsyncQuery.ts (QE-004)
+hooks/useLoading.ts
   - orchestrate API calls, redirects, and toasts
 
-api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.ts + api/databases.ts + utils/request.ts
+api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.ts + api/databases.ts + api/datasets.ts + api/queries.ts + api/rlsFilters.ts + utils/request.ts
+  - query execution with from_cache badge support (QE-003)
+  - async query submit/status/result/cancel (QE-004)
   - backend calls and request helpers
 ```
 
@@ -69,18 +85,28 @@ api/auth.ts + api/users.ts + api/userRoles.ts + api/roles.ts + api/permissions.t
 - `frontend/src/components/ProtectedRoute.tsx`: route guard.
 - `frontend/src/pages/auth/*`: login + verification views.
 - `frontend/src/pages/register/*`: registration + success flow.
-- `frontend/src/pages/admin/RolesPage.tsx`: AUTH-007 role CRUD screen.
+- `frontend/src/pages/home/HomePage.tsx`: main dashboard page.
+- `frontend/src/pages/sqllab/SQLLabPage.tsx`: SQL editor with query execution, from_cache badge (QE-003), async query support (QE-004).
+- `frontend/src/pages/datasets/*`: dataset list, create, edit pages.
+- `frontend/src/pages/security/RLSFiltersPage.tsx`: Row-Level Security filter management.
+- `frontend/src/pages/admin/RolesPage.tsx`: role CRUD screen.
 - `frontend/src/pages/admin/UsersPage.tsx`: admin user CRUD and deactivate screen.
-- `frontend/src/pages/admin/UserRolesPage.tsx`: AUTH-010 user-role assignment screen.
-- `frontend/src/pages/admin/PermissionsPage.tsx`: AUTH-008 permission/view-menu matrix screen.
+- `frontend/src/pages/admin/UserRolesPage.tsx`: user-role assignment screen.
+- `frontend/src/pages/admin/PermissionsPage.tsx`: permission/view-menu matrix screen.
 - `frontend/src/pages/admin/DatabasesPage.tsx`: database list, row actions, and delete confirmation.
-- `frontend/src/pages/admin/CreateDatabasePage.tsx`: DBC wizard with create/edit mode, connection test UX (spinner, result alerts, latency badge, error details, 429 toast), and cache invalidation after save.
-- `frontend/src/pages/admin/EditDatabasePage.tsx`: thin route wrapper that reuses `CreateDatabasePage` in edit mode.
-- `frontend/src/pages/admin/*`: admin dashboard and settings shell.
-- `frontend/src/api/databases.ts`: database API client (list/get/create/update/delete/testConnection/testConnectionById/getSchemas/getTables/getColumns).
-- `frontend/src/hooks/useDatabaseIntrospection.ts`: DBC-007 query hooks using TanStack Query keys `db-schemas`, `db-tables`, `db-columns` with stale time 10 minutes.
-- `frontend/src/utils/request.ts`: shared request helper with normalized errors and safe handling for 204 or empty/non-JSON responses.
+- `frontend/src/pages/admin/CreateDatabasePage.tsx`: database wizard with connection test and cache invalidation.
+- `frontend/src/pages/admin/EditDatabasePage.tsx`: thin route wrapper reusing CreateDatabasePage.
+- `frontend/src/pages/admin/AdminLayout.tsx`: admin area layout shell.
+- `frontend/src/pages/admin/AdminDashboardPage.tsx`: admin dashboard.
+- `frontend/src/api/databases.ts`: database API client.
+- `frontend/src/api/datasets.ts`: dataset CRUD + metrics API client.
+- `frontend/src/api/queries.ts`: query execution API client (sync + async: submit/status/result/cancel), cache flush.
+- `frontend/src/api/rlsFilters.ts`: RLS filter API client.
+- `frontend/src/hooks/useDatabaseIntrospection.ts`: schema introspection query hooks.
+- `frontend/src/hooks/useAsyncQuery.ts`: async query submission, status polling, result retrieval, cancellation (QE-004).
 - `frontend/src/stores/authStore.ts`: shared auth state.
+- `frontend/src/stores/sqlLabStore.ts`: SQL Lab state (queries, results, history).
+- `frontend/src/utils/request.ts`: shared request helper.
 - `frontend/src/test/setup.ts`: Vitest DOM setup.
 
 ## Build/Test Config

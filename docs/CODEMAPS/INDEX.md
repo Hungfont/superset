@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-14 | Files scanned: ~60 | Token estimate: ~300 -->
+<!-- Generated: 2026-05-04 | Files scanned: ~180 | Token estimate: ~350 -->
 
 # Codemaps Index
 
@@ -13,10 +13,15 @@ HLD: [docs/diagram/HLD.md](../diagram/HLD.md)
 | [backend.md](backend.md) | Go auth service — routes, layers, DI wiring |
 | [frontend.md](frontend.md) | React pages, hooks, stores, API client |
 | [data.md](data.md) | DB tables, Redis keys, domain entities |
-| [dependencies.md](dependencies.md) | Go modules, bun packages, external services |
+| [dependencies.md](dependencies.md) | Go modules, npm packages, external services |
 
 ## Current Scope
 
-The **Auth Service** is implemented (Phase 1), along with Phase 1 **Database Connection Service** endpoints (create/list/get/update/delete + test connection + schema introspection flows).  
-Schema introspection now includes `GET /api/v1/admin/databases/:id/schemas`, `GET /api/v1/admin/databases/:id/tables`, and `GET /api/v1/admin/databases/:id/columns` with Redis-backed metadata cache and force-refresh controls.
-Future services tracked in [docs/requirement/](../requirement/).
+The **Auth Service** (Phase 1) is complete, along with **Database Connection Service** (Phase 1) endpoints.
+
+Additional features implemented:
+- **Dataset Service**: virtual/physical datasets, columns, metrics, cache management
+- **Query Execution Service**: SQL query execution with RLS injection and result caching
+- **RLS (Row-Level Security)**: filter management for data access control
+
+See individual codemaps for detailed route maps and domain entities. Future services tracked in [docs/requirement/](../requirement/).
