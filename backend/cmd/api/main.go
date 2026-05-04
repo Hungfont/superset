@@ -182,7 +182,12 @@ func main() {
 	rlsHandler := httpsrls.NewHandler(rlsSvc)
 
 	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
-	queryHandler := httpquery.NewHandler(queryExecutor)
+	asyncQueryExecutor := svcquery.NewAsyncQueryExecutor(redisClient, queryRepo, rlsFilterRepo, datasetRepo, queryExecutor)
+	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor)
+
+	// Start query worker for async query processing
+	queryWorker := worker.NewQueryWorker(redisClient, queryExecutor, asyncQueryExecutor, worker.DefaultQueryWorkerConfig())
+	queryWorker.Start()
 
 	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, queryExecutor)
 

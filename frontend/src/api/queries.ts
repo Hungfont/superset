@@ -60,6 +60,7 @@ export interface QueryStatusResponse {
   results_key?: string;
   error?: string;
   elapsed_ms: number;
+  timeout_at?: string; // Unix timestamp when query will timeout (30s from start_time)
 }
 
 function getAuthHeaders(contentType = false): HeadersInit {

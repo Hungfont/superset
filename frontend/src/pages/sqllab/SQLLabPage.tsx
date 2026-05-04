@@ -136,6 +136,27 @@ export default function SQLLabPage() {
       const status = await queriesApi.getStatus(queryId);
       if (!activeTabId) return;
 
+      // Check for timeout (30s limit per QE-001)
+      if (status.timeout_at) {
+        const timeoutTime = new Date(status.timeout_at).getTime();
+        const now = Date.now();
+        if (now >= timeoutTime) {
+          // Query timed out
+          setTabError(activeTabId, "Query timed out after 30 seconds");
+          showSystemNotification("Query Timeout", "Your async query exceeded the 30 second timeout.");
+          
+          if (pollingTimeoutRef.current) {
+            clearTimeout(pollingTimeoutRef.current);
+          }
+          if (wsConnectionRef.current) {
+            wsConnectionRef.current.close();
+            wsConnectionRef.current = null;
+          }
+          clearAsyncState(activeTabId);
+          return;
+        }
+      }
+
       const mappedStatus: "pending" | "queued" | "running" | "done" | "failed" | "stopped" =
         status.status === "success" ? "done" :
         status.status === "failed" ? "failed" :

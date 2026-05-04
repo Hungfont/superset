@@ -44,6 +44,15 @@ Apply all five principles consistently:
 - **I — Interface Segregation**: Prefer narrow, focused interfaces over fat ones. Clients should not depend on methods they don't use — split large interfaces into role-specific ones.
 - **D — Dependency Inversion**: High-level modules depend on abstractions, not concretions. Both high-level and low-level modules depend on the same interface; low-level modules implement it.
 
+### DRY Principle
+
+Do not repeat yourself:
+
+- One source of truth for shared logic, schemas, and business rules
+- Extract common behavior into well-named helpers or modules when duplication appears
+- Avoid copy-paste with minor variations; parameterize or compose instead
+- Prefer shared validation and response formatting at boundaries to keep behavior consistent
+
 ### Dependency Injection (DI)
 
 Pass dependencies in rather than constructing them internally:

@@ -94,14 +94,15 @@ type AsyncSubmitResponse struct {
 
 // QueryStatusResponse represents the status of an async query
 type QueryStatusResponse struct {
-	QueryID    string    `json:"query_id"`
-	Status     string    `json:"status"`
-	StartTime  time.Time `json:"start_time,omitempty"`
-	EndTime    time.Time `json:"end_time,omitempty"`
-	Rows       int       `json:"rows"`
-	ResultsKey string    `json:"results_key,omitempty"`
-	Error      string    `json:"error,omitempty"`
-	ElapsedMs  int64     `json:"elapsed_ms"`
+	QueryID     string    `json:"query_id"`
+	Status      string    `json:"status"`
+	StartTime   time.Time `json:"start_time,omitempty"`
+	EndTime     time.Time `json:"end_time,omitempty"`
+	Rows        int       `json:"rows"`
+	ResultsKey  string    `json:"results_key,omitempty"`
+	Error       string    `json:"error,omitempty"`
+	ElapsedMs   int64     `json:"elapsed_ms"`
+	TimeoutAt   time.Time `json:"timeout_at,omitempty"` // Unix timestamp when query will timeout (30s from start_time)
 }
 
 // ListFilter defines filters for listing queries
