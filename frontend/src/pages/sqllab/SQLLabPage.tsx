@@ -136,11 +136,19 @@ export default function SQLLabPage() {
       const status = await queriesApi.getStatus(queryId);
       if (!activeTabId) return;
 
-      // Check for timeout (30s limit per QE-001)
+      // G-4 FIX: Check for timeout with proper validation
       if (status.timeout_at) {
         const timeoutTime = new Date(status.timeout_at).getTime();
         const now = Date.now();
-        if (now >= timeoutTime) {
+        // DEBUG: Log timeout values to help debug the issue
+        console.log("[QE-004 DEBUG] timeout_at:", status.timeout_at, "parsed:", timeoutTime, "isNaN:", isNaN(timeoutTime));
+        // Only trigger timeout if:
+        // 1. timeoutTime is a valid number (not NaN from invalid date)
+        // 2. The timeout was set to a reasonable future time (year >= 2020), not Go zero time
+        // 3. The timeout is actually in the past (now >= timeoutTime)
+        const isValidFutureTimeout = !isNaN(timeoutTime) && timeoutTime >= 1577836800000;
+        console.log("[QE-DEBUG] isValidFutureTimeout:", isValidFutureTimeout, "now:", now, "condition:", isValidFutureTimeout && now >= timeoutTime);
+        if (isValidFutureTimeout && now >= timeoutTime) {
           // Query timed out
           setTabError(activeTabId, "Query timed out after 30 seconds");
           showSystemNotification("Query Timeout", "Your async query exceeded the 30 second timeout.");

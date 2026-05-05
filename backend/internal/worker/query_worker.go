@@ -21,11 +21,12 @@ type QueryWorkerConfig struct {
 }
 
 // DefaultQueryWorkerConfig returns default configuration
+// G-2, G-3 FIX: Per QE-004 spec requires 20 workers for default queue, 10 for critical, 5 for low
 func DefaultQueryWorkerConfig() QueryWorkerConfig {
 	return QueryWorkerConfig{
 		PollInterval: 1 * time.Second,
-		WorkerCount:  5,
-		QueueKeys:    []string{"queue:query:critical", "queue:query:async", "queue:query:low"},
+		WorkerCount:  20, // Was: 5 - spec requires 20 for default queue
+		QueueKeys:    []string{"queue:query:critical", "queue:query:default", "queue:query:low"}, // Was: queue:query:async
 	}
 }
 

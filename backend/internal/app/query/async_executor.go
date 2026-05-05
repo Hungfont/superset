@@ -28,9 +28,11 @@ type QueryExecutorRunner interface {
 
 const (
 	// Queue keys for async query processing
-	queryQueueKey      = "queue:query:async"
-	queryQueueCritical = "queue:query:critical"
-	queryQueueLow      = "queue:query:low"
+	// FIX: Use correct queue keys matching worker config (queue:query:default, not queue:query:async)
+	queryQueueDefault   = "queue:query:default"  // Added for default/standard queue
+	queryQueueCritical = "queue:query:critical" // For Admin priority
+	queryQueueLow      = "queue:query:low"     // For Gamma/background
+	queryQueueKey     = "queue:query:default" // Legacy - use queryQueueDefault
 
 	// Status event channels
 	queryStatusChannel = "query:status:"
@@ -180,6 +182,7 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 		ForceRefresh: req.ForceRefresh,
 		UserID:       userCtx.ID,
 		Username:     userCtx.Username,
+		Roles:        roles, // G-5: include roles for queue routing
 	}
 
 	// Enqueue task using Redis LPush
@@ -258,7 +261,10 @@ func (e *AsyncQueryExecutor) GetStatus(ctx context.Context, queryID string, user
 		response.ElapsedMs = endTime.Sub(*q.StartTime).Milliseconds()
 
 		// Add timeout_at for async queries (30s from start_time)
-		if q.Status == "pending" || q.Status == "running" {
+		// FIX G-1: Only set timeout if StartTime is valid (not zero time) and status is pending/running
+		// Check StartTime is not a zero/empty time (year > 2020 indicates valid recent time)
+		isValidStartTime := !q.StartTime.IsZero() && q.StartTime.Year() > 2020
+		if isValidStartTime && (q.Status == "pending" || q.Status == "running") {
 			timeoutDuration := 30 * time.Second
 			timeoutAt := q.StartTime.Add(timeoutDuration)
 			response.TimeoutAt = timeoutAt
@@ -568,7 +574,7 @@ func resolveQueue(roles []string) string {
 	}
 	for _, role := range roles {
 		if role == "Alpha" {
-			return queryQueueKey
+			return queryQueueDefault // FIX: was queryQueueKey (wrong queue "queue:query:async")
 		}
 	}
 	return queryQueueLow
@@ -582,6 +588,30 @@ func isAdminRole(roles []string) bool {
 		}
 	}
 	return false
+}
+
+// isAlphaRole checks if user has Alpha role
+func isAlphaRole(roles []string) bool {
+	for _, role := range roles {
+		if role == "Alpha" {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveQueueForTask resolves the queue key based on user roles
+// Per QE-004 spec: Admin→critical, Alpha→default, Gamma→low
+func resolveQueueForTask(task *query.QueryTask) string {
+	if len(task.Roles) > 0 {
+		if isAdminRole(task.Roles) {
+			return queryQueueCritical
+		} else if isAlphaRole(task.Roles) {
+			return queryQueueDefault // Fixed G-3: was hardcoded to "queue:query:async"
+		}
+	}
+	// Default to low queue for Gamma and unknown roles
+	return queryQueueLow
 }
 
 // queueKeyToName converts a queue key to a human-readable name

@@ -64,15 +64,16 @@ type ExecuteMeta struct {
 
 // QueryTask represents a task to be processed by the async worker
 type QueryTask struct {
-	QueryID      string `json:"query_id"`
-	DatabaseID   uint   `json:"database_id"`
-	SQL          string `json:"sql"`
-	Limit        *int   `json:"limit"`
-	Schema       string `json:"schema"`
-	ClientID     string `json:"client_id"`
-	ForceRefresh bool   `json:"force_refresh"`
-	UserID       uint   `json:"user_id"`
-	Username     string `json:"username"`
+	QueryID      string   `json:"query_id"`
+	DatabaseID   uint     `json:"database_id"`
+	SQL          string   `json:"sql"`
+	Limit        *int     `json:"limit"`
+	Schema       string   `json:"schema"`
+	ClientID     string   `json:"client_id"`
+	ForceRefresh bool     `json:"force_refresh"`
+	UserID       uint     `json:"user_id"`
+	Username     string   `json:"username"`
+	Roles        []string `json:"roles"` // G-5: roles for queue routing (Admin→critical, Alpha→default, Gamma→low)
 }
 
 // AsyncSubmitRequest represents a request to submit an async query
