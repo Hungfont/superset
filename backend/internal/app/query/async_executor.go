@@ -18,6 +18,14 @@ import (
 type ExecuteRequest = query.ExecuteRequest
 type ExecuteResponse = query.ExecuteResponse
 
+type RoleNameProvider interface {
+	GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error)
+}
+
+type QueryExecutorRunner interface {
+	Execute(ctx context.Context, req ExecuteRequest, userCtx auth.UserContext) (*ExecuteResponse, error)
+}
+
 const (
 	// Queue keys for async query processing
 	queryQueueKey      = "queue:query:async"
@@ -33,9 +41,10 @@ const (
 	// Query result key prefix
 	queryResultKey = "query:result:"
 
-	// QE-004 #5: Retry configuration
-	MaxRetry      = 3
-	RetryInterval = 5 * time.Second
+	// QE-004 #5: Retry configuration (exponential: 5s -> 25s with MaxRetry=3)
+	MaxRetry        = 3
+	RetryInterval   = 5 * time.Second
+	RetryMultiplier = 5
 
 	// QE-004 #6: Worker pool sizes
 	WorkerPoolCritical = 10
@@ -47,10 +56,11 @@ const (
 type AsyncQueryExecutor struct {
 	rdb         *redis.Client
 	queryRepo   query.Repository
-	rlsRepo     auth.RLSFilterRepository
+	rlsRepo     RoleNameProvider
 	datasetRepo dataset.Repository
-	queryCache  *QueryExecutor
+	queryCache  QueryExecutorRunner
 	workerPool  *WorkerPool
+	waitForRetry func(ctx context.Context, attempt int) error
 }
 
 // WorkerPool manages concurrent workers per queue
@@ -106,9 +116,9 @@ func (wp *WorkerPool) release(queue string) {
 func NewAsyncQueryExecutor(
 	rdb *redis.Client,
 	queryRepo query.Repository,
-	rlsRepo auth.RLSFilterRepository,
+	rlsRepo RoleNameProvider,
 	datasetRepo dataset.Repository,
-	queryCache *QueryExecutor,
+	queryCache QueryExecutorRunner,
 ) *AsyncQueryExecutor {
 	return &AsyncQueryExecutor{
 		rdb:         rdb,
@@ -117,6 +127,7 @@ func NewAsyncQueryExecutor(
 		datasetRepo: datasetRepo,
 		queryCache:  queryCache,
 		workerPool:  NewWorkerPool(),
+		waitForRetry: defaultWaitForRetry,
 	}
 }
 
@@ -180,8 +191,13 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 	log.Printf("[async_executor] enqueueing query %s to queue %s", queryID, queueKey)
 	_, err = e.rdb.LPush(ctx, queueKey, taskJSON).Result()
 	if err != nil {
-		// Try to delete the query record if enqueue failed
-		_ = e.queryRepo.Update(ctx, q)
+		failed := *q
+		failed.Status = "failed"
+		failed.ErrorMessage = fmt.Sprintf("enqueueing task: %v", err)
+		now := time.Now()
+		failed.EndTime = &now
+		failed.UpdatedAt = now
+		_ = e.queryRepo.Update(ctx, &failed)
 		return nil, fmt.Errorf("enqueueing task: %w", err)
 	}
 
@@ -293,29 +309,10 @@ func (e *AsyncQueryExecutor) Cancel(ctx context.Context, queryID string, userCtx
 	return nil
 }
 
-// ProcessNext processes the next query in the queue
-func (e *AsyncQueryExecutor) ProcessNext(ctx context.Context) error {
-	// QE-004 #6: Check worker pool availability
-	for _, queueKey := range []string{queryQueueCritical, queryQueueKey, queryQueueLow} {
-		if e.workerPool.acquire(queueKey) {
-			defer e.workerPool.release(queueKey)
-			return e.processFromQueue(ctx, queueKey)
-		}
-	}
-
-	// Fallback if no worker pool
-	return e.processFromQueue(ctx, queryQueueKey)
-}
-
 // ExecuteTask executes a task directly (used by worker)
 func (e *AsyncQueryExecutor) ExecuteTask(ctx context.Context, task *query.QueryTask) error {
-	// Acquire worker slot from pool
 	queueKey := resolveQueueForTask(task)
-	if !e.workerPool.acquire(queueKey) {
-		return fmt.Errorf("no worker available")
-	}
-	defer e.workerPool.release(queueKey)
-	return e.executeQuery(ctx, task)
+	return e.executeQuery(ctx, task, queueKey)
 }
 
 // resolveQueueForTask resolves the queue key for a task
@@ -323,28 +320,12 @@ func resolveQueueForTask(task *query.QueryTask) string {
 	// For now, use default queue - in production would check user roles
 	return queryQueueKey
 }
-
-func (e *AsyncQueryExecutor) processFromQueue(ctx context.Context, queueKey string) error {
-	task, err := e.rdb.RPop(ctx, queueKey).Result()
-	if err == redis.Nil {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("popping from queue: %w", err)
-	}
-
-	var queryTask query.QueryTask
-	if err := json.Unmarshal([]byte(task), &queryTask); err != nil {
-		log.Printf("[query_worker] error unmarshaling task: %v", err)
-		return nil
-	}
-
-	return e.executeQuery(ctx, &queryTask)
-}
-
 // executeQuery executes a query task with retry logic
-func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.QueryTask) error {
+func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.QueryTask, queueKey string) error {
 	queryID := task.QueryID
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Update status to running
 	q, err := e.queryRepo.GetByID(ctx, queryID)
@@ -352,12 +333,23 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 		log.Printf("[query_worker] error getting query %s: %v", queryID, err)
 		return err
 	}
+	if q == nil {
+		return fmt.Errorf("query not found")
+	}
+
+	cancelled, err := e.isCancelled(ctx, queryID)
+	if err != nil {
+		log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
+	} else if cancelled {
+		return e.handleQueryCancelled(ctx, q, queryID)
+	}
 
 	startTime := time.Now()
-	q.Status = "running"
-	q.StartTime = &startTime
-	q.UpdatedAt = time.Now()
-	if err := e.queryRepo.Update(ctx, q); err != nil {
+	running := *q
+	running.Status = "running"
+	running.StartTime = &startTime
+	running.UpdatedAt = time.Now()
+	if err := e.queryRepo.Update(ctx, &running); err != nil {
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
 		return err
 	}
@@ -384,44 +376,118 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	// QE-004 #5: Retry logic
 	var lastErr error
 	for attempt := 0; attempt < MaxRetry; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff: 5s -> 25s -> 125s
-			backoff := RetryInterval * time.Duration(5*attempt)
-			time.Sleep(backoff)
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		resp, err := e.queryCache.Execute(ctx, execReq, userCtx)
+		cancelled, err := e.isCancelled(ctx, queryID)
+		if err != nil {
+			log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
+		} else if cancelled {
+			return e.handleQueryCancelled(ctx, &running, queryID)
+		}
+
+		if attempt > 0 {
+			if err := e.waitForRetry(ctx, attempt); err != nil {
+				return err
+			}
+		}
+
+		resp, err := e.executeWithWorkerSlot(queueKey, func() (*ExecuteResponse, error) {
+			return e.queryCache.Execute(ctx, execReq, userCtx)
+		})
 		if err == nil {
 			// Success
-			return e.handleQuerySuccess(ctx, q, queryID, resp)
+			return e.handleQuerySuccess(ctx, &running, queryID, resp)
 		}
 		lastErr = err
 		log.Printf("[query_worker] attempt %d failed for query %s: %v", attempt+1, queryID, err)
 	}
 
 	// All retries failed - QE-004 #5
-	q.Status = "failed"
-	q.ErrorMessage = fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr)
+	failed := running
+	failed.Status = "failed"
+	failed.ErrorMessage = fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr)
 	now := time.Now()
-	q.EndTime = &now
-	_ = e.queryRepo.Update(ctx, q)
+	failed.EndTime = &now
+	failed.UpdatedAt = now
+	_ = e.queryRepo.Update(ctx, &failed)
 	e.publishStatus(ctx, queryID, "failed", nil)
 	return lastErr
 }
 
+func (e *AsyncQueryExecutor) executeWithWorkerSlot(queueKey string, fn func() (*ExecuteResponse, error)) (*ExecuteResponse, error) {
+	if !e.workerPool.acquire(queueKey) {
+		return nil, fmt.Errorf("no worker available")
+	}
+	defer e.workerPool.release(queueKey)
+	return fn()
+}
+
+func (e *AsyncQueryExecutor) isCancelled(ctx context.Context, queryID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return true, err
+	}
+	if e.rdb == nil {
+		return false, nil
+	}
+	cancelled, err := e.rdb.Exists(ctx, queryCancelKey+queryID).Result()
+	if err != nil {
+		return false, err
+	}
+	return cancelled > 0, nil
+}
+
+func (e *AsyncQueryExecutor) handleQueryCancelled(ctx context.Context, q *query.Query, queryID string) error {
+	updated := *q
+	updated.Status = "stopped"
+	updated.ErrorMessage = "Cancelled by user"
+	now := time.Now()
+	updated.EndTime = &now
+	updated.UpdatedAt = now
+	if err := e.queryRepo.Update(ctx, &updated); err != nil {
+		return err
+	}
+	e.publishStatus(ctx, queryID, "stopped", nil)
+	return nil
+}
+
+func defaultWaitForRetry(ctx context.Context, attempt int) error {
+	return waitWithContext(ctx, backoffForAttempt(attempt))
+}
+
+func backoffForAttempt(attempt int) time.Duration {
+	if attempt <= 0 {
+		return 0
+	}
+	backoff := RetryInterval
+	for i := 1; i < attempt; i++ {
+		backoff *= RetryMultiplier
+	}
+	return backoff
+}
+
+func waitWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Query, queryID string, resp *ExecuteResponse) error {
 	// Check cancel flag
-	if e.rdb != nil {
-		cancelled, _ := e.rdb.Exists(ctx, queryCancelKey+queryID).Result()
-		if cancelled > 0 {
-			q.Status = "stopped"
-			q.ErrorMessage = "Cancelled by user"
-			now := time.Now()
-			q.EndTime = &now
-			_ = e.queryRepo.Update(ctx, q)
-			e.publishStatus(ctx, queryID, "stopped", nil)
-			return nil
-		}
+	cancelled, err := e.isCancelled(ctx, queryID)
+	if err != nil {
+		log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
+	} else if cancelled {
+		return e.handleQueryCancelled(ctx, q, queryID)
 	}
 
 	// Store result in Redis if needed
@@ -442,13 +508,14 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 		}
 	}
 
-	q.Status = "success"
-	q.EndTime = &endTime
-	q.Rows = rowCount
-	q.ResultsKey = resultsKey
-	q.ExecutedSQL = resp.Query.ExecutedSQL
-	q.UpdatedAt = time.Now()
-	if err := e.queryRepo.Update(ctx, q); err != nil {
+	updated := *q
+	updated.Status = "success"
+	updated.EndTime = &endTime
+	updated.Rows = rowCount
+	updated.ResultsKey = resultsKey
+	updated.ExecutedSQL = resp.Query.ExecutedSQL
+	updated.UpdatedAt = time.Now()
+	if err := e.queryRepo.Update(ctx, &updated); err != nil {
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
 	}
 
@@ -486,7 +553,9 @@ func (e *AsyncQueryExecutor) publishStatus(ctx context.Context, queryID, status 
 		return
 	}
 
-	e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON)
+	if err := e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON).Err(); err != nil {
+		log.Printf("[query_worker] error publishing event: %v", err)
+	}
 }
 
 // resolveQueue determines the queue based on user role

@@ -100,7 +100,7 @@ func (w *QueryWorker) run(workerID int) {
 func (w *QueryWorker) processNext() {
 	// Try to pop from critical queue first, then default, then low
 	for _, queueKey := range w.config.QueueKeys {
-		result, err := w.redisClient.BLPop(w.ctx, w.config.PollInterval, queueKey).Result()
+		result, err := w.redisClient.BRPop(w.ctx, w.config.PollInterval, queueKey).Result()
 		if err == redis.Nil {
 			continue // This queue is empty, try next
 		}
