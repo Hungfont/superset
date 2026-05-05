@@ -66,11 +66,11 @@ Use this sequence when implementing requirements.
 - Main agent executes code changes according to the locked plan.
 
 ### Phase 6: Parallel Review
-- Run in parallel where independent:
+- Run in parallel and create subagents for each agents where independent:
 	- **code-reviewer** for quality and regression risk.
 	- **security-reviewer** for trust boundaries and vulnerabilities.
 	- **go-reviewer** when Go files are modified.
-
+  - **typescript-reviewer** when Typescript files are modified.
 ### Phase 7: Docs and Codemap
 - Call **doc-updater** to update impacted codemaps, README sections, and sequence documentation.
 

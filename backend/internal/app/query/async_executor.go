@@ -54,12 +54,12 @@ const (
 
 // AsyncQueryExecutor handles async query execution
 type AsyncQueryExecutor struct {
-	rdb         *redis.Client
-	queryRepo   query.Repository
-	rlsRepo     RoleNameProvider
-	datasetRepo dataset.Repository
-	queryCache  QueryExecutorRunner
-	workerPool  *WorkerPool
+	rdb          *redis.Client
+	queryRepo    query.Repository
+	rlsRepo      RoleNameProvider
+	datasetRepo  dataset.Repository
+	queryCache   QueryExecutorRunner
+	workerPool   *WorkerPool
 	waitForRetry func(ctx context.Context, attempt int) error
 }
 
@@ -121,12 +121,12 @@ func NewAsyncQueryExecutor(
 	queryCache QueryExecutorRunner,
 ) *AsyncQueryExecutor {
 	return &AsyncQueryExecutor{
-		rdb:         rdb,
-		queryRepo:   queryRepo,
-		rlsRepo:     rlsRepo,
-		datasetRepo: datasetRepo,
-		queryCache:  queryCache,
-		workerPool:  NewWorkerPool(),
+		rdb:          rdb,
+		queryRepo:    queryRepo,
+		rlsRepo:      rlsRepo,
+		datasetRepo:  datasetRepo,
+		queryCache:   queryCache,
+		workerPool:   NewWorkerPool(),
 		waitForRetry: defaultWaitForRetry,
 	}
 }
@@ -136,9 +136,9 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 	if e.rdb == nil {
 		return nil, fmt.Errorf("redis client not configured")
 	}
-	
+
 	log.Printf("[async_executor] Submit: database_id=%d, sql=%s", req.DatabaseID, req.SQL)
-	
+
 	queryID := "q-" + generateQueryID()
 	if req.ClientID != "" {
 		queryID = "q-" + req.ClientID[:8]
@@ -320,6 +320,7 @@ func resolveQueueForTask(task *query.QueryTask) string {
 	// For now, use default queue - in production would check user roles
 	return queryQueueKey
 }
+
 // executeQuery executes a query task with retry logic
 func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.QueryTask, queueKey string) error {
 	queryID := task.QueryID

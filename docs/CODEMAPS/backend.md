@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-04 | Files scanned: 120 | Token estimate: ~850 -->
+<!-- Generated: 2026-05-05 | Files scanned: 120 | Token estimate: ~850 -->
 
 # Backend Codemap
 
@@ -130,6 +130,7 @@ RLSService        -> RLSFilterRepository
 - `backend/internal/app/query/cache_test.go`: query result caching.
 - `backend/internal/app/query/rls_injector_test.go`: RLS injection logic.
 - `backend/internal/app/query/async_executor.go`: async query execution (QE-004), Redis queue routing (critical/default/low), pub/sub status events, worker polling.
+- `backend/internal/worker/query_worker.go`: async query worker; FIFO queue consumption with BRPOP; delegates execution to AsyncQueryExecutor.
 - `backend/internal/app/db/database_service.go`: database lifecycle service, dependency wiring, and shared guard logic.
 - `backend/internal/app/db/database_service_introspection.go`: DBC-007 introspection methods (schemas/tables/columns), cache read/write, force-refresh limiter, 429/502/504 error mapping.
 - `backend/internal/app/db/schema_inspector.go`: PostgreSQL INFORMATION_SCHEMA inspector implementation and is_dttm mapping.

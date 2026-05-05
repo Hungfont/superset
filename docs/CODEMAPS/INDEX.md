@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-04 | Files scanned: ~180 | Token estimate: ~350 -->
+<!-- Generated: 2026-05-05 | Files scanned: ~180 | Token estimate: ~350 -->
 
 # Codemaps Index
 

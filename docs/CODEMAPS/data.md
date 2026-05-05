@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-04 | Files scanned: 180 | Token estimate: ~620 -->
+<!-- Generated: 2026-05-05 | Files scanned: 180 | Token estimate: ~620 -->
 
 # Data Codemap
 
@@ -42,30 +42,40 @@ Source: `backend/internal/domain/auth/entity.go` + `backend/internal/domain/data
 - Purpose: role-to-permission_view join table used for assignment checks.
 - Key columns: `role_id`, `permission_view_id`.
 
-### `ab_database`
-
-- Purpose: configured database connections (connection string stored encrypted).
-- Key columns: `id`, `name`, `type`, `host`, `port`, `database`, `username`, `encrypted_password`, `extra`, `created_on`, `changed_on`.
-
-### `ab_dataset`
-
-- Purpose: virtual or physical datasets backed by databases.
-- Key columns: `id`, `uuid`, `database_id`, `schema`, `table_name`, `type` (physical/virtual), `sql`, `description`, `cache_timeout`, `created_on`, `changed_on`, `created_by`, `changed_by`, `workspace_id`.
-
-### `ab_dataset_column`
-
-- Purpose: column metadata for datasets.
-- Key columns: `id`, `dataset_id`, `column_name`, `type`, `is_dttm`, `is_inetrum`, `is_boolean`, `filter_select`, `filter_equals`, `enable_no_cache`, `python_date_format`, `json_data`.
-
-### `ab_dataset_metric`
-
-- Purpose: metrics defined on datasets.
-- Key columns: `id`, `dataset_id`, `metric_name`, `expression`, `description`, `metric_type`, `d3format`, `warning_markdown`.
-
-### `ab_rls_filter`
+### `row_level_security_filters`
 
 - Purpose: Row-Level Security filter rules.
-- Key columns: `id`, `dataset_id`, `filter_type`, `group_key`, `user_key`, `clause`.
+- Key columns: `id`, `name` (unique), `filter_type` (Regular/Base), `clause`, `group_key`, `description`, `created_by_fk`, `changed_by_fk`, `created_on`, `changed_on`.
+
+### `rls_filter_roles`
+
+- Purpose: RLS filter to role mapping.
+- Key columns: `rls_id`, `role_id`.
+
+### `rls_filter_tables`
+
+- Purpose: RLS filter to dataset/datasource mapping.
+- Key columns: `rls_id`, `datasource_id`, `datasource_type`, `table_name`, `database_name`.
+
+### `dbs`
+
+- Purpose: configured database connections (SQLAlchemy URI stored).
+- Key columns: `id`, `database_name` (unique), `sqlalchemy_uri`, `password`, `allow_dml`, `expose_in_sqllab`, `allow_run_async`, `allow_file_upload`, `created_by_fk`, `created_on`, `changed_on`.
+
+### `tables` (ab_dataset)
+
+- Purpose: virtual or physical datasets backed by databases.
+- Key columns: `id`, `table_name`, `schema`, `database_id`, `sql`, `perm`, `description`, `main_dttm_col`, `cache_timeout`, `filter_select_enabled`, `normalize_columns`, `is_featured`, `created_by_fk`, `changed_by_fk`, `created_on`, `changed_on`.
+
+### `table_columns` (ab_dataset_column)
+
+- Purpose: column metadata for datasets.
+- Key columns: `id`, `table_id`, `column_name`, `type`, `is_dttm`, `is_active`, `verbose_name`, `description`, `filterable`, `groupby`, `python_date_format`, `expression`, `column_type`, `exported`.
+
+### `sql_metrics` (ab_dataset_metric)
+
+- Purpose: metrics defined on datasets.
+- Key columns: `id`, `table_id`, `metric_name`, `verbose_name`, `metric_type`, `expression`, `description`, `d3format`, `warning_text`, `is_restricted`, `extra`, `certified_by`, `certification_details`, `created_on`, `changed_on`, `created_by_fk`, `changed_by_fk`.
 
 ## Redis Key Spaces
 
@@ -112,13 +122,14 @@ rls filters -> read/write ab_rls_filter, used in query execution pipeline
 - `Role`, `UpsertRoleRequest`, `RoleListItem`
 - `Permission`, `ViewMenu`, `PermissionView`
 - `UpsertPermissionRequest`, `UpsertViewMenuRequest`, `CreatePermissionViewRequest`
-- `Database`, `DatabaseDetail`, `DatabaseListItem`
+- `Database`, `DatabaseDetail`, `DatabaseListItem`, `CreateDatabaseRequest`, `UpdateDatabaseRequest`
 - `ListDatabaseTablesRequest`, `ListDatabaseColumnsRequest`
 - `DatabaseTable`, `DatabaseTableListResponse`, `DatabaseColumn`
-- `Dataset`, `DatasetDetail`, `DatasetListItem`, `CreateDatasetRequest`, `UpdateDatasetRequest`
-- `DatasetColumn`, `DatasetColumnUpdateRequest`, `BulkColumnUpdateRequest`
-- `DatasetMetric`, `CreateMetricRequest`, `UpdateMetricRequest`, `BulkMetricRequest`
-- `RLSFilter`, `CreateRLSFilterRequest`, `UpdateRLSFilterRequest`
+- `TestConnectionResult`, `TestDatabaseConnectionRequest`
+- `Dataset`, `DatasetDetail`, `DatasetWithCounts`, `CreatePhysicalDatasetRequest`, `CreateVirtualDatasetRequest`, `UpdateDatasetMetadataRequest`
+- `Column`, `UpdateColumnRequest`, `BulkUpdateColumnRequest`
+- `SqlMetric`, `CreateMetricRequest`, `UpdateMetricRequest`, `BulkUpdateMetricsRequest`
+- `RLSFilter`, `RLSFilterResponse`, `CreateRLSFilterRequest`, `UpdateRLSFilterRequest`, `RLSFilterListResult`
 
 ## Extended Docs
 
