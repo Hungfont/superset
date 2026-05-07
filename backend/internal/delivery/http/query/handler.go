@@ -46,11 +46,16 @@ func (h *Handler) Execute(c *gin.Context) {
 	}
 
 	execReq := svcquery.ExecuteRequest{
-		DatabaseID: req.DatabaseID,
-		SQL:       req.SQL,
-		Limit:     req.Limit,
-		Schema:    req.Schema,
-		ClientID:  req.ClientID,
+		DatabaseID:   req.DatabaseID,
+		SQL:          req.SQL,
+		Limit:        req.Limit,
+		Schema:       req.Schema,
+		Catalog:      req.Catalog,
+		TabName:      req.TabName,
+		SqlEditorID:  req.SqlEditorID,
+		ClientID:     req.ClientID,
+		ForceRefresh: req.ForceRefresh,
+		SelectAsCTA:  req.SelectAsCTA,
 	}
 
 	resp, err := h.executor.Execute(c.Request.Context(), execReq, userCtx)
@@ -110,12 +115,16 @@ func (h *Handler) Submit(c *gin.Context) {
 	}
 
 	asyncReq := domainquery.AsyncSubmitRequest{
-		DatabaseID:    req.DatabaseID,
-		SQL:         req.SQL,
-		Limit:       req.Limit,
-		Schema:      req.Schema,
-		ClientID:    req.ClientID,
+		DatabaseID:   req.DatabaseID,
+		SQL:          req.SQL,
+		Limit:        req.Limit,
+		Schema:       req.Schema,
+		Catalog:      req.Catalog,
+		TabName:      req.TabName,
+		SqlEditorID:  req.SqlEditorID,
+		ClientID:     req.ClientID,
 		ForceRefresh: req.ForceRefresh,
+		SelectAsCTA:  req.SelectAsCTA,
 	}
 
 	resp, err := h.asyncExecutor.Submit(c.Request.Context(), asyncReq, userCtx)

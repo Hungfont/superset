@@ -127,14 +127,18 @@ cancel(queryId)	DELETE /api/v1/query/:id
 getHistory(params?)	GET /api/v1/query/history
 getResult(queryId)	GET /api/v1/query/:id/result
 Key TypeScript interfaces: ExecuteQueryRequest, ExecuteQueryResponse, SubmitQueryRequest, SubmitQueryResponse, QueryStatusResponse, QueryColumn, QueryMeta.
+Extended with new fields: QueryMeta now includes id (string), client_id, limit, limiting_factor, progress, results_key, select_as_cta_used, start_running_time. Request interfaces now include catalog, tab_name, sql_editor_id, select_as_cta. QueryStatusResponse includes progress.
 b) Zustand Store — D:\superset\frontend\src\stores\sqlLabStore.ts
 Manages all SQL Lab tab state. Created with create() from Zustand (no persistence middleware).
 Interface SqlLabTab:
 - id, title, sql, databaseId, schema
+- catalog?: string, sqlEditorId?: string
 - result: QueryResult | null (data, columns, from_cache, query meta)
 - status: "idle" | "running" | "success" | "error"
 - error: string | null
 - Async fields: asyncQueryId, asyncStatus, asyncQueue
+- progress?: string
+Extracted QueryResultQueryMeta interface with: id (string), client_id, sql, executed_sql, start_time, start_running_time, end_time, rows, limit, limiting_factor, status, progress, results_key, select_as_cta_used.
 Store actions: addTab, removeTab, setActiveTab, updateTabSql, updateTabDatabase, setTabResult, setTabStatus, setTabError, setDatabaseId, setAsyncState, setAsyncResult, clearAsyncState.
 c) Query UI Components — D:\superset\frontend\src\components\query\QueryBadges.tsx
 Exported components used by SQL Lab and Explore pages:
@@ -145,8 +149,8 @@ QueryStatusBadge	status
 RunButton	onClick, disabled, isRunning
 RunAsyncButton	onClick, disabled, isRunning, isQueued
 CancelButton	onClick, disabled
-AsyncStatusBadge	status
-AsyncProgressBar	status
+AsyncStatusBadge	status, progress? — shows progress text when running (e.g. "Fetching results...")
+AsyncProgressBar	status, progress? — shows custom progress label during query execution
 QueueBadge	queue
 Tested in QueryBadges.test.tsx.
 d) Custom Hooks
@@ -170,6 +174,8 @@ Key behaviors in SQLLabPage.tsx:
 - Notifications: Browser Notification API for query completion/failure/timeout
 - RLS display: Compares executed_sql vs original sql to show RLS badge
 - Timeout handling: Server sends timeout_at — client validates it and stops polling
+- Progress tracking: Reads progress from status polling response and WebSocket events, updates tab progress in store
+- Extended query meta: Passes catalog, tab_name, sql_editor_id in execute/submit mutations; maps start_running_time, progress, results_key, limiting_factor from response to store
 ---
 5. ROUTE DEFINITIONS
 Defined in D:\superset\frontend\src\App.tsx using React Router DOM v6:

@@ -52,7 +52,7 @@ File: D:\superset\backend\cmd\api\main.go
 The main() function:
 1. Loads .env config via godotenv
 2. Loads typed config via configs.Load()
-3. Opens GORM Postgres connection and auto-migrates all domain entities
+3. Opens GORM Postgres connection and auto-migrates all domain entities (including SavedQuery, TabState, TableSchema)
 4. Connects to Redis
 5. Parses RSA key pair for JWT RS256
 6. Manually wires all dependencies (repos -> services -> handlers)
@@ -83,36 +83,51 @@ Table
 tables
 table_columns
 sql_metrics
-4d. Query Domain (internal/domain/query/entity.go)
+4d. Query Domain (internal/domain/query/entity.go + new model files)
 Struct	Table
 Query	query
+TabState	tab_state
+SavedQuery	saved_query
+TableSchema	table_schema
 Key fields on Query:
-- ID (varchar PK), ClientID, DatabaseID, UserID, TenantID
-- SQL (original), ExecutedSQL (after RLS injection)
+- ID (varchar PK), ClientID (index), DatabaseID (index), UserID (index), TenantID
+- TabName, SqlEditorID (tab metadata)
+- Schema, Catalog (query context)
+- SQL (original), SelectSQL, ExecutedSQL (after RLS injection)
+- Limit, LimitingFactor (row limits)
+- SelectAsCTA, SelectAsCTAUsed (Create Table As support)
+- Progress (queued/running/done/failed/stopped)
 - Status (pending/running/success/failed/timed_out/stopped)
-- StartTime, EndTime, Rows, ResultsKey, ErrorMessage
-- Schema, CreatedAt, UpdatedAt
+- Rows, ErrorMessage, ResultsKey
+- StartTime, StartRunningTime, EndTime, EndResultBackendTime (timing)
+- TmpTableName, TrackingURL, TmpSchemaName (temp table for CTA)
+- CachedData, IsSaved, ExtraJSON (cache / state)
+- ChangedOn, CreatedAt, UpdatedAt (timestamps)
+
 ---
 5. All Query-Related Files
 5a. Domain Layer
 File	Description
-D:\superset\backend\internal\domain\query\entity.go	Query GORM entity + all request/response DTOs (ExecuteRequest, ExecuteResponse, ExecuteMeta, AsyncSubmitRequest, AsyncSubmitResponse, QueryStatusResponse, QueryTask, ListFilter, etc.)
-D:\superset\backend\internal\domain\query\repository.go	Repository interface: Create, GetByID, Update, List
+D:\superset\backend\internal\domain\query\entity.go	Query GORM entity + all request/response DTOs (ExecuteRequest, ExecuteResponse, ExecuteMeta, AsyncSubmitRequest, AsyncSubmitResponse, QueryStatusResponse, QueryTask, ListFilter, etc.) — expanded with Catalog, TabName, SqlEditorID, SelectAsCTA, Progress, StartRunningTime, Limit, LimitingFactor, etc.
+D:\superset\backend\internal\domain\query\saved_query.go	NEW: SavedQuery entity (saved_query table) — persisted/saved query with label, schema, catalog, SQL, description, tags, published flag, created_by/changed_by FK
+D:\superset\backend\internal\domain\query\tab_state.go	NEW: TabState entity (tab_state table) — SQL Lab tab state with user_id, db_id, schema, catalog, label, active, SQL, query_limit, latest_query_id, hide_left_bar, saved_query_id FK
+D:\superset\backend\internal\domain\query\table_schema.go	NEW: TableSchema entity (table_schema table) — expanded schema in SQL Lab tab with tab_state_id FK, db_id, schema, catalog, table, description, expanded flag
+D:\superset\backend\internal\domain\query\repository.go	Repository interface: Create, GetByID, GetByClientID (NEW), Update, List
 5b. Application Layer
 Description
-QueryExecutor - Main sync query engine: RLS injection, Redis caching (CheckCache/SetCache/FlushCache), SQL normalization, query recording, connection pool execution, role-based row limits (Admin=10M, Alpha=100K, Gamma=10K), 30s timeout, QueryError type for HTTP status mapping. Also contains RLSInjector for injecting WHERE clauses.
-AsyncQueryExecutor - Async query submission via Redis queues (queue:query:critical, queue:query:default, queue:query:low), WorkerPool per queue (10/20/5 slots), retry logic (max 3 attempts, 5s/25s/125s backoff), cancel support, Redis pub/sub status events, query lifecycle management (pending -> running -> success/failed/stopped).
+QueryExecutor - Main sync query engine: RLS injection, Redis caching (CheckCache/SetCache/FlushCache), SQL normalization, query recording, connection pool execution, role-based row limits (Admin=10M, Alpha=100K, Gamma=10K), 30s timeout, QueryError type for HTTP status mapping. Also contains RLSInjector for injecting WHERE clauses. Updated to include TabName, SqlEditorID, Catalog, SelectAsCTA in query records, Progress tracking, LimitingFactor (1=user-defined, 2=role-defined) in response, ChangedOn timestamp, StartRunningTime, and getRowLimit helper for Limit field.
+AsyncQueryExecutor - Async query submission via Redis queues (queue:query:critical, queue:query:default, queue:query:low), WorkerPool per queue (10/20/5 slots), retry logic (max 3 attempts, 5s/25s/125s backoff), cancel support, Redis pub/sub status events, query lifecycle management (pending -> running -> success/failed/stopped). Updated to include Catalog, TabName, SqlEditorID, SelectAsCTA in task payloads, Progress field tracking (queued/running/done/failed/stopped), ChangedOn timestamp throughout lifecycle, StartRunningTime on running state. Removed unused resolveQueueForTask function.
 Unit tests for SQL normalization, cache key generation, cache size validation, TTL, nil Redis handling
 Unit tests for RLS injection (Admin bypass, Regular/Base filter types, UNION queries, template rendering, caching)
 Integration tests: RLS with mock repos, cache flush, cross-user cache key isolation, acceptance criteria verification
-Unit tests for async executor
+Unit tests for async executor (added compile-time domain Repository interface check via var _ domainquery.Repository)
 5c. Delivery/HTTP Layer
 File	Description
-D:\superset\backend\internal\delivery\http\query\handler.go	Handler - HTTP handlers: Execute (sync POST), Submit (async POST), GetStatus (GET), Cancel (DELETE), GetResult (GET). Extracts UserContext from Gin context, maps domain errors to HTTP status codes (400/403/408/500/503).
+D:\superset\backend\internal\delivery\http\query\handler.go	Handler - HTTP handlers: Execute (sync POST), Submit (async POST), GetStatus (GET), Cancel (DELETE), GetResult (GET). Extracts UserContext from Gin context, maps domain errors to HTTP status codes (400/403/408/500/503). Updated to pass Catalog, TabName, SqlEditorID, ForceRefresh, SelectAsCTA fields from request to service layer.
 D:\superset\backend\internal\delivery\http\query\handler_test.go	Unit tests for handler (Submit returns 202, nil-safety, status response format, queue resolution)
 5d. Repository Layer
 File	Description
-D:\superset\backend\internal\repository\postgres\query_repo.go	queryRepo - GORM implementation of query.Repository: Create, GetByID, Update, List (with filtering by UserID, Status, DatabaseID, SQL like, pagination)
+D:\superset\backend\internal\repository\postgres\query_repo.go	queryRepo - GORM implementation of query.Repository: Create, GetByID, GetByClientID (NEW), Update, List (with filtering by UserID, Status, DatabaseID, SQL like, pagination)
 5e. Worker Layer
 File
 D:\superset\backend\internal\worker\query_worker.go

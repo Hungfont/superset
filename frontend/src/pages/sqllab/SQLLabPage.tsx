@@ -174,6 +174,17 @@ export default function SQLLabPage() {
 
       setAsyncState(activeTabId, queryId, mappedStatus, currentTab?.asyncQueue);
 
+      if (status.progress && activeTabId) {
+        const tab = useSqlLabStore.getState().tabs.find(t => t.id === activeTabId);
+        if (tab) {
+          useSqlLabStore.setState({
+            tabs: useSqlLabStore.getState().tabs.map(t =>
+              t.id === activeTabId ? { ...t, progress: status.progress } : t
+            )
+          });
+        }
+      }
+
       if (status.status === "success" || status.status === "failed" || status.status === "stopped") {
         if (pollingTimeoutRef.current) {
           clearTimeout(pollingTimeoutRef.current);
@@ -193,13 +204,19 @@ export default function SQLLabPage() {
               from_cache: false,
               results_truncated: undefined,
               query: {
-                id: 0,
+                id: "",
+                client_id: queryId,
                 executed_sql: "",
                 sql: currentTab?.sql || "",
                 start_time: status.start_time || "",
+                start_running_time: status.start_time,
                 end_time: status.end_time || "",
                 rows: result.rows,
+                limit: status.rows,
+                limiting_factor: 2,
                 status: status.status,
+                progress: "done",
+                results_key: status.results_key,
               },
             });
             setTabStatus(activeTabId, "success");
@@ -262,13 +279,19 @@ export default function SQLLabPage() {
               from_cache: false,
               results_truncated: undefined,
               query: {
-                id: 0,
-                executed_sql: "",
+                id: data.query_id || "",
+                client_id: data.query_id,
+                executed_sql: data.data.executed_sql || "",
                 sql: currentTab?.sql || "",
-                start_time: "",
-                end_time: "",
+                start_time: data.data.start_time || "",
+                start_running_time: data.data.start_running_time,
+                end_time: data.data.end_time || "",
                 rows: data.data.rows?.length || 0,
+                limit: data.data.limit || 0,
+                limiting_factor: data.data.limiting_factor || 0,
                 status: "success",
+                progress: "done",
+                results_key: data.data.results_key,
               },
             });
             setTabStatus(activeTabId, "success");
@@ -290,6 +313,16 @@ export default function SQLLabPage() {
               data.status === "running" ? "running" :
               data.status === "pending" ? "pending" : "queued";
             setAsyncState(activeTabId, queryId, mappedStatus, currentTab?.asyncQueue);
+            if (data.progress && activeTabId) {
+              const tab = useSqlLabStore.getState().tabs.find(t => t.id === activeTabId);
+              if (tab) {
+                useSqlLabStore.setState({
+                  tabs: useSqlLabStore.getState().tabs.map(t =>
+                    t.id === activeTabId ? { ...t, progress: data.progress } : t
+                  )
+                });
+              }
+            }
           } else if (data.type === "error") {
             setTabError(activeTabId, data.message || "Query failed");
             showSystemNotification("Query Failed", data.message || "Your query failed to execute.");
@@ -392,6 +425,9 @@ export default function SQLLabPage() {
       executeMutation.mutate({
         database_id: activeTab.databaseId,
         sql: activeTab.sql,
+        catalog: activeTab.catalog,
+        tab_name: activeTab.title,
+        sql_editor_id: activeTab.sqlEditorId,
       });
     }
   };
@@ -407,6 +443,9 @@ export default function SQLLabPage() {
     submitAsyncMutation.mutate({
       database_id: activeTab.databaseId,
       sql: activeTab.sql,
+      catalog: activeTab.catalog,
+      tab_name: activeTab.title,
+      sql_editor_id: activeTab.sqlEditorId,
     });
   };
 
@@ -422,6 +461,9 @@ export default function SQLLabPage() {
     executeMutation.mutate({
       database_id: activeTab.databaseId,
       sql: activeTab.sql,
+      catalog: activeTab.catalog,
+      tab_name: activeTab.title,
+      sql_editor_id: activeTab.sqlEditorId,
       force_refresh: true,
     });
   };
@@ -512,7 +554,7 @@ export default function SQLLabPage() {
                 </span>
               )}
               {tab.asyncStatus ? (
-                <AsyncStatusBadge status={tab.asyncStatus} />
+                <AsyncStatusBadge status={tab.asyncStatus} progress={tab.progress} />
               ) : (
                 <QueryStatusBadge status={tab.status} />
               )}
@@ -570,7 +612,7 @@ export default function SQLLabPage() {
               </div>
 
               {tab.asyncStatus && (
-                <AsyncProgressBar status={tab.asyncStatus} />
+                <AsyncProgressBar status={tab.asyncStatus} progress={tab.progress} />
               )}
 
               <textarea

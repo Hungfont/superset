@@ -646,15 +646,23 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 			if err == nil {
 				var result cachedResult
 				if err := json.Unmarshal(resultData, &result); err == nil {
+					rowCount := 0
+					if dataSlice, ok := result.Data.([]interface{}); ok {
+						rowCount = len(dataSlice)
+					}
 					return &ExecuteResponse{
 						Data:      result.Data,
 						Columns:   result.Columns,
 						FromCache: true,
 						Query: query.ExecuteMeta{
+							ClientID:    req.ClientID,
+							SQL:        req.SQL,
 							ExecutedSQL: req.SQL,
 							RLSApplied:  false,
-							StartTime:   startTime,
-							EndTime:     time.Now(),
+							Rows:       rowCount,
+							Status:     "success",
+							StartTime:  startTime,
+							EndTime:    time.Now(),
 						},
 					}, nil
 				}
@@ -685,16 +693,25 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 		// QE-001 #2: Create query record with status="running"
 		var queryID string
 		if e.queryRepo != nil && req.ClientID != "" {
+			now := time.Now()
 			q := &query.Query{
-				ID:          uuid.New().String(),
-				ClientID:    req.ClientID,
-				DatabaseID:  req.DatabaseID,
-				UserID:      userCtx.ID,
-				SQL:         req.SQL,
-				ExecutedSQL: executedSQL,
-				Status:      "running",
-				StartTime:   &startTime,
-				Schema:      schema,
+				ID:               uuid.New().String(),
+				ClientID:         req.ClientID,
+				DatabaseID:       req.DatabaseID,
+				UserID:           userCtx.ID,
+				TabName:          req.TabName,
+				SqlEditorID:      req.SqlEditorID,
+				Schema:           schema,
+				Catalog:          req.Catalog,
+				SQL:              req.SQL,
+				ExecutedSQL:      executedSQL,
+				Limit:            getRowLimit(roleNames),
+				SelectAsCTAUsed:  req.SelectAsCTA,
+				Progress:         "running",
+				Status:           "running",
+				StartTime:        &startTime,
+				StartRunningTime: &now,
+				ChangedOn:        &now,
 			}
 			if err := e.queryRepo.Create(ctx, q); err != nil {
 				fmt.Printf("failed to create query record: %v\n", err)
@@ -705,7 +722,7 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 		return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
 	}
 
-	cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
+		cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
 	if err != nil {
 		fmt.Printf("cache check error: %v\n", err)
 	} else if cacheHit {
@@ -721,11 +738,15 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 				FromCache:        true,
 				ResultsTruncated: false,
 				Query: query.ExecuteMeta{
+					ClientID:    req.ClientID,
+					SQL:        req.SQL,
 					ExecutedSQL: executedSQL,
 					RLSApplied:  rlsApplied,
 					Rows:       rowCount,
-					StartTime:   startTime,
-					EndTime:     time.Now(),
+					Progress:   "done",
+					Status:     "success",
+					StartTime:  startTime,
+					EndTime:    time.Now(),
 				},
 			}, nil
 		}
@@ -734,16 +755,25 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 	// QE-001 #2: Create query record with status="running"
 	var queryID string
 	if e.queryRepo != nil && req.ClientID != "" {
+		now := time.Now()
 		q := &query.Query{
-			ID:          uuid.New().String(),
-			ClientID:    req.ClientID,
-			DatabaseID:  req.DatabaseID,
-			UserID:      userCtx.ID,
-			SQL:         req.SQL,
-			ExecutedSQL: executedSQL,
-			Status:      "running",
-			StartTime:   &startTime,
-			Schema:      schema,
+			ID:               uuid.New().String(),
+			ClientID:         req.ClientID,
+			DatabaseID:       req.DatabaseID,
+			UserID:           userCtx.ID,
+			TabName:          req.TabName,
+			SqlEditorID:      req.SqlEditorID,
+			Schema:           schema,
+			Catalog:          req.Catalog,
+			SQL:              req.SQL,
+			ExecutedSQL:      executedSQL,
+			Limit:            getRowLimit(roleNames),
+			SelectAsCTAUsed:  req.SelectAsCTA,
+			Progress:         "running",
+			Status:           "running",
+			StartTime:        &startTime,
+			StartRunningTime: &now,
+			ChangedOn:        &now,
 		}
 		if err := e.queryRepo.Create(ctx, q); err != nil {
 			fmt.Printf("failed to create query record: %v\n", err)
@@ -803,8 +833,10 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 	// QE-001 #3: Apply role-based row limit
 	rowLimit := getRowLimit(roleNames)
 	effectiveLimit := rowLimit
+	limitingFactor := 2 // 2 = role-defined limit
 	if req.Limit != nil && *req.Limit < rowLimit {
 		effectiveLimit = *req.Limit
+		limitingFactor = 1 // 1 = user-defined limit
 	}
 
 	// Check if results will be truncated (user asked for more than role allows)
@@ -900,11 +932,20 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 		Columns:   columnInfos,
 		FromCache: fromCache,
 		Query: query.ExecuteMeta{
-			ExecutedSQL: executedSQL,
-			RLSApplied: rlsApplied,
-			Rows:      rowCount,
-			StartTime: startTime,
-			EndTime:   endTime,
+			ID:               queryID,
+			ClientID:         req.ClientID,
+			SQL:              req.SQL,
+			ExecutedSQL:      executedSQL,
+			RLSApplied:       rlsApplied,
+			Rows:             rowCount,
+			Limit:            effectiveLimit,
+			LimitingFactor:   limitingFactor,
+			Progress:         "done",
+			Status:           "success",
+			StartTime:        startTime,
+			StartRunningTime: &startTime,
+			EndTime:          endTime,
+			SelectAsCTAUsed:  req.SelectAsCTA,
 		},
 	}
 
@@ -934,6 +975,17 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 
 	// QE-001 #4: Update query record with status, rows, end_time
 	e.updateQueryStatus(ctx, queryID, "success", rowCount)
+
+	// Build the final ExecuteMeta with query metadata
+	result.Query.ID = queryID
+	result.Query.ClientID = req.ClientID
+	result.Query.Status = "success"
+	result.Query.Progress = "done"
+
+	// Set StartRunningTime if not already set
+	if result.Query.StartRunningTime == nil {
+		result.Query.StartRunningTime = &startTime
+	}
 
 	return &ExecuteResponse{
 		Data:              result.Data,
@@ -1006,11 +1058,13 @@ func (e *QueryExecutor) updateQueryStatus(ctx context.Context, queryID string, s
 	}
 
 	q.Status = status
+	q.Progress = status
 	if status == "success" {
 		q.Rows = rowCount
 	}
 	now := time.Now()
 	q.EndTime = &now
+	q.ChangedOn = &now
 	if e.rdb != nil && rowCount > 0 {
 		q.ResultsKey = fmt.Sprintf("query:result:%s", queryID)
 	}

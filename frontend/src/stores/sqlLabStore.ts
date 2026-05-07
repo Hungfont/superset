@@ -1,19 +1,28 @@
 import { create } from "zustand";
 
+interface QueryResultQueryMeta {
+  id: string;
+  client_id?: string;
+  sql: string;
+  executed_sql: string;
+  start_time: string;
+  start_running_time?: string;
+  end_time: string;
+  rows: number;
+  limit: number;
+  limiting_factor: number;
+  status: string;
+  progress?: string;
+  results_key?: string;
+  select_as_cta_used?: boolean;
+}
+
 interface QueryResult {
   data: Record<string, unknown>[];
   columns: { name: string; type: string }[];
   from_cache: boolean;
   results_truncated?: boolean;
-  query: {
-    id: number;
-    executed_sql: string;
-    sql: string;
-    start_time: string;
-    end_time: string;
-    rows: number;
-    status: string;
-  };
+  query: QueryResultQueryMeta;
 }
 
 interface SetAsyncResultPayload {
@@ -21,15 +30,7 @@ interface SetAsyncResultPayload {
   columns: { name: string; type: string }[];
   from_cache: boolean;
   results_truncated?: boolean;
-  query: {
-    id?: number;
-    executed_sql?: string;
-    sql: string;
-    start_time?: string;
-    end_time?: string;
-    rows: number;
-    status: string;
-  };
+  query: Partial<QueryResultQueryMeta>;
 }
 
 interface SqlLabTab {
@@ -38,12 +39,15 @@ interface SqlLabTab {
   sql: string;
   databaseId: number | null;
   schema: string;
+  catalog?: string;
+  sqlEditorId?: string;
   result: QueryResult | null;
   status: "idle" | "running" | "success" | "error";
   error: string | null;
   asyncQueryId?: string;
   asyncStatus?: "pending" | "queued" | "running" | "done" | "failed" | "stopped";
   asyncQueue?: string;
+  progress?: string;
 }
 
 interface SqlLabState {
@@ -132,13 +136,20 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
             from_cache: result.from_cache,
             results_truncated: result.results_truncated,
             query: {
-              id: result.query.id ?? 0,
-              executed_sql: result.query.executed_sql,
+              id: result.query.id ?? "",
+              client_id: result.query.client_id,
               sql: result.query.sql,
+              executed_sql: result.query.executed_sql,
               start_time: result.query.start_time ?? new Date().toISOString(),
+              start_running_time: result.query.start_running_time,
               end_time: result.query.end_time ?? new Date().toISOString(),
               rows: result.query.rows ?? 0,
+              limit: result.query.limit ?? 0,
+              limiting_factor: result.query.limiting_factor ?? 0,
               status: result.query.status ?? "success",
+              progress: result.query.progress,
+              results_key: result.query.results_key,
+              select_as_cta_used: result.query.select_as_cta_used,
             },
           },
           status: "success" as const
@@ -184,13 +195,20 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
             from_cache: result.from_cache,
             results_truncated: result.results_truncated,
             query: {
-              id: result.query.id ?? 0,
-              executed_sql: result.query.executed_sql ?? "",
+              id: result.query.id ?? "",
+              client_id: result.query.client_id,
               sql: result.query.sql,
+              executed_sql: result.query.executed_sql ?? "",
               start_time: result.query.start_time ?? new Date().toISOString(),
+              start_running_time: result.query.start_running_time,
               end_time: result.query.end_time ?? new Date().toISOString(),
               rows: result.query.rows ?? 0,
+              limit: result.query.limit ?? 0,
+              limiting_factor: result.query.limiting_factor ?? 0,
               status: result.query.status ?? "success",
+              progress: result.query.progress,
+              results_key: result.query.results_key,
+              select_as_cta_used: result.query.select_as_cta_used,
             },
           },
           status: "success" as const

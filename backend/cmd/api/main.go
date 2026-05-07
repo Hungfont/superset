@@ -68,6 +68,9 @@ func main() {
 		&domaindb.Database{},
 		&domaindataset.Dataset{},
 		&domainquery.Query{},
+		&domainquery.SavedQuery{},
+		&domainquery.TabState{},
+		&domainquery.TableSchema{},
 	); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}

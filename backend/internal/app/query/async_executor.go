@@ -153,17 +153,25 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 	}
 	queueKey := resolveQueue(roles)
 
-	// Create query record
+	// Create query record with all metadata fields
+	now := time.Now()
 	q := &query.Query{
-		ID:         queryID,
-		ClientID:   req.ClientID,
-		DatabaseID: req.DatabaseID,
-		UserID:     userCtx.ID,
-		SQL:        req.SQL,
-		Status:     "pending",
-		Schema:     req.Schema,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:              queryID,
+		ClientID:        req.ClientID,
+		DatabaseID:      req.DatabaseID,
+		UserID:          userCtx.ID,
+		TabName:         req.TabName,
+		SqlEditorID:     req.SqlEditorID,
+		Schema:          req.Schema,
+		Catalog:         req.Catalog,
+		SQL:             req.SQL,
+		SelectAsCTAUsed: req.SelectAsCTA,
+		Progress:        "queued",
+		Status:          "pending",
+		StartTime:       &now,
+		ChangedOn:       &now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	// Save query to database
@@ -171,18 +179,22 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 		return nil, fmt.Errorf("creating query record: %w", err)
 	}
 
-	// Create task payload
+	// Create task payload with all metadata
 	task := query.QueryTask{
 		QueryID:      queryID,
 		DatabaseID:   req.DatabaseID,
 		SQL:          req.SQL,
 		Limit:        req.Limit,
 		Schema:       req.Schema,
+		Catalog:      req.Catalog,
+		TabName:      req.TabName,
+		SqlEditorID:  req.SqlEditorID,
 		ClientID:     req.ClientID,
 		ForceRefresh: req.ForceRefresh,
+		SelectAsCTA:  req.SelectAsCTA,
 		UserID:       userCtx.ID,
 		Username:     userCtx.Username,
-		Roles:        roles, // G-5: include roles for queue routing
+		Roles:        roles,
 	}
 
 	// Enqueue task using Redis LPush
@@ -234,9 +246,10 @@ func (e *AsyncQueryExecutor) GetStatus(ctx context.Context, queryID string, user
 	}
 
 	response := &query.QueryStatusResponse{
-		QueryID: queryID,
-		Status:  q.Status,
-		Rows:    q.Rows,
+		QueryID:  queryID,
+		Status:   q.Status,
+		Progress: q.Progress,
+		Rows:     q.Rows,
 	}
 
 	if q.StartTime != nil {
@@ -304,10 +317,13 @@ func (e *AsyncQueryExecutor) Cancel(ctx context.Context, queryID string, userCtx
 	}
 
 	// Update query status
-	q.Status = "stopped"
-	q.ErrorMessage = "Cancelled by user"
 	now := time.Now()
+	q.Status = "stopped"
+	q.Progress = "stopped"
+	q.ErrorMessage = "Cancelled by user"
 	q.EndTime = &now
+	q.ChangedOn = &now
+	q.UpdatedAt = now
 	if err := e.queryRepo.Update(ctx, q); err != nil {
 		return fmt.Errorf("updating query: %w", err)
 	}
@@ -319,12 +335,6 @@ func (e *AsyncQueryExecutor) Cancel(ctx context.Context, queryID string, userCtx
 func (e *AsyncQueryExecutor) ExecuteTask(ctx context.Context, task *query.QueryTask) error {
 	queueKey := resolveQueueForTask(task)
 	return e.executeQuery(ctx, task, queueKey)
-}
-
-// resolveQueueForTask resolves the queue key for a task
-func resolveQueueForTask(task *query.QueryTask) string {
-	// For now, use default queue - in production would check user roles
-	return queryQueueKey
 }
 
 // executeQuery executes a query task with retry logic
@@ -354,8 +364,11 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	startTime := time.Now()
 	running := *q
 	running.Status = "running"
+	running.Progress = "running"
+	running.StartRunningTime = &startTime
 	running.StartTime = &startTime
 	running.UpdatedAt = time.Now()
+	running.ChangedOn = &startTime
 	if err := e.queryRepo.Update(ctx, &running); err != nil {
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
 		return err
@@ -370,7 +383,12 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 		SQL:          task.SQL,
 		Limit:        task.Limit,
 		Schema:       task.Schema,
+		Catalog:      task.Catalog,
+		TabName:      task.TabName,
+		SqlEditorID:  task.SqlEditorID,
+		ClientID:     task.ClientID,
 		ForceRefresh: task.ForceRefresh,
+		SelectAsCTA:  task.SelectAsCTA,
 	}
 
 	// Create user context from task
@@ -414,9 +432,11 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	// All retries failed - QE-004 #5
 	failed := running
 	failed.Status = "failed"
+	failed.Progress = "failed"
 	failed.ErrorMessage = fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr)
 	now := time.Now()
 	failed.EndTime = &now
+	failed.ChangedOn = &now
 	failed.UpdatedAt = now
 	_ = e.queryRepo.Update(ctx, &failed)
 	e.publishStatus(ctx, queryID, "failed", nil)
@@ -448,9 +468,11 @@ func (e *AsyncQueryExecutor) isCancelled(ctx context.Context, queryID string) (b
 func (e *AsyncQueryExecutor) handleQueryCancelled(ctx context.Context, q *query.Query, queryID string) error {
 	updated := *q
 	updated.Status = "stopped"
+	updated.Progress = "stopped"
 	updated.ErrorMessage = "Cancelled by user"
 	now := time.Now()
 	updated.EndTime = &now
+	updated.ChangedOn = &now
 	updated.UpdatedAt = now
 	if err := e.queryRepo.Update(ctx, &updated); err != nil {
 		return err
@@ -517,10 +539,12 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 
 	updated := *q
 	updated.Status = "success"
+	updated.Progress = "done"
 	updated.EndTime = &endTime
 	updated.Rows = rowCount
 	updated.ResultsKey = resultsKey
 	updated.ExecutedSQL = resp.Query.ExecutedSQL
+	updated.ChangedOn = &endTime
 	updated.UpdatedAt = time.Now()
 	if err := e.queryRepo.Update(ctx, &updated); err != nil {
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)

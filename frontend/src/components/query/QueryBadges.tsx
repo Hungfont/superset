@@ -171,9 +171,10 @@ export function RunButton({ onClick, disabled, isRunning }: RunButtonProps) {
 
 export interface AsyncStatusProps {
   status: "pending" | "queued" | "running" | "done" | "failed" | "stopped";
+  progress?: string;
 }
 
-export function AsyncStatusBadge({ status }: AsyncStatusProps) {
+export function AsyncStatusBadge({ status, progress }: AsyncStatusProps) {
   if (status === "pending" || status === "queued") {
     return (
       <Badge variant="outline" className="h-6 text-muted-foreground bg-muted/30">
@@ -187,7 +188,7 @@ export function AsyncStatusBadge({ status }: AsyncStatusProps) {
     return (
       <Badge variant="outline" className="h-6 text-amber-600 bg-amber-50 border-amber-200">
         <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-        Running...
+        {progress && progress !== "running" ? `${progress}...` : "Running..."}
       </Badge>
     );
   }
@@ -252,18 +253,25 @@ export function CancelButton({ onClick, disabled }: CancelButtonProps) {
 
 interface AsyncProgressBarProps {
   status: "pending" | "queued" | "running" | "done" | "failed" | "stopped";
+  progress?: string;
 }
 
-export function AsyncProgressBar({ status }: AsyncProgressBarProps) {
+export function AsyncProgressBar({ status, progress }: AsyncProgressBarProps) {
   if (status !== "running" && status !== "queued") {
     return null;
   }
+
+  const progressLabel = progress && progress !== "running"
+    ? `Processing (${progress})...`
+    : status === "running"
+      ? "Processing query..."
+      : "Waiting in queue...";
 
   return (
     <div className="w-full space-y-1">
       <Progress value={status === "running" ? 50 : 20} className="h-1" />
       <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{status === "running" ? "Processing query..." : "Waiting in queue..."}</span>
+        <span>{progressLabel}</span>
       </div>
     </div>
   );

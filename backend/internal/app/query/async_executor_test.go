@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,7 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	authdomain "superset/auth-service/internal/domain/auth"
+	domainquery "superset/auth-service/internal/domain/query"
 )
+
+// Ensure queryRepoStub implements domain Repository interface
+var _ domainquery.Repository = (*queryRepoStub)(nil)
 
 type queryRepoStub struct {
 	created *Query

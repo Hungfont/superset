@@ -29,6 +29,14 @@ func (r *queryRepo) GetByID(ctx context.Context, id string) (*query.Query, error
 	return &q, nil
 }
 
+func (r *queryRepo) GetByClientID(ctx context.Context, clientID string) (*query.Query, error) {
+	var q query.Query
+	if err := r.db.WithContext(ctx).Where("client_id = ?", clientID).First(&q).Error; err != nil {
+		return nil, fmt.Errorf("getting query by client_id: %w", err)
+	}
+	return &q, nil
+}
+
 func (r *queryRepo) Update(ctx context.Context, q *query.Query) error {
 	return r.db.WithContext(ctx).Save(q).Error
 }

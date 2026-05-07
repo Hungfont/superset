@@ -53,13 +53,4 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 These guidelines are working if: fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-## Source of Truth
-
-This file is the single source of truth for agent orchestration in this repository.
-
-If codebase context is needed before planning or implementation, use docs/CODEMAPS/** as the source of truth for project structure and flow discovery.
-
-Agent definitions are located in .github/agents/.
-
-Codebase context discovery source of truth: docs/CODEMAPS/**.md if you want to explore code structure or codebase
-db schema discovery: docs/db/db-overview.md
+## important: codebase discovery will be explored into .opencode/explore folder and never read anything about codebase out of that folder.

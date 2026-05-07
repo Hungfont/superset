@@ -9,13 +9,20 @@ export interface QueryColumn {
 }
 
 export interface QueryMeta {
-  id: number;
+  id: string;
+  client_id?: string;
   sql: string;
   executed_sql: string;
   start_time: string;
+  start_running_time?: string;
   end_time: string;
   rows: number;
+  limit: number;
+  limiting_factor: number;
   status: string;
+  progress?: string;
+  results_key?: string;
+  select_as_cta_used?: boolean;
 }
 
 export interface ExecuteQueryRequest {
@@ -23,8 +30,12 @@ export interface ExecuteQueryRequest {
   sql: string;
   limit?: number;
   schema?: string;
+  catalog?: string;
+  tab_name?: string;
+  sql_editor_id?: string;
   client_id?: string;
   force_refresh?: boolean;
+  select_as_cta?: boolean;
 }
 
 export interface ExecuteQueryResponse {
@@ -41,8 +52,12 @@ export interface SubmitQueryRequest {
   sql: string;
   limit?: number;
   schema?: string;
+  catalog?: string;
+  tab_name?: string;
+  sql_editor_id?: string;
   client_id?: string;
   force_refresh?: boolean;
+  select_as_cta?: boolean;
 }
 
 export interface SubmitQueryResponse {
@@ -54,13 +69,14 @@ export interface SubmitQueryResponse {
 export interface QueryStatusResponse {
   query_id: string;
   status: string;
+  progress?: string;
   start_time?: string;
   end_time?: string;
   rows: number;
   results_key?: string;
   error?: string;
   elapsed_ms: number;
-  timeout_at?: string; // Unix timestamp when query will timeout (30s from start_time)
+  timeout_at?: string;
 }
 
 function getAuthHeaders(contentType = false): HeadersInit {
