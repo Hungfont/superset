@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem D:/superset/backend/ -Recurse -Depth 1)",
+      "Bash(Select-Object FullName)"
+    ]
+  }
+}
