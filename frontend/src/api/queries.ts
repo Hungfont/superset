@@ -1,7 +1,33 @@
 import { request } from "@/utils/request";
 import { useAuthStore } from "@/stores/authStore";
 
+// QE-005: WebSocket event types
+export interface WsProgressEvent {
+  type: "progress";
+  query_id: string;
+  progress?: string;
+  percent?: number;
+}
 
+export interface WsDoneEvent {
+  type: "done";
+  query_id: string;
+  data: { rows: Record<string, unknown>[]; columns: { name: string; type: string }[] };
+}
+
+export interface WsResultReadyEvent {
+  type: "result_ready";
+  query_id: string;
+  download_url: string;
+}
+
+export interface WsErrorEvent {
+  type: "error";
+  query_id: string;
+  message: string;
+}
+
+export type WsEvent = WsProgressEvent | WsDoneEvent | WsResultReadyEvent | WsErrorEvent;
 
 export interface QueryColumn {
   name: string;

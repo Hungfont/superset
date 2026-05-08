@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rsa"
 	"fmt"
 	"net/http"
@@ -93,6 +94,84 @@ func JWTMiddleware(pubKey *rsa.PublicKey, jwtRepo domain.JWTRepository, userRepo
 		c.Set(UserContextKey, *uctx)
 		c.Next()
 	}
+}
+
+// ValidateJWTFromQuery validates a JWT token from a query string parameter.
+// Returns UserContext and nil error on success, or nil and an HTTP status code on failure.
+func ValidateJWTFromQuery(tokenStr string, pubKey *rsa.PublicKey, jwtRepo domain.JWTRepository, userRepo domain.UserRepository) (*domain.UserContext, int) {
+	if tokenStr == "" {
+		return nil, http.StatusUnauthorized
+	}
+
+	keyFunc := func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return pubKey, nil
+	}
+
+	token, err := jwt.Parse(tokenStr, keyFunc, jwt.WithValidMethods([]string{"RS256"}))
+	if err != nil || !token.Valid {
+		return nil, http.StatusUnauthorized
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, http.StatusUnauthorized
+	}
+
+	jti, _ := claims["jti"].(string)
+	sub, _ := claims["sub"].(string)
+
+	// Check jti blacklist
+	if jti != "" {
+		revoked, err := jwtRepo.IsBlacklisted(context.Background(), jti)
+		if err != nil {
+			return nil, http.StatusInternalServerError
+		}
+		if revoked {
+			return nil, http.StatusUnauthorized
+		}
+	}
+
+	uid, err := strconv.ParseUint(sub, 10, 64)
+	if err != nil {
+		return nil, http.StatusUnauthorized
+	}
+	userID := uint(uid)
+
+	// Load user from cache or DB
+	cached, err := jwtRepo.GetCachedUser(context.Background(), userID)
+	if err != nil {
+		return nil, http.StatusInternalServerError
+	}
+	if cached != nil {
+		if !cached.Active {
+			return nil, http.StatusForbidden
+		}
+		return cached, 0
+	}
+
+	user, err := userRepo.FindByID(context.Background(), userID)
+	if err != nil {
+		return nil, http.StatusInternalServerError
+	}
+	if user == nil {
+		return nil, http.StatusUnauthorized
+	}
+	if !user.Active {
+		return nil, http.StatusForbidden
+	}
+
+	uctx := &domain.UserContext{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		Active:   user.Active,
+	}
+	_ = jwtRepo.SetCachedUser(context.Background(), userID, uctx)
+
+	return uctx, 0
 }
 
 // resolveUser returns the UserContext from Redis cache or DB (with cache repopulation).

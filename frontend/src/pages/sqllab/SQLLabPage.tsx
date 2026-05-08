@@ -25,9 +25,12 @@ import {
   AsyncProgressBar,
   QueueBadge,
 } from "@/components/query/QueryBadges";
+import { WsStatusBadge } from "@/components/query/WsStatusBadge";
+import { DownloadButton } from "@/components/query/DownloadButton";
 import { DataTable } from "@/components/ui/data-table";
 import { useSqlLabStore } from "@/stores/sqlLabStore";
-import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse } from "@/api/queries";
+import { useWsStore } from "@/stores/wsStore";
+import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
@@ -71,7 +74,6 @@ function RLSSection({
 export default function SQLLabPage() {
   const { toast } = useToast();
   const lastQueryDurationRef = useRef<number>(0);
-  const wsConnectionRef = useRef<WebSocket | null>(null);
   const pollingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const {
@@ -88,8 +90,12 @@ export default function SQLLabPage() {
     setTabError,
     setDatabaseId,
     setAsyncState,
-    clearAsyncState,
   } = useSqlLabStore();
+
+  const wsSubscribe = useWsStore(s => s.subscribe);
+  const wsUnsubscribe = useWsStore(s => s.unsubscribe);
+  const wsIsFallback = useWsStore(s => s.isFallbackToPolling);
+
 
   const activeTab = tabs.find(t => t.id === activeTabId);
 
@@ -129,38 +135,41 @@ export default function SQLLabPage() {
     },
   });
 
-  const fetchQueryStatus = useCallback(async (queryId: string, currentTab: typeof activeTab) => {
-    if (!activeTabId) return;
+  // findTabByQueryId: finds the tab that owns the given async query
+  const findTabByQueryId = (queryId: string): string | null => {
+    const tabs = useSqlLabStore.getState().tabs;
+    const tab = tabs.find(t => t.asyncQueryId === queryId);
+    return tab?.id ?? null;
+  };
 
+  const fetchQueryStatus = useCallback(async (queryId: string) => {
     try {
       const status = await queriesApi.getStatus(queryId);
-      if (!activeTabId) return;
+      let tabId = findTabByQueryId(queryId);
+      if (!tabId) {
+        // Tab not found by asyncQueryId — check if result was already set via WS
+        const alreadyDone = useSqlLabStore.getState().tabs.some(
+          t => t.result?.query?.client_id === queryId || t.result?.query?.id === queryId
+        );
+        if (alreadyDone) return; // WS already handled completion
+        // Fallback: try the active tab (may be stale tab switch)
+        tabId = useSqlLabStore.getState().activeTabId;
+      }
+      if (!tabId) return;
 
-      // G-4 FIX: Check for timeout with proper validation
       if (status.timeout_at) {
         const timeoutTime = new Date(status.timeout_at).getTime();
         const now = Date.now();
-        // DEBUG: Log timeout values to help debug the issue
-        console.log("[QE-004 DEBUG] timeout_at:", status.timeout_at, "parsed:", timeoutTime, "isNaN:", isNaN(timeoutTime));
-        // Only trigger timeout if:
-        // 1. timeoutTime is a valid number (not NaN from invalid date)
-        // 2. The timeout was set to a reasonable future time (year >= 2020), not Go zero time
-        // 3. The timeout is actually in the past (now >= timeoutTime)
         const isValidFutureTimeout = !isNaN(timeoutTime) && timeoutTime >= 1577836800000;
-        console.log("[QE-DEBUG] isValidFutureTimeout:", isValidFutureTimeout, "now:", now, "condition:", isValidFutureTimeout && now >= timeoutTime);
         if (isValidFutureTimeout && now >= timeoutTime) {
-          // Query timed out
-          setTabError(activeTabId, "Query timed out after 30 seconds");
+          const s = useSqlLabStore.getState();
+          s.setTabError(tabId, "Query timed out after 30 seconds");
           showSystemNotification("Query Timeout", "Your async query exceeded the 30 second timeout.");
-          
           if (pollingTimeoutRef.current) {
             clearTimeout(pollingTimeoutRef.current);
           }
-          if (wsConnectionRef.current) {
-            wsConnectionRef.current.close();
-            wsConnectionRef.current = null;
-          }
-          clearAsyncState(activeTabId);
+          wsUnsubscribe(queryId);
+          s.clearAsyncState(tabId);
           return;
         }
       }
@@ -172,15 +181,23 @@ export default function SQLLabPage() {
         status.status === "stopped" ? "stopped" :
         status.status === "pending" ? "pending" : "queued";
 
-      setAsyncState(activeTabId, queryId, mappedStatus, currentTab?.asyncQueue);
+      const s = useSqlLabStore.getState();
+      const tab = s.tabs.find(t => t.id === tabId);
+      s.setAsyncState(tabId, queryId, mappedStatus, tab?.asyncQueue);
 
-      if (status.progress && activeTabId) {
-        const tab = useSqlLabStore.getState().tabs.find(t => t.id === activeTabId);
+      if (status.progress) {
         if (tab) {
+          const pctFromStatus: Record<string, string> = {
+            queued: "10%",
+            running: "50%",
+            done: "100%",
+            failed: "0%",
+          };
+          const progressDisplay = pctFromStatus[status.progress] || status.progress;
           useSqlLabStore.setState({
             tabs: useSqlLabStore.getState().tabs.map(t =>
-              t.id === activeTabId ? { ...t, progress: status.progress } : t
-            )
+              t.id === tabId ? { ...t, progress: progressDisplay } : t
+            ),
           });
         }
       }
@@ -190,15 +207,11 @@ export default function SQLLabPage() {
           clearTimeout(pollingTimeoutRef.current);
         }
 
-        if (wsConnectionRef.current) {
-          wsConnectionRef.current.close();
-          wsConnectionRef.current = null;
-        }
-
         if (status.status === "success") {
           try {
             const result = await queriesApi.getResult(queryId);
-            setTabResult(activeTabId, {
+            const store = useSqlLabStore.getState();
+            store.setTabResult(tabId, {
               data: result.data,
               columns: result.columns,
               from_cache: false,
@@ -207,7 +220,7 @@ export default function SQLLabPage() {
                 id: "",
                 client_id: queryId,
                 executed_sql: "",
-                sql: currentTab?.sql || "",
+                sql: tab?.sql || "",
                 start_time: status.start_time || "",
                 start_running_time: status.start_time,
                 end_time: status.end_time || "",
@@ -219,147 +232,131 @@ export default function SQLLabPage() {
                 results_key: status.results_key,
               },
             });
-            setTabStatus(activeTabId, "success");
-
+            store.setTabStatus(tabId, "success");
             toast(`Query complete - ${result.rows} rows`);
-
             showSystemNotification("Query Complete", "Your async query has finished processing.");
           } catch {
-            setTabStatus(activeTabId, "success");
+            useSqlLabStore.getState().setTabStatus(tabId, "success");
           }
         } else if (status.status === "failed") {
-          setTabError(activeTabId, status.error || "Query failed");
+          useSqlLabStore.getState().setTabError(tabId, status.error || "Query failed");
           showSystemNotification("Query Failed", status.error || "Your query failed to execute.");
         }
 
-        clearAsyncState(activeTabId);
+        useSqlLabStore.getState().clearAsyncState(tabId);
       }
     } catch (error) {
       console.error("Error fetching query status:", error);
     }
-  }, [activeTabId, setAsyncState, setTabResult, setTabStatus, setTabError, clearAsyncState, toast]);
+  }, [toast, wsUnsubscribe]);
 
-  const startPolling = useCallback((queryId: string, currentTab: typeof activeTab) => {
+  const startPolling = useCallback((queryId: string) => {
     if (pollingTimeoutRef.current) {
       clearTimeout(pollingTimeoutRef.current);
     }
 
     const poll = () => {
-      fetchQueryStatus(queryId, currentTab);
+      fetchQueryStatus(queryId);
     };
 
     poll();
     pollingTimeoutRef.current = setInterval(poll, POLLING_INTERVAL_MS);
   }, [fetchQueryStatus]);
 
-  const connectWebSocket = useCallback((queryId: string, currentTab: typeof activeTab) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/query/${queryId}`;
+  const handleWsEvent = useCallback((queryId: string) => {
+    const wsUnsub = wsUnsubscribe;
+    return (data: WsEvent) => {
+      const tabId = findTabByQueryId(queryId);
+      if (!tabId) return;
 
-    const token = localStorage.getItem('access_token');
-    const wsUrlWithToken = token ? `${wsUrl}?token=${token}` : wsUrl;
+      if (data.type === "done" && data.data) {
+        const store = useSqlLabStore.getState();
+        const tab = store.tabs.find(t => t.id === tabId);
+        useSqlLabStore.setState({
+          tabs: useSqlLabStore.getState().tabs.map(t =>
+            t.id === tabId ? { ...t, progress: "100%" } : t
+          ),
+        });
+        store.setTabResult(tabId, {
+          data: data.data.rows || [],
+          columns: data.data.columns || [],
+          from_cache: false,
+          results_truncated: undefined,
+          query: {
+            id: data.query_id || "",
+            client_id: data.query_id,
+            executed_sql: "",
+            sql: tab?.sql || "",
+            start_time: "",
+            start_running_time: undefined,
+            end_time: "",
+            rows: data.data.rows?.length || 0,
+            limit: 0,
+            limiting_factor: 0,
+            status: "success",
+            progress: "done",
+            results_key: "",
+          },
+        });
+        store.setTabStatus(tabId, "success");
 
-    try {
-      const ws = new WebSocket(wsUrlWithToken);
-
-      ws.onopen = () => {
-        console.log("WebSocket connected for query:", queryId);
-      };
-
-      ws.onmessage = (event) => {
-        if (!activeTabId) return;
-
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.type === "done" && data.data) {
-            setTabResult(activeTabId, {
-              data: data.data.rows || [],
-              columns: data.data.columns || [],
-              from_cache: false,
-              results_truncated: undefined,
-              query: {
-                id: data.query_id || "",
-                client_id: data.query_id,
-                executed_sql: data.data.executed_sql || "",
-                sql: currentTab?.sql || "",
-                start_time: data.data.start_time || "",
-                start_running_time: data.data.start_running_time,
-                end_time: data.data.end_time || "",
-                rows: data.data.rows?.length || 0,
-                limit: data.data.limit || 0,
-                limiting_factor: data.data.limiting_factor || 0,
-                status: "success",
-                progress: "done",
-                results_key: data.data.results_key,
-              },
-            });
-            setTabStatus(activeTabId, "success");
-
-            if (pollingTimeoutRef.current) {
-              clearTimeout(pollingTimeoutRef.current);
-            }
-            if (wsConnectionRef.current) {
-              wsConnectionRef.current.close();
-              wsConnectionRef.current = null;
-            }
-
-            toast("Query complete - Results received via real-time update");
-
-            showSystemNotification("Query Complete", "Your async query has finished processing.");
-            clearAsyncState(activeTabId);
-          } else if (data.type === "status") {
-            const mappedStatus: "pending" | "queued" | "running" | "done" | "failed" | "stopped" =
-              data.status === "running" ? "running" :
-              data.status === "pending" ? "pending" : "queued";
-            setAsyncState(activeTabId, queryId, mappedStatus, currentTab?.asyncQueue);
-            if (data.progress && activeTabId) {
-              const tab = useSqlLabStore.getState().tabs.find(t => t.id === activeTabId);
-              if (tab) {
-                useSqlLabStore.setState({
-                  tabs: useSqlLabStore.getState().tabs.map(t =>
-                    t.id === activeTabId ? { ...t, progress: data.progress } : t
-                  )
-                });
-              }
-            }
-          } else if (data.type === "error") {
-            setTabError(activeTabId, data.message || "Query failed");
-            showSystemNotification("Query Failed", data.message || "Your query failed to execute.");
-            if (pollingTimeoutRef.current) {
-              clearTimeout(pollingTimeoutRef.current);
-            }
-            if (wsConnectionRef.current) {
-              wsConnectionRef.current.close();
-              wsConnectionRef.current = null;
-            }
-            clearAsyncState(activeTabId);
-          }
-        } catch (e) {
-          console.error("Error parsing WS message:", e);
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
         }
-      };
+        wsUnsub(queryId);
 
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
+        toast("Query complete - Results received via real-time update");
+        showSystemNotification("Query Complete", "Your async query has finished processing.");
+        store.clearAsyncState(tabId);
+      } else if (data.type === "progress") {
+        const mappedStatus: "pending" | "queued" | "running" | "done" | "failed" | "stopped" =
+          data.progress === "running" ? "running" :
+          data.progress === "pending" ? "pending" : "queued";
+        const store = useSqlLabStore.getState();
+        const tab = store.tabs.find(t => t.id === tabId);
+        store.setAsyncState(tabId, queryId, mappedStatus, tab?.asyncQueue);
+        // Use percent if available (spec: "Running (42%)..."), fallback to progress string
+        const progressDisplay = typeof data.percent === "number" ? `${data.percent}%` : data.progress;
+        if (progressDisplay && tab) {
+          useSqlLabStore.setState({
+            tabs: useSqlLabStore.getState().tabs.map(t =>
+              t.id === tabId ? { ...t, progress: progressDisplay } : t
+            ),
+          });
+        }
+      } else if (data.type === "result_ready") {
+        const store = useSqlLabStore.getState();
+        useSqlLabStore.setState({
+          tabs: useSqlLabStore.getState().tabs.map(t =>
+            t.id === tabId ? { ...t, progress: "100%" } : t
+          ),
+        });
+        store.setDownloadUrl(tabId, data.download_url);
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
+        }
+        wsUnsub(queryId);
 
-      ws.onclose = () => {
-        console.log("WebSocket disconnected for query:", queryId);
-      };
-
-      wsConnectionRef.current = ws;
-    } catch (error) {
-      console.error("Failed to connect WebSocket:", error);
-    }
-  }, [activeTabId, setTabResult, setTabStatus, setTabError, setAsyncState, clearAsyncState, toast]);
-
-  const disconnectWebSocket = useCallback(() => {
-    if (wsConnectionRef.current) {
-      wsConnectionRef.current.close();
-      wsConnectionRef.current = null;
-    }
-  }, []);
+        toast("Query complete - Large result ready for download");
+        showSystemNotification("Query Complete", "Your query completed. Large result ready for download.");
+        store.clearAsyncState(tabId);
+      } else if (data.type === "error") {
+        const store = useSqlLabStore.getState();
+        useSqlLabStore.setState({
+          tabs: useSqlLabStore.getState().tabs.map(t =>
+            t.id === tabId ? { ...t, progress: "0%" } : t
+          ),
+        });
+        store.setTabError(tabId, data.message || "Query failed");
+        showSystemNotification("Query Failed", data.message || "Your query failed to execute.");
+        if (pollingTimeoutRef.current) {
+          clearTimeout(pollingTimeoutRef.current);
+        }
+        wsUnsub(queryId);
+        store.clearAsyncState(tabId);
+      }
+    };
+  }, [toast, wsUnsubscribe]);
 
   useEffect(() => {
     requestNotificationPermission();
@@ -367,12 +364,50 @@ export default function SQLLabPage() {
 
   useEffect(() => {
     return () => {
-      disconnectWebSocket();
+      if (activeTab?.asyncQueryId) {
+        wsUnsubscribe(activeTab.asyncQueryId);
+      }
       if (pollingTimeoutRef.current) {
         clearTimeout(pollingTimeoutRef.current);
       }
     };
-  }, [disconnectWebSocket]);
+  }, [activeTab?.asyncQueryId, wsUnsubscribe]);
+
+  const subscribedQueryIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const queryId = activeTab?.asyncQueryId;
+    if (queryId && !subscribedQueryIds.current.has(queryId)) {
+      const handler = handleWsEvent(queryId);
+      wsSubscribe(queryId, handler);
+      subscribedQueryIds.current.add(queryId);
+
+      // Check after 7s if WS failed and fallback to polling
+      const fallbackTimer = setTimeout(() => {
+        if (wsIsFallback(queryId)) {
+          startPolling(queryId);
+        }
+      }, 7000);
+
+      return () => {
+        clearTimeout(fallbackTimer);
+      };
+    }
+  }, [activeTab?.asyncQueryId, handleWsEvent, wsSubscribe, wsIsFallback, startPolling]);
+
+  // Reconnection toast effect — reactively watches WS status via Zustand
+  const wsConnectionStatus = useWsStore(s =>
+    activeTab?.asyncQueryId ? s.connections[activeTab.asyncQueryId]?.status : undefined
+  );
+  const prevConnStatusRef = useRef<string | undefined>();
+
+  useEffect(() => {
+    if (!wsConnectionStatus) return;
+    if (prevConnStatusRef.current === "connected" && wsConnectionStatus === "reconnecting") {
+      toast("Connection lost. Reconnecting...");
+    }
+    prevConnStatusRef.current = wsConnectionStatus;
+  }, [wsConnectionStatus, toast]);
 
   const submitAsyncMutation = useMutation({
     mutationFn: queriesApi.submit,
@@ -384,9 +419,7 @@ export default function SQLLabPage() {
           description: "Results will appear when complete.",
         });
 
-        const currentTab = tabs.find(t => t.id === activeTabId);
-        startPolling(data.query_id, currentTab || undefined);
-        connectWebSocket(data.query_id, currentTab || undefined);
+        startPolling(data.query_id);
       }
     },
     onError: (error: Error) => {
@@ -401,7 +434,9 @@ export default function SQLLabPage() {
     onSuccess: () => {
       if (activeTabId) {
         setAsyncState(activeTabId, activeTab?.asyncQueryId || "", "stopped", activeTab?.asyncQueue);
-        disconnectWebSocket();
+        if (activeTab?.asyncQueryId) {
+          wsUnsubscribe(activeTab.asyncQueryId);
+        }
         if (pollingTimeoutRef.current) {
           clearTimeout(pollingTimeoutRef.current);
         }
@@ -499,7 +534,7 @@ export default function SQLLabPage() {
   return (
     <div className="container mx-auto py-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">SQL Lab</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2">SQL Lab {activeTab?.asyncQueryId && <WsStatusBadge queryId={activeTab.asyncQueryId} />}</h1>
         <div className="flex items-center gap-2">
           <Select onValueChange={handleDatabaseSelect} value={databaseId?.toString()}>
             <SelectTrigger className="w-[200px]">
@@ -652,6 +687,8 @@ export default function SQLLabPage() {
                 Run a query to see results
               </div>
             )}
+
+            {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
 
             {tab.result && (
               <div className="space-y-2">

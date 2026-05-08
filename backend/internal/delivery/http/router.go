@@ -29,6 +29,7 @@ func NewRouter(
 	datasetHandler *httpdataset.Handler,
 	rlsHandler *httpsrls.Handler,
 	queryHandler *httpquery.Handler,
+	wsHandler *httpquery.WSHandler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -38,6 +39,12 @@ func NewRouter(
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+
+	// WebSocket endpoint (JWT in query string, not header)
+	r.GET("/ws/query/:query_id", wsHandler.Handle)
+
+	// Download endpoint for large query results (JWT in query string for window.open compat)
+	r.GET("/api/v1/query/:id/result/download", queryHandler.GetResultByToken)
 
 	v1 := r.Group("/api/v1")
 	{

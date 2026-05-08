@@ -1,25 +1,31 @@
 package query
 
 import (
+	"crypto/rsa"
 	"net/http"
 
 	svcquery "superset/auth-service/internal/app/query"
 	domain "superset/auth-service/internal/domain/auth"
 	domainquery "superset/auth-service/internal/domain/query"
+	"superset/auth-service/internal/delivery/http/middleware"
+
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	executor      *svcquery.QueryExecutor
 	asyncExecutor *svcquery.AsyncQueryExecutor
+	pubKey        *rsa.PublicKey
+	jwtRepo       domain.JWTRepository
+	userRepo      domain.UserRepository
 }
 
 func NewHandler(executor *svcquery.QueryExecutor) *Handler {
 	return &Handler{executor: executor}
 }
 
-func NewHandlerWithAsync(executor *svcquery.QueryExecutor, asyncExecutor *svcquery.AsyncQueryExecutor) *Handler {
-	return &Handler{executor: executor, asyncExecutor: asyncExecutor}
+func NewHandlerWithAsync(executor *svcquery.QueryExecutor, asyncExecutor *svcquery.AsyncQueryExecutor, pubKey *rsa.PublicKey, jwtRepo domain.JWTRepository, userRepo domain.UserRepository) *Handler {
+	return &Handler{executor: executor, asyncExecutor: asyncExecutor, pubKey: pubKey, jwtRepo: jwtRepo, userRepo: userRepo}
 }
 
 // Use domain types via type aliases
@@ -204,6 +210,39 @@ func (h *Handler) Cancel(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+}
+
+// GetResultByToken handles download link for large results via query param auth
+func (h *Handler) GetResultByToken(c *gin.Context) {
+	if h.asyncExecutor == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "async_not_available"})
+		return
+	}
+
+	tokenStr := c.Query("token")
+	userCtx, statusCode := middleware.ValidateJWTFromQuery(tokenStr, h.pubKey, h.jwtRepo, h.userRepo)
+	if statusCode != 0 {
+		c.AbortWithStatus(statusCode)
+		return
+	}
+
+	queryID := c.Param("id")
+	if queryID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "query id required"})
+		return
+	}
+
+	resp, err := h.asyncExecutor.GetResultForUser(c.Request.Context(), queryID, *userCtx)
+	if err != nil {
+		if err.Error() == "forbidden" {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "result_not_found", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetResult handles getting query result

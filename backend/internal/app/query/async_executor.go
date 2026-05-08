@@ -52,6 +52,9 @@ const (
 	WorkerPoolCritical = 10
 	WorkerPoolDefault  = 20
 	WorkerPoolLow      = 5
+
+	// QE-005: Max inline result size (1MB)
+	MaxInlineResultBytes = 1024 * 1024
 )
 
 // AsyncQueryExecutor handles async query execution
@@ -375,7 +378,7 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	}
 
 	// Publish status: running
-	e.publishStatus(ctx, queryID, "running", nil)
+	e.publishProgress(ctx, queryID, "running")
 
 	// Execute the query using the sync executor
 	execReq := ExecuteRequest{
@@ -439,7 +442,8 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	failed.ChangedOn = &now
 	failed.UpdatedAt = now
 	_ = e.queryRepo.Update(ctx, &failed)
-	e.publishStatus(ctx, queryID, "failed", nil)
+	e.publishProgress(ctx, queryID, "failed")
+	e.publishError(ctx, queryID, fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr))
 	return lastErr
 }
 
@@ -477,7 +481,7 @@ func (e *AsyncQueryExecutor) handleQueryCancelled(ctx context.Context, q *query.
 	if err := e.queryRepo.Update(ctx, &updated); err != nil {
 		return err
 	}
-	e.publishStatus(ctx, queryID, "stopped", nil)
+	e.publishError(ctx, queryID, "Query cancelled")
 	return nil
 }
 
@@ -519,13 +523,19 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 		return e.handleQueryCancelled(ctx, q, queryID)
 	}
 
-	// Store result in Redis if needed
+	// Store result in Redis (up to 10MB)
 	var resultsKey string
+	var resultSize int
+	var respJSON []byte
 	if e.rdb != nil && resp.Data != nil {
-		respJSON, err := json.Marshal(resp)
-		if err == nil && len(respJSON) <= 1024*1024 {
-			resultsKey = queryResultKey + queryID
-			e.rdb.Set(ctx, resultsKey, respJSON, 24*time.Hour)
+		respJSON, err = json.Marshal(resp)
+		if err == nil {
+			resultSize = len(respJSON)
+			// Store up to 10MB in Redis
+			if resultSize <= 10*MaxInlineResultBytes {
+				resultsKey = queryResultKey + queryID
+				e.rdb.Set(ctx, resultsKey, respJSON, 24*time.Hour)
+			}
 		}
 	}
 
@@ -550,42 +560,134 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
 	}
 
-	e.publishStatus(ctx, queryID, "success", resp)
+	e.publishProgress(ctx, queryID, "done")
+
+	// QE-005: Size-based event routing
+	switch {
+	case resultSize > 0 && resultSize <= MaxInlineResultBytes:
+		e.publishInlineResult(ctx, queryID, resp)
+	case resultSize > MaxInlineResultBytes:
+		e.publishResultReady(ctx, queryID)
+	default:
+		// Empty result (nil data, marshal failure, or 0 rows)
+		emptyResp := &ExecuteResponse{
+			Data:    []interface{}{},
+			Columns: resp.Columns,
+		}
+		e.publishInlineResult(ctx, queryID, emptyResp)
+	}
 	return nil
 }
 
-// publishStatus publishes a status event via Redis pub/sub
-func (e *AsyncQueryExecutor) publishStatus(ctx context.Context, queryID, status string, result *ExecuteResponse) {
+// publishProgress publishes a progress event via Redis pub/sub
+// Per spec: { "type": "progress", "query_id": "...", "percent": 42 }
+func (e *AsyncQueryExecutor) publishProgress(ctx context.Context, queryID, progress string) {
 	if e.rdb == nil {
-		log.Printf("[async_executor] publishStatus: redis is nil, skipping publish")
 		return
 	}
 
-	var event map[string]interface{}
-	if result != nil {
-		event = map[string]interface{}{
-			"type":     "done",
-			"query_id": queryID,
-			"status":   status,
-			"data":     result.Data,
-			"columns":  result.Columns,
-		}
-	} else {
-		event = map[string]interface{}{
-			"type":     "status",
-			"query_id": queryID,
-			"status":   status,
-		}
+	percent := 0
+	switch progress {
+	case "queued":
+		percent = 10
+	case "running":
+		percent = 50
+	case "fetching":
+		percent = 80
+	case "done":
+		percent = 100
+	}
+
+	event := map[string]interface{}{
+		"type":     "progress",
+		"query_id": queryID,
+		"progress": progress,
+		"percent":  percent,
 	}
 
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("[query_worker] error marshaling event: %v", err)
+		log.Printf("[query_worker] error marshaling progress event: %v", err)
 		return
 	}
 
 	if err := e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON).Err(); err != nil {
-		log.Printf("[query_worker] error publishing event: %v", err)
+		log.Printf("[query_worker] error publishing progress event: %v", err)
+	}
+}
+
+// publishInlineResult publishes a "done" event with inline result data (≤1MB)
+func (e *AsyncQueryExecutor) publishInlineResult(ctx context.Context, queryID string, result *ExecuteResponse) {
+	if e.rdb == nil {
+		return
+	}
+
+	// Format data per spec: { "rows": [...], "columns": [...] }
+	data := map[string]interface{}{
+		"rows":    result.Data,
+		"columns": result.Columns,
+	}
+
+	event := map[string]interface{}{
+		"type":     "done",
+		"query_id": queryID,
+		"data":     data,
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[query_worker] error marshaling done event: %v", err)
+		return
+	}
+
+	if err := e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON).Err(); err != nil {
+		log.Printf("[query_worker] error publishing done event: %v", err)
+	}
+}
+
+// publishResultReady publishes a "result_ready" event for large results (>1MB)
+func (e *AsyncQueryExecutor) publishResultReady(ctx context.Context, queryID string) {
+	if e.rdb == nil {
+		return
+	}
+
+	event := map[string]interface{}{
+		"type":         "result_ready",
+		"query_id":     queryID,
+		"download_url": "/api/v1/query/" + queryID + "/result/download",
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[query_worker] error marshaling result_ready event: %v", err)
+		return
+	}
+
+	if err := e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON).Err(); err != nil {
+		log.Printf("[query_worker] error publishing result_ready event: %v", err)
+	}
+}
+
+// publishError publishes an error event via Redis pub/sub
+func (e *AsyncQueryExecutor) publishError(ctx context.Context, queryID, message string) {
+	if e.rdb == nil {
+		return
+	}
+
+	event := map[string]interface{}{
+		"type":     "error",
+		"query_id": queryID,
+		"message":  message,
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[query_worker] error marshaling error event: %v", err)
+		return
+	}
+
+	if err := e.rdb.Publish(ctx, queryStatusChannel+queryID, eventJSON).Err(); err != nil {
+		log.Printf("[query_worker] error publishing error event: %v", err)
 	}
 }
 
@@ -688,4 +790,28 @@ func (e *AsyncQueryExecutor) GetResult(ctx context.Context, queryID string) (*Ex
 		Columns:   []query.ColumnInfo{},
 		FromCache: false,
 	}, nil
+}
+
+// GetResultForUser retrieves result with ownership check (for download link auth)
+func (e *AsyncQueryExecutor) GetResultForUser(ctx context.Context, queryID string, userCtx auth.UserContext) (*ExecuteResponse, error) {
+	q, err := e.queryRepo.GetByID(ctx, queryID)
+	if err != nil {
+		return nil, err
+	}
+	if q == nil {
+		return nil, fmt.Errorf("query not found")
+	}
+
+	if q.UserID != userCtx.ID {
+		roles, err := e.rlsRepo.GetRoleNamesByUser(ctx, userCtx.ID)
+		if err != nil || !isAdminRole(roles) {
+			return nil, fmt.Errorf("forbidden")
+		}
+	}
+
+	if q.Status != "success" {
+		return nil, fmt.Errorf("query not completed")
+	}
+
+	return e.GetResult(ctx, queryID)
 }

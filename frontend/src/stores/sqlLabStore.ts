@@ -48,6 +48,7 @@ interface SqlLabTab {
   asyncStatus?: "pending" | "queued" | "running" | "done" | "failed" | "stopped";
   asyncQueue?: string;
   progress?: string;
+  downloadUrl?: string;
 }
 
 interface SqlLabState {
@@ -67,6 +68,7 @@ interface SqlLabState {
   setAsyncState: (id: string, queryId: string, status: SqlLabTab["asyncStatus"], queue?: string) => void;
   setAsyncResult: (id: string, result: SetAsyncResultPayload) => void;
   clearAsyncState: (id: string) => void;
+  setDownloadUrl: (id: string, url: string) => void;
 }
 
 let tabCounter = 0;
@@ -197,7 +199,7 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
             query: {
               id: result.query.id ?? "",
               client_id: result.query.client_id,
-              sql: result.query.sql,
+              sql: result.query.sql ?? "",
               executed_sql: result.query.executed_sql ?? "",
               start_time: result.query.start_time ?? new Date().toISOString(),
               start_running_time: result.query.start_running_time,
@@ -220,7 +222,15 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
   clearAsyncState: (id) => {
     set(state => ({
       tabs: state.tabs.map(t =>
-        t.id === id ? { ...t, asyncQueryId: undefined, asyncStatus: undefined, asyncQueue: undefined } : t
+        t.id === id ? { ...t, asyncQueryId: undefined, asyncStatus: undefined, asyncQueue: undefined, downloadUrl: undefined } : t
+      ),
+    }));
+  },
+
+  setDownloadUrl: (id, url) => {
+    set(state => ({
+      tabs: state.tabs.map(t =>
+        t.id === id ? { ...t, downloadUrl: url, status: "success" as const } : t
       ),
     }));
   },

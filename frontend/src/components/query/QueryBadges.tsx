@@ -261,15 +261,19 @@ export function AsyncProgressBar({ status, progress }: AsyncProgressBarProps) {
     return null;
   }
 
-  const progressLabel = progress && progress !== "running"
-    ? `Processing (${progress})...`
+  const progressPercent = progress && progress.endsWith("%")
+    ? parseInt(progress, 10)
+    : status === "running" ? 50 : 20;
+
+  const progressLabel = progress && progress !== "running" && progress !== "fetching"
+    ? `Running (${progress})...`
     : status === "running"
       ? "Processing query..."
       : "Waiting in queue...";
 
   return (
     <div className="w-full space-y-1">
-      <Progress value={status === "running" ? 50 : 20} className="h-1" />
+      <Progress value={progressPercent} className="h-1" />
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>{progressLabel}</span>
       </div>

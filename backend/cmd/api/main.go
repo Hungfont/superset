@@ -186,7 +186,10 @@ func main() {
 
 	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
 	asyncQueryExecutor := svcquery.NewAsyncQueryExecutor(redisClient, queryRepo, rlsFilterRepo, datasetRepo, queryExecutor)
-	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor)
+	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor, pubKey, jwtRepo, userRepo)
+
+	// QE-005: WebSocket handler for real-time query result streaming
+	wsHandler := httpquery.NewWSHandler(pubKey, jwtRepo, userRepo, rlsFilterRepo, queryRepo, redisClient)
 
 	// Start query worker for async query processing
 	queryWorker := worker.NewQueryWorker(redisClient, queryExecutor, asyncQueryExecutor, worker.DefaultQueryWorkerConfig())
@@ -208,6 +211,7 @@ func main() {
 		datasetHandler,
 		rlsHandler,
 		queryHandler,
+		wsHandler,
 		pubKey,
 		jwtRepo,
 		userRepo,
