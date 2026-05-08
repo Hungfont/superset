@@ -1,0 +1,59 @@
+[2026-05-04 13:13:21.887] [INFO ] [OPENCODE] Plugin installed {destination=C:\Users\hung.hoang\.config\opencode\plugins\claude-mem.js}
+[2026-05-04 13:13:21.890] [INFO ] [OPENCODE] Context injected into AGENTS.md {path=C:\Users\hung.hoang\.config\opencode\AGENTS.md}
+[2026-05-04 13:13:22.900] [INFO ] [SYSTEM] Starting worker daemon {workerScriptPath=C:\Users\hung.hoang\.claude\plugins\marketplaces\thedotmack\plugin\scripts\worker-service.cjs}
+[2026-05-04 13:13:29.224] [INFO ] [SYSTEM] Cached SKILL.md at boot {path=C:\Users\hung.hoang\.claude\plugins\marketplaces\thedotmack\plugin\skills\mem-search\SKILL.md, bytes=4081}
+[2026-05-04 13:13:29.290] [INFO ] [SYSTEM] Cached viewer.html at boot {path=C:\Users\hung.hoang\.claude\plugins\marketplaces\thedotmack\plugin\ui\viewer.html, bytes=76899}
+[2026-05-04 13:13:29.299] [INFO ] [SYSTEM] Cached onboarding explainer at boot {path=C:\Users\hung.hoang\.claude\plugins\marketplaces\thedotmack\plugin\skills\how-it-works\onboarding-explainer.md, bytes=1009}
+[2026-05-04 13:13:29.357] [INFO ] [SYSTEM] HTTP server started {host=127.0.0.1, port=37777, pid=1256}
+[2026-05-04 13:13:29.360] [INFO ] [SYSTEM] Worker started {host=127.0.0.1, port=37777, pid=1256}
+[2026-05-04 13:13:29.360] [INFO ] [WORKER] Background initialization starting...
+[2026-05-04 13:13:29.371] [INFO ] [SYSTEM] Mode loaded: code
+[2026-05-04 13:13:29.371] [INFO ] [WORKER] Checking for one-time CWD remap...
+[2026-05-04 13:13:29.372] [INFO ] [WORKER] Adopting merged worktrees (background)...
+[2026-05-04 13:13:29.373] [INFO ] [SYSTEM] ChromaMcpManager initialized (lazy - connects on first use)
+[2026-05-04 13:13:29.373] [INFO ] [WORKER] Initializing database manager...
+[2026-05-04 13:13:29.584] [WARN ] [DB    ] Failed to drop column worker_pid from pending_messages error in index idx_pending_messages_worker_pid after drop column: no such column: worker_pid
+[2026-05-04 13:13:29.608] [INFO ] [DB    ] Creating FTS5 tables
+[2026-05-04 13:13:29.627] [INFO ] [DB    ] FTS5 tables created successfully
+[2026-05-04 13:13:29.628] [INFO ] [DB    ] Database initialized (shared connection)
+[2026-05-04 13:13:29.629] [WARN ] [SYSTEM] Running one-time v12.4.3 pollution cleanup {dbPath=C:\Users\hung.hoang\.claude-mem\claude-mem.db}
+[2026-05-04 13:13:29.637] [INFO ] [SYSTEM] v12.4.3 backup created via VACUUM INTO {backupPath=C:\Users\hung.hoang\.claude-mem\backups\claude-mem-pre-12.4.3-2026-05-04T06-13-29-630Z.db, dbSize=221184}
+[2026-05-04 13:13:29.639] [INFO ] [SYSTEM] v12.4.3: observer-sessions purge committed {sessions=0, cascadeRows=0}
+[2026-05-04 13:13:29.640] [INFO ] [SYSTEM] v12.4.3: stuck pending_messages purge committed {rows=0}
+[2026-05-04 13:13:29.641] [INFO ] [SYSTEM] v12.4.3 cleanup complete {backupPath=C:\Users\hung.hoang\.claude-mem\backups\claude-mem-pre-12.4.3-2026-05-04T06-13-29-630Z.db, chromaWiped=false, observerSessions=0, observerCascadeRows=0, stuckPendingMessages=0}
+[2026-05-04 13:13:29.641] [INFO ] [SYSTEM] To restore: cp 'C:\Users\hung.hoang\.claude-mem\backups\claude-mem-pre-12.4.3-2026-05-04T06-13-29-630Z.db' 'C:\Users\hung.hoang\.claude-mem\claude-mem.db'
+[2026-05-04 13:13:29.641] [INFO ] [WORKER] Initializing search services...
+[2026-05-04 13:13:29.643] [INFO ] [WORKER] SearchManager initialized and search routes registered
+[2026-05-04 13:13:29.644] [INFO ] [WORKER] CorpusRoutes registered
+[2026-05-04 13:13:29.644] [INFO ] [SYSTEM] Core initialization complete (DB + search ready)
+[2026-05-04 13:13:29.646] [INFO ] [TRANSCRIPT] Created default transcript watch config {configPath=C:\Users\hung.hoang\.claude-mem\transcript-watch.json}
+[2026-05-04 13:13:29.666] [INFO ] [TRANSCRIPT] Transcript watcher started {configPath=C:\Users\hung.hoang\.claude-mem\transcript-watch.json, statePath=C:\Users\hung.hoang\.claude-mem\transcript-watch-state.json, watches=1}
+[2026-05-04 13:13:29.668] [INFO ] [CHROMA_SYNC] Backfill check for 0 projects
+[2026-05-04 13:13:29.668] [INFO ] [CHROMA_SYNC] Watermark cache missing — bootstrapping from Chroma (one-time)
+[2026-05-04 13:13:29.668] [INFO ] [CHROMA_SYNC] Bootstrap complete — incremental backfills will use watermarks
+[2026-05-04 13:13:29.669] [INFO ] [CHROMA_SYNC] ChromaSync closed {project=claude-mem}
+[2026-05-04 13:13:29.686] [INFO ] [CHROMA_SYNC] Backfill check complete for all projects
+[2026-05-04 13:13:29.821] [INFO ] [SYSTEM] Worker started successfully
+[2026-05-04 13:13:30.476] [INFO ] [SYSTEM] Claude-mem search server started
+[2026-05-04 13:13:30.500] [INFO ] [WORKER] MCP loopback self-check connected successfully
+[2026-05-04 13:13:30.497] [INFO ] [SYSTEM] MCP server shutting down {reason=stdio-closed}
+[2026-05-04 13:16:46.363] [INFO ] [SYSTEM] Cached SKILL.md at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\mem-search\SKILL.md, bytes=4081}
+[2026-05-04 13:16:46.363] [INFO ] [SYSTEM] Cached SKILL.md at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\mem-search\SKILL.md, bytes=4081}
+[2026-05-04 13:16:46.412] [INFO ] [SYSTEM] Cached viewer.html at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\ui\viewer.html, bytes=76899}
+[2026-05-04 13:16:46.412] [INFO ] [SYSTEM] Cached viewer.html at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\ui\viewer.html, bytes=76899}
+[2026-05-04 13:16:46.416] [INFO ] [SYSTEM] Cached onboarding explainer at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\how-it-works\onboarding-explainer.md, bytes=1009}
+[2026-05-04 13:16:46.416] [INFO ] [SYSTEM] Cached onboarding explainer at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\how-it-works\onboarding-explainer.md, bytes=1009}
+[2026-05-04 13:16:46.420] [INFO ] [SYSTEM] Worker PID file points to a live process, skipping duplicate spawn
+[2026-05-04 13:16:46.420] [INFO ] [SYSTEM] Worker PID file points to a live process, skipping duplicate spawn
+[2026-05-04 13:16:46.460] [INFO ] [SYSTEM] Worker became healthy while waiting on live PID
+[2026-05-04 13:16:46.460] [INFO ] [SYSTEM] Worker became healthy while waiting on live PID
+[2026-05-04 13:17:57.116] [INFO ] [SYSTEM] Cached SKILL.md at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\mem-search\SKILL.md, bytes=4081}
+[2026-05-04 13:17:57.117] [INFO ] [SYSTEM] Cached SKILL.md at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\mem-search\SKILL.md, bytes=4081}
+[2026-05-04 13:17:57.149] [INFO ] [SYSTEM] Cached viewer.html at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\ui\viewer.html, bytes=76899}
+[2026-05-04 13:17:57.152] [INFO ] [SYSTEM] Cached onboarding explainer at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\how-it-works\onboarding-explainer.md, bytes=1009}
+[2026-05-04 13:17:57.155] [INFO ] [SYSTEM] Cached viewer.html at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\ui\viewer.html, bytes=76899}
+[2026-05-04 13:17:57.157] [INFO ] [SYSTEM] Worker PID file points to a live process, skipping duplicate spawn
+[2026-05-04 13:17:57.158] [INFO ] [SYSTEM] Cached onboarding explainer at boot {path=C:\Users\hung.hoang\.claude\plugins\cache\thedotmack\claude-mem\12.6.0\skills\how-it-works\onboarding-explainer.md, bytes=1009}
+[2026-05-04 13:17:57.166] [INFO ] [SYSTEM] Worker PID file points to a live process, skipping duplicate spawn
+[2026-05-04 13:17:57.201] [INFO ] [SYSTEM] Worker became healthy while waiting on live PID
+[2026-05-04 13:17:57.202] [INFO ] [SYSTEM] Worker became healthy while waiting on live PID
