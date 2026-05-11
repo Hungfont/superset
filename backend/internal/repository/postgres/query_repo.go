@@ -41,6 +41,20 @@ func (r *queryRepo) Update(ctx context.Context, q *query.Query) error {
 	return r.db.WithContext(ctx).Save(q).Error
 }
 
+func (r *queryRepo) UpdateStatusConditional(ctx context.Context, id string, status string, allowedFromStatuses []string, extra map[string]interface{}) (bool, error) {
+	updates := map[string]interface{}{"status": status}
+	for k, v := range extra {
+		updates[k] = v
+	}
+	result := r.db.WithContext(ctx).Model(&query.Query{}).
+		Where("id = ? AND status IN ?", id, allowedFromStatuses).
+		Updates(updates)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 func (r *queryRepo) List(ctx context.Context, filter *query.ListFilter) ([]*query.Query, int64, error) {
 	db := r.db.WithContext(ctx).Model(&query.Query{})
 

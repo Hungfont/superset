@@ -47,6 +47,10 @@ func (f *fakeSQLConnection) QueryContext(_ context.Context, _ string, _ ...any) 
 	return nil, errors.New("not implemented")
 }
 
+func (f *fakeSQLConnection) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (f *fakeSQLConnection) Close() error {
 	f.closeCalled.Add(1)
 	return nil

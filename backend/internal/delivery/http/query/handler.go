@@ -178,7 +178,11 @@ func (h *Handler) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// Cancel handles query cancellation
+// Cancel handles query cancellation with proper HTTP status codes.
+// - 202: cancel initiated
+// - 200: already stopped/completed
+// - 403: forbidden (not owner)
+// - 404: query not found
 func (h *Handler) Cancel(c *gin.Context) {
 	if h.asyncExecutor == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "async_not_available"})
@@ -203,13 +207,27 @@ func (h *Handler) Cancel(c *gin.Context) {
 		return
 	}
 
-	err := h.asyncExecutor.Cancel(c.Request.Context(), queryID, userCtx)
+	result, err := h.asyncExecutor.Cancel(c.Request.Context(), queryID, userCtx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "cancel_error", "message": err.Error()})
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "You do not have permission to cancel this query"})
+		case "query not found":
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Query not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cancel_error", "message": err.Error()})
+		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+	// Map result action to HTTP status code
+	switch result.Action {
+	case "cancelling":
+		c.JSON(http.StatusAccepted, gin.H{"status": "stopping", "query_id": queryID})
+	default:
+		// already_stopped or already_completed
+		c.JSON(http.StatusOK, gin.H{"status": result.CurrentStatus, "query_id": queryID, "message": "Query already " + result.CurrentStatus})
+	}
 }
 
 // GetResultByToken handles download link for large results via query param auth

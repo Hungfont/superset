@@ -52,7 +52,10 @@ func main() {
 		log.Fatal("DB_CREDENTIALS_ENCRYPTION_KEY must be set")
 	}
 	// Database
-	db, err := gorm.Open(gormpostgres.Open(cfg.DB.DSN), &gorm.Config{})
+	db, err := gorm.Open(gormpostgres.New(gormpostgres.Config{
+		DSN:                  cfg.DB.DSN,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
@@ -185,7 +188,7 @@ func main() {
 	rlsHandler := httpsrls.NewHandler(rlsSvc)
 
 	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
-	asyncQueryExecutor := svcquery.NewAsyncQueryExecutor(redisClient, queryRepo, rlsFilterRepo, datasetRepo, queryExecutor)
+	asyncQueryExecutor := svcquery.NewAsyncQueryExecutor(redisClient, queryRepo, rlsFilterRepo, datasetRepo, queryExecutor, poolManager, databaseRepo)
 	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor, pubKey, jwtRepo, userRepo)
 
 	// QE-005: WebSocket handler for real-time query result streaming

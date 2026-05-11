@@ -105,6 +105,12 @@ export interface QueryStatusResponse {
   timeout_at?: string;
 }
 
+export interface CancelQueryResponse {
+  status: string;      // "stopping" | "stopped" | "success"
+  query_id: string;
+  message?: string;
+}
+
 function getAuthHeaders(contentType = false): HeadersInit {
   const accessToken = useAuthStore.getState().accessToken;
   return {
@@ -137,7 +143,7 @@ export const queriesApi = {
       headers: getAuthHeaders(),
     }),
 
-  cancel: (queryId: string): Promise<{ status: string }> =>
+  cancel: (queryId: string): Promise<CancelQueryResponse> =>
     request(`/api/v1/query/${queryId}`, {
       method: "DELETE",
       credentials: "include",

@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	dbpool "superset/auth-service/internal/app/db"
 	"superset/auth-service/internal/domain/auth"
 	"superset/auth-service/internal/domain/dataset"
+	domdb "superset/auth-service/internal/domain/db"
 	"superset/auth-service/internal/domain/query"
 
 	"github.com/redis/go-redis/v9"
@@ -55,7 +58,19 @@ const (
 
 	// QE-005: Max inline result size (1MB)
 	MaxInlineResultBytes = 1024 * 1024
+
+	// QE-006: PID key for pg_cancel_backend
+	queryPIDKey = "query:pid:"
+
+	// QE-006: Cancel flag TTL (5 min — down from 30 min)
+	CancelFlagTTL = 5 * time.Minute
 )
+
+// CancelResult describes the outcome of a cancel request.
+type CancelResult struct {
+	Action        string `json:"action"`
+	CurrentStatus string `json:"current_status"`
+}
 
 // AsyncQueryExecutor handles async query execution
 type AsyncQueryExecutor struct {
@@ -66,6 +81,8 @@ type AsyncQueryExecutor struct {
 	queryCache   QueryExecutorRunner
 	workerPool   *WorkerPool
 	waitForRetry func(ctx context.Context, attempt int) error
+	connPool     dbpool.DatabaseConnectionPool
+	databaseRepo domdb.DatabaseRepository
 }
 
 // WorkerPool manages concurrent workers per queue
@@ -124,6 +141,8 @@ func NewAsyncQueryExecutor(
 	rlsRepo RoleNameProvider,
 	datasetRepo dataset.Repository,
 	queryCache QueryExecutorRunner,
+	connPool dbpool.DatabaseConnectionPool,
+	databaseRepo domdb.DatabaseRepository,
 ) *AsyncQueryExecutor {
 	return &AsyncQueryExecutor{
 		rdb:          rdb,
@@ -133,6 +152,8 @@ func NewAsyncQueryExecutor(
 		queryCache:   queryCache,
 		workerPool:   NewWorkerPool(),
 		waitForRetry: defaultWaitForRetry,
+		connPool:     connPool,
+		databaseRepo: databaseRepo,
 	}
 }
 
@@ -155,6 +176,29 @@ func (e *AsyncQueryExecutor) Submit(ctx context.Context, req query.AsyncSubmitRe
 		roles = []string{}
 	}
 	queueKey := resolveQueue(roles)
+
+	// Phase 4: Client ID dedup — check for existing pending/running query
+	if req.ClientID != "" {
+		existing, lookupErr := e.queryRepo.GetByClientID(ctx, req.ClientID)
+		if lookupErr == nil && existing != nil {
+			switch existing.Status {
+			case "pending", "running":
+				log.Printf("[async_executor] dedup: query %s already %s for client_id %s", existing.ID, existing.Status, req.ClientID)
+				return &query.AsyncSubmitResponse{
+					QueryID: existing.ID,
+					Status:  existing.Status,
+					Queue:   queueKeyToName(queueKey),
+				}, nil
+			case "success":
+				// Return existing cached result info
+				return &query.AsyncSubmitResponse{
+					QueryID: existing.ID,
+					Status:  existing.Status,
+					Queue:   queueKeyToName(queueKey),
+				}, nil
+			}
+		}
+	}
 
 	// Create query record with all metadata fields
 	now := time.Now()
@@ -290,48 +334,94 @@ func (e *AsyncQueryExecutor) GetStatus(ctx context.Context, queryID string, user
 	return response, nil
 }
 
-// Cancel cancels a running query
-func (e *AsyncQueryExecutor) Cancel(ctx context.Context, queryID string, userCtx auth.UserContext) error {
+// Cancel cancels a running query with idempotent and race-safe semantics.
+// Returns CancelResult describing what action was taken.
+func (e *AsyncQueryExecutor) Cancel(ctx context.Context, queryID string, userCtx auth.UserContext) (*CancelResult, error) {
 	q, err := e.queryRepo.GetByID(ctx, queryID)
 	if err != nil {
-		return fmt.Errorf("getting query: %w", err)
+		return nil, fmt.Errorf("getting query: %w", err)
 	}
-
 	if q == nil {
-		return fmt.Errorf("query not found")
+		return nil, fmt.Errorf("query not found")
 	}
 
 	// Check ownership
 	if q.UserID != userCtx.ID {
 		roles, err := e.rlsRepo.GetRoleNamesByUser(ctx, userCtx.ID)
 		if err != nil || !isAdminRole(roles) {
-			return fmt.Errorf("forbidden")
+			return nil, fmt.Errorf("forbidden")
 		}
 	}
 
-	// Only can cancel pending or running queries
-	if q.Status != "pending" && q.Status != "running" {
-		return fmt.Errorf("query cannot be cancelled")
+	// Idempotent: return early if already finished
+	switch q.Status {
+	case "stopped":
+		return &CancelResult{Action: "already_stopped", CurrentStatus: "stopped"}, nil
+	case "success", "failed":
+		return &CancelResult{Action: "already_completed", CurrentStatus: q.Status}, nil
+	case "pending", "running":
+		// proceed
+	default:
+		return &CancelResult{Action: "already_completed", CurrentStatus: q.Status}, nil
 	}
 
 	// Set cancel flag in Redis
 	if e.rdb != nil {
-		e.rdb.Set(ctx, queryCancelKey+queryID, "1", 30*time.Minute)
+		e.rdb.Set(ctx, queryCancelKey+queryID, "1", CancelFlagTTL)
 	}
 
-	// Update query status
+	// DB-level cancellation: read PID from extra_json first, fallback Redis
+	if e.connPool != nil && e.databaseRepo != nil {
+		pid := 0
+		// Try extra_json first
+		if q.ExtraJSON != "" {
+			var extra struct {
+				BackendPID int `json:"backend_pid"`
+			}
+			if err := json.Unmarshal([]byte(q.ExtraJSON), &extra); err == nil && extra.BackendPID > 0 {
+				pid = extra.BackendPID
+			}
+		}
+		// Fallback to Redis
+		if pid == 0 && e.rdb != nil {
+			pidStr, pidErr := e.rdb.Get(ctx, queryPIDKey+queryID).Result()
+			if pidErr == nil && pidStr != "" {
+				pid, _ = strconv.Atoi(pidStr)
+			}
+		}
+		if pid > 0 {
+			dbInfo, dbErr := e.databaseRepo.GetDatabaseByID(ctx, q.DatabaseID)
+			if dbErr == nil && dbInfo != nil {
+				cancelConn, connErr := e.connPool.Get(ctx, q.DatabaseID, dbInfo.SQLAlchemyURI)
+				if connErr == nil {
+					cancelConn.ExecContext(ctx, "SELECT pg_cancel_backend($1)", pid)
+				}
+			}
+		}
+	}
+
+	// Conditional update: only update if status is still pending or running
 	now := time.Now()
-	q.Status = "stopped"
-	q.Progress = "stopped"
-	q.ErrorMessage = "Cancelled by user"
-	q.EndTime = &now
-	q.ChangedOn = &now
-	q.UpdatedAt = now
-	if err := e.queryRepo.Update(ctx, q); err != nil {
-		return fmt.Errorf("updating query: %w", err)
+	ok, err := e.queryRepo.UpdateStatusConditional(ctx, queryID, "stopped", []string{"pending", "running"}, map[string]interface{}{
+		"progress":      "stopped",
+		"error_message": "Cancelled by user",
+		"end_time":      now,
+		"changed_on":    now,
+		"updated_at":    now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("updating query status: %w", err)
+	}
+	if !ok {
+		// Worker already updated status before us — keep worker's result
+		log.Printf("[async_executor] cancel race: query %s already updated by worker", queryID)
+		q2, _ := e.queryRepo.GetByID(ctx, queryID)
+		if q2 != nil {
+			return &CancelResult{Action: "already_completed", CurrentStatus: q2.Status}, nil
+		}
 	}
 
-	return nil
+	return &CancelResult{Action: "cancelling", CurrentStatus: "stopped"}, nil
 }
 
 // ExecuteTask executes a task directly (used by worker)
@@ -361,21 +451,34 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 	if err != nil {
 		log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
 	} else if cancelled {
-		return e.handleQueryCancelled(ctx, q, queryID)
+		return e.handleQueryCancelled(ctx, queryID)
 	}
 
 	startTime := time.Now()
+	// Conditional update: only set running if still pending (cancel might have fired)
+	runningOK, err := e.queryRepo.UpdateStatusConditional(ctx, queryID, "running", []string{"pending"}, map[string]interface{}{
+		"progress":           "running",
+		"start_running_time": startTime,
+		"start_time":         startTime,
+		"changed_on":         startTime,
+		"updated_at":         time.Now(),
+	})
+	if err != nil {
+		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
+		return err
+	}
+	if !runningOK {
+		// Query was cancelled before it could start running
+		log.Printf("[query_worker] query %s was cancelled before execution", queryID)
+		return e.handleQueryCancelled(ctx, queryID)
+	}
+
+	// Build running copy for downstream use (all-retries-failed path)
 	running := *q
 	running.Status = "running"
 	running.Progress = "running"
 	running.StartRunningTime = &startTime
 	running.StartTime = &startTime
-	running.UpdatedAt = time.Now()
-	running.ChangedOn = &startTime
-	if err := e.queryRepo.Update(ctx, &running); err != nil {
-		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
-		return err
-	}
 
 	// Publish status: running
 	e.publishProgress(ctx, queryID, "running")
@@ -412,7 +515,7 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 		if err != nil {
 			log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
 		} else if cancelled {
-			return e.handleQueryCancelled(ctx, &running, queryID)
+			return e.handleQueryCancelled(ctx, queryID)
 		}
 
 		if attempt > 0 {
@@ -425,25 +528,26 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 			return e.queryCache.Execute(ctx, execReq, userCtx)
 		})
 		if err == nil {
-			// Success
-			return e.handleQuerySuccess(ctx, &running, queryID, resp)
+			// Phase 2: extra_json with PID + queue + attempt
+			e.enrichExtraJSON(ctx, queryID, queueKey, attempt+1)
+			return e.handleQuerySuccess(ctx, queryID, resp)
 		}
 		lastErr = err
 		log.Printf("[query_worker] attempt %d failed for query %s: %v", attempt+1, queryID, err)
 	}
 
 	// All retries failed - QE-004 #5
-	failed := running
-	failed.Status = "failed"
-	failed.Progress = "failed"
-	failed.ErrorMessage = fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr)
-	now := time.Now()
-	failed.EndTime = &now
-	failed.ChangedOn = &now
-	failed.UpdatedAt = now
-	_ = e.queryRepo.Update(ctx, &failed)
-	e.publishProgress(ctx, queryID, "failed")
-	e.publishError(ctx, queryID, fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr))
+	ok, _ := e.queryRepo.UpdateStatusConditional(ctx, queryID, "failed", []string{"running"}, map[string]interface{}{
+		"progress":      "failed",
+		"error_message": fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr),
+		"end_time":      time.Now(),
+		"changed_on":    time.Now(),
+		"updated_at":    time.Now(),
+	})
+	if ok {
+		e.publishProgress(ctx, queryID, "failed")
+		e.publishError(ctx, queryID, fmt.Sprintf("failed after %d attempts: %v", MaxRetry, lastErr))
+	}
 	return lastErr
 }
 
@@ -469,17 +573,44 @@ func (e *AsyncQueryExecutor) isCancelled(ctx context.Context, queryID string) (b
 	return cancelled > 0, nil
 }
 
-func (e *AsyncQueryExecutor) handleQueryCancelled(ctx context.Context, q *query.Query, queryID string) error {
-	updated := *q
-	updated.Status = "stopped"
-	updated.Progress = "stopped"
-	updated.ErrorMessage = "Cancelled by user"
-	now := time.Now()
-	updated.EndTime = &now
-	updated.ChangedOn = &now
-	updated.UpdatedAt = now
-	if err := e.queryRepo.Update(ctx, &updated); err != nil {
+// enrichExtraJSON reads the PID from Redis (set by sync executor) and merges it with
+// queue/attempt metadata into the query record's extra_json field.
+func (e *AsyncQueryExecutor) enrichExtraJSON(ctx context.Context, queryID string, queueKey string, attempt int) {
+	if queryID == "" {
+		return
+	}
+
+	// Read PID from Redis (set by sync executor's executeAndRespond)
+	pid := 0
+	if e.rdb != nil {
+		pidStr, _ := e.rdb.Get(ctx, queryPIDKey+queryID).Result()
+		if pidStr != "" {
+			pid, _ = strconv.Atoi(pidStr)
+		}
+	}
+	queue := queueKeyToName(queueKey)
+
+	extraJSON := buildExtraJSON(pid, queue, attempt)
+	e.queryRepo.UpdateStatusConditional(ctx, queryID, "running", []string{"pending", "running"}, map[string]interface{}{
+		"extra_json": extraJSON,
+		"changed_on": time.Now(),
+	})
+}
+
+func (e *AsyncQueryExecutor) handleQueryCancelled(ctx context.Context, queryID string) error {
+	ok, err := e.queryRepo.UpdateStatusConditional(ctx, queryID, "stopped", []string{"running"}, map[string]interface{}{
+		"progress":      "stopped",
+		"error_message": "Cancelled by user",
+		"end_time":      time.Now(),
+		"changed_on":    time.Now(),
+		"updated_at":    time.Now(),
+	})
+	if err != nil {
 		return err
+	}
+	if !ok {
+		// Cancel handler already updated status — nothing to do
+		return nil
 	}
 	e.publishError(ctx, queryID, "Query cancelled")
 	return nil
@@ -514,13 +645,13 @@ func waitWithContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Query, queryID string, resp *ExecuteResponse) error {
+func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, queryID string, resp *ExecuteResponse) error {
 	// Check cancel flag
 	cancelled, err := e.isCancelled(ctx, queryID)
 	if err != nil {
 		log.Printf("[query_worker] cancel check failed for query %s: %v", queryID, err)
 	} else if cancelled {
-		return e.handleQueryCancelled(ctx, q, queryID)
+		return e.handleQueryCancelled(ctx, queryID)
 	}
 
 	// Store result in Redis (up to 10MB)
@@ -531,7 +662,6 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 		respJSON, err = json.Marshal(resp)
 		if err == nil {
 			resultSize = len(respJSON)
-			// Store up to 10MB in Redis
 			if resultSize <= 10*MaxInlineResultBytes {
 				resultsKey = queryResultKey + queryID
 				e.rdb.Set(ctx, resultsKey, respJSON, 24*time.Hour)
@@ -547,29 +677,36 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, q *query.Qu
 		}
 	}
 
-	updated := *q
-	updated.Status = "success"
-	updated.Progress = "done"
-	updated.EndTime = &endTime
-	updated.Rows = rowCount
-	updated.ResultsKey = resultsKey
-	updated.ExecutedSQL = resp.Query.ExecutedSQL
-	updated.ChangedOn = &endTime
-	updated.UpdatedAt = time.Now()
-	if err := e.queryRepo.Update(ctx, &updated); err != nil {
+	// Conditional update: only update if status is still running
+	ok, err := e.queryRepo.UpdateStatusConditional(ctx, queryID, "success", []string{"running"}, map[string]interface{}{
+		"progress":     "done",
+		"end_time":     endTime,
+		"rows":         rowCount,
+		"results_key":  resultsKey,
+		"executed_sql": resp.Query.ExecutedSQL,
+		"changed_on":   endTime,
+		"updated_at":   time.Now(),
+	})
+	if err != nil {
 		log.Printf("[query_worker] error updating query %s: %v", queryID, err)
+	}
+	if !ok {
+		// Query was cancelled — discard result
+		log.Printf("[query_worker] query %s was cancelled, discarding result", queryID)
+		if e.rdb != nil {
+			e.rdb.Del(ctx, queryResultKey+queryID)
+		}
+		return nil
 	}
 
 	e.publishProgress(ctx, queryID, "done")
 
-	// QE-005: Size-based event routing
 	switch {
 	case resultSize > 0 && resultSize <= MaxInlineResultBytes:
 		e.publishInlineResult(ctx, queryID, resp)
 	case resultSize > MaxInlineResultBytes:
 		e.publishResultReady(ctx, queryID)
 	default:
-		// Empty result (nil data, marshal failure, or 0 rows)
 		emptyResp := &ExecuteResponse{
 			Data:    []interface{}{},
 			Columns: resp.Columns,

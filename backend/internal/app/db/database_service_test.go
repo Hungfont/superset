@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"reflect"
 	"strings"
@@ -227,6 +228,10 @@ func (f *fakeSchemaCache) Set(_ context.Context, key string, value string, _ tim
 }
 
 func (f *fakeConnectionPool) Get(_ context.Context, _ uint, _ string) (svcauth.SQLConnection, error) {
+	return nil, nil
+}
+
+func (f *fakeConnectionPool) GetPinned(_ context.Context, _ uint, _ string) (*sql.Conn, error) {
 	return nil, nil
 }
 

@@ -240,9 +240,19 @@ export function RunAsyncButton({ onClick, disabled, isRunning, isQueued }: RunAs
 interface CancelButtonProps {
   onClick: () => void;
   disabled: boolean;
+  isCancelling?: boolean;
 }
 
-export function CancelButton({ onClick, disabled }: CancelButtonProps) {
+export function CancelButton({ onClick, disabled, isCancelling }: CancelButtonProps) {
+  if (isCancelling) {
+    return (
+      <Button disabled size="sm" variant="destructive" className="gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Cancelling...
+      </Button>
+    );
+  }
+
   return (
     <Button onClick={onClick} disabled={disabled} size="sm" variant="destructive" className="gap-2">
       <StopCircle className="h-4 w-4" />

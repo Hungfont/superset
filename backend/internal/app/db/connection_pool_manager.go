@@ -30,6 +30,7 @@ type SQLConnection interface {
 	SetConnMaxLifetime(d time.Duration)
 	PingContext(ctx context.Context) error
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	Close() error
 }
 
@@ -56,6 +57,9 @@ type ConnectionPoolManagerConfig struct {
 // DatabaseConnectionPool manages SQL connection pools keyed by database ID.
 type DatabaseConnectionPool interface {
 	Get(ctx context.Context, databaseID uint, sqlalchemyURI string) (SQLConnection, error)
+	// GetPinned returns a dedicated connection from the pool (via sql.DB.Conn) for the given database.
+	// Caller MUST close the returned *sql.Conn when done to return it to the pool.
+	GetPinned(ctx context.Context, databaseID uint, sqlalchemyURI string) (*sql.Conn, error)
 	Close(ctx context.Context, databaseID uint) error
 	Shutdown(ctx context.Context) error
 }
@@ -158,6 +162,25 @@ func (m *ConnectionPoolManager) Get(ctx context.Context, databaseID uint, sqlalc
 	}
 
 	return loaded.(SQLConnection), nil
+}
+
+func (m *ConnectionPoolManager) GetPinned(ctx context.Context, databaseID uint, sqlalchemyURI string) (*sql.Conn, error) {
+	poolConn, err := m.Get(ctx, databaseID, sqlalchemyURI)
+	if err != nil {
+		return nil, err
+	}
+
+	db, ok := poolConn.(*sql.DB)
+	if !ok {
+		return nil, fmt.Errorf("connection is not a *sql.DB, got %T", poolConn)
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting pinned connection for database %d: %w", databaseID, err)
+	}
+
+	return conn, nil
 }
 
 func (m *ConnectionPoolManager) Close(ctx context.Context, databaseID uint) error {

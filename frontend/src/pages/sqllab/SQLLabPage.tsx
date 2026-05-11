@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
@@ -13,6 +13,16 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   CacheBadge,
@@ -75,6 +85,7 @@ export default function SQLLabPage() {
   const { toast } = useToast();
   const lastQueryDurationRef = useRef<number>(0);
   const pollingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   const {
     tabs,
@@ -311,6 +322,7 @@ export default function SQLLabPage() {
       } else if (data.type === "progress") {
         const mappedStatus: "pending" | "queued" | "running" | "done" | "failed" | "stopped" =
           data.progress === "running" ? "running" :
+          data.progress === "done" ? "done" :
           data.progress === "pending" ? "pending" : "queued";
         const store = useSqlLabStore.getState();
         const tab = store.tabs.find(t => t.id === tabId);
@@ -431,20 +443,60 @@ export default function SQLLabPage() {
 
   const cancelMutation = useMutation({
     mutationFn: queriesApi.cancel,
-    onSuccess: () => {
-      if (activeTabId) {
-        setAsyncState(activeTabId, activeTab?.asyncQueryId || "", "stopped", activeTab?.asyncQueue);
-        if (activeTab?.asyncQueryId) {
-          wsUnsubscribe(activeTab.asyncQueryId);
-        }
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
-        }
+    onSuccess: (data) => {
+      if (!activeTabId) return;
+
+      const queryId = activeTab?.asyncQueryId;
+
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
       }
+
+      // If the query already completed (e.g. success/failed), treat as completion
+      // rather than cancellation — fetch the result and clear async state normally.
+      if (data.status === "success") {
+        if (queryId) {
+          wsUnsubscribe(queryId);
+          fetchQueryStatus(queryId);
+        }
+        return;
+      }
+
+      // Actual cancellation — set stopped state, wipe result, then clear async state
+      setAsyncState(activeTabId, queryId || "", "stopped", activeTab?.asyncQueue);
+
+      if (queryId) {
+        wsUnsubscribe(queryId);
+      }
+
+      const store = useSqlLabStore.getState();
+      const tab = store.tabs.find(t => t.id === activeTabId);
+      store.setTabResult(activeTabId, {
+        data: [],
+        columns: [],
+        from_cache: false,
+        query: {
+          id: queryId || "",
+          client_id: queryId || "",
+          executed_sql: "",
+          sql: tab?.sql || "",
+          start_time: "",
+          end_time: "",
+          rows: 0,
+          limit: 0,
+          limiting_factor: 0,
+          status: "stopped",
+          progress: "stopped",
+        },
+      });
+      store.clearAsyncState(activeTabId);
+      toast("Query cancelled");
     },
     onError: (error: Error) => {
       if (activeTabId) {
         setTabError(activeTabId, error.message);
+        toast("Cancel failed: " + error.message);
       }
     },
   });
@@ -487,6 +539,19 @@ export default function SQLLabPage() {
   const handleCancel = () => {
     if (!activeTab?.asyncQueryId) return;
 
+    // Show confirmation dialog if query has been running for more than 10s
+    const elapsed = activeTab?.result?.query?.start_time
+      ? Date.now() - new Date(activeTab.result.query.start_time).getTime()
+      : 0;
+    if (elapsed > 10000) {
+      setCancelDialogOpen(true);
+    } else {
+      doCancel();
+    }
+  };
+
+  const doCancel = () => {
+    if (!activeTab?.asyncQueryId) return;
     cancelMutation.mutate(activeTab.asyncQueryId);
   };
 
@@ -621,6 +686,7 @@ export default function SQLLabPage() {
                     <CancelButton
                       onClick={handleCancel}
                       disabled={tab.asyncStatus === "done" || tab.asyncStatus === "failed" || tab.asyncStatus === "stopped"}
+                      isCancelling={cancelMutation.isPending}
                     />
                     {tab.asyncStatus === "pending" || tab.asyncStatus === "queued" ? (
                       <QueueBadge queue={tab.asyncQueue || "default"} />

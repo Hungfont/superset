@@ -48,6 +48,29 @@ func (s *queryRepoStub) Update(_ context.Context, q *Query) error {
 	return nil
 }
 
+func (s *queryRepoStub) UpdateStatusConditional(_ context.Context, id string, status string, allowedFromStatuses []string, extra map[string]interface{}) (bool, error) {
+	q, ok := s.queries[id]
+	if !ok {
+		return false, nil
+	}
+	for _, allowed := range allowedFromStatuses {
+		if q.Status == allowed {
+			copy := *q
+			copy.Status = status
+			for k, v := range extra {
+				switch k {
+				case "progress":
+					copy.Progress = v.(string)
+				}
+			}
+			s.queries[id] = &copy
+			s.updated = append(s.updated, &copy)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *queryRepoStub) List(_ context.Context, _ *ListFilter) ([]*Query, int64, error) {
 	return nil, 0, nil
 }
@@ -79,7 +102,7 @@ func TestSubmit_EnqueueFailureSetsFailedStatus(t *testing.T) {
 	repo := newQueryRepoStub()
 	roles := roleNameProviderStub{roles: []string{"Alpha"}}
 	executor := &executorStub{}
-	asyncExecutor := NewAsyncQueryExecutor(rdb, repo, roles, nil, executor)
+	asyncExecutor := NewAsyncQueryExecutor(rdb, repo, roles, nil, executor, nil, nil)
 
 	_, err := asyncExecutor.Submit(context.Background(), AsyncSubmitRequest{
 		DatabaseID: 1,
@@ -103,7 +126,7 @@ func TestExecuteQuery_CancelledBeforeAttempt(t *testing.T) {
 	repo := newQueryRepoStub()
 	repo.queries[queryID] = &Query{ID: queryID, Status: "pending", DatabaseID: 1, UserID: 1, SQL: "select 1"}
 	executor := &executorStub{err: errors.New("should not run")}
-	asyncExecutor := NewAsyncQueryExecutor(rdb, repo, roleNameProviderStub{}, nil, executor)
+	asyncExecutor := NewAsyncQueryExecutor(rdb, repo, roleNameProviderStub{}, nil, executor, nil, nil)
 
 	err := asyncExecutor.executeQuery(context.Background(), &QueryTask{
 		QueryID:    queryID,
@@ -140,7 +163,7 @@ func TestExecuteQuery_ReleasesWorkerSlotBeforeBackoff(t *testing.T) {
 	repo.queries[queryID] = &Query{ID: queryID, Status: "pending", DatabaseID: 1, UserID: 1, SQL: "select 1"}
 
 	executor := &executorStub{err: errors.New("boom")}
-	asyncExecutor := NewAsyncQueryExecutor(nil, repo, roleNameProviderStub{}, nil, executor)
+	asyncExecutor := NewAsyncQueryExecutor(nil, repo, roleNameProviderStub{}, nil, executor, nil, nil)
 	asyncExecutor.workerPool = &WorkerPool{
 		critical: make(chan struct{}, 1),
 		defaultQ: make(chan struct{}, 1),

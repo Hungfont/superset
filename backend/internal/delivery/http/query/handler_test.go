@@ -22,7 +22,7 @@ func TestQE004_HandlerWithAsyncExecutor_SubmitReturns202(t *testing.T) {
 	require.NotNil(t, queryExec, "sync executor should be created")
 
 	// Setup mock async executor
-	asyncExec := svcquery.NewAsyncQueryExecutor(nil, nil, nil, nil, queryExec)
+	asyncExec := svcquery.NewAsyncQueryExecutor(nil, nil, nil, nil, queryExec, nil, nil)
 	require.NotNil(t, asyncExec, "async executor should be created")
 
 	// Create handler with both executors
@@ -41,7 +41,7 @@ func TestQE004_HandlerSubmitIntegration(t *testing.T) {
 	require.NotNil(t, queryExec, "sync executor should be created")
 
 	// Setup mock async executor (nil repos = will fail on actual operations, but handler should init)
-	asyncExec := svcquery.NewAsyncQueryExecutor(nil, nil, nil, nil, queryExec)
+	asyncExec := svcquery.NewAsyncQueryExecutor(nil, nil, nil, nil, queryExec, nil, nil)
 	require.NotNil(t, asyncExec, "async executor should be created")
 
 	// Create handler with both executors

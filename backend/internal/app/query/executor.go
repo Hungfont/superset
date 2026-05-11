@@ -3,12 +3,12 @@ package query
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -635,12 +635,11 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 		return nil, fmt.Errorf("access denied to database")
 	}
 
-	// QE-001 #8: Client ID deduplication (check for existing running query)
+	// QE-001 #8: Client ID deduplication (sync path)
 	if req.ClientID != "" && e.rdb != nil {
 		existingKey := "query:dedup:" + req.ClientID
 		existingStatus, err := e.rdb.Get(ctx, existingKey).Result()
 		if err == nil && existingStatus != "" {
-			// Return cached result if available
 			resultKey := "query:result:" + req.ClientID
 			resultData, err := e.rdb.Get(ctx, resultKey).Bytes()
 			if err == nil {
@@ -689,70 +688,7 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 		cacheTimeout = ds.CacheTimeout
 	}
 
-	if cacheTimeout == -1 || req.ForceRefresh {
-		// QE-001 #2: Create query record with status="running"
-		var queryID string
-		if e.queryRepo != nil && req.ClientID != "" {
-			now := time.Now()
-			q := &query.Query{
-				ID:               uuid.New().String(),
-				ClientID:         req.ClientID,
-				DatabaseID:       req.DatabaseID,
-				UserID:           userCtx.ID,
-				TabName:          req.TabName,
-				SqlEditorID:      req.SqlEditorID,
-				Schema:           schema,
-				Catalog:          req.Catalog,
-				SQL:              req.SQL,
-				ExecutedSQL:      executedSQL,
-				Limit:            getRowLimit(roleNames),
-				SelectAsCTAUsed:  req.SelectAsCTA,
-				Progress:         "running",
-				Status:           "running",
-				StartTime:        &startTime,
-				StartRunningTime: &now,
-				ChangedOn:        &now,
-			}
-			if err := e.queryRepo.Create(ctx, q); err != nil {
-				fmt.Printf("failed to create query record: %v\n", err)
-			} else {
-				queryID = q.ID
-			}
-		}
-		return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
-	}
-
-		cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
-	if err != nil {
-		fmt.Printf("cache check error: %v\n", err)
-	} else if cacheHit {
-		var result cachedResult
-		if err := json.Unmarshal(cachedData, &result); err == nil {
-			rowCount := 0
-			if dataSlice, ok := result.Data.([]interface{}); ok {
-				rowCount = len(dataSlice)
-			}
-			return &ExecuteResponse{
-				Data:              result.Data,
-				Columns:           result.Columns,
-				FromCache:        true,
-				ResultsTruncated: false,
-				Query: query.ExecuteMeta{
-					ClientID:    req.ClientID,
-					SQL:        req.SQL,
-					ExecutedSQL: executedSQL,
-					RLSApplied:  rlsApplied,
-					Rows:       rowCount,
-					Progress:   "done",
-					Status:     "success",
-					StartTime:  startTime,
-					EndTime:    time.Now(),
-				},
-			}, nil
-		}
-	}
-
-	// QE-001 #2: Create query record with status="running"
+	// Phase 3: Always create query record before cache check
 	var queryID string
 	if e.queryRepo != nil && req.ClientID != "" {
 		now := time.Now()
@@ -782,51 +718,66 @@ func (e *QueryExecutor) Execute(ctx context.Context, req ExecuteRequest, userCtx
 		}
 	}
 
+	if cacheTimeout == -1 || req.ForceRefresh {
+		return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
+	}
+
+	cachedData, cacheHit, err := e.CheckCache(ctx, normSQL, schema, int(req.DatabaseID), rlsHash)
+	if err != nil {
+		fmt.Printf("cache check error: %v\n", err)
+	} else if cacheHit {
+		var result cachedResult
+		if err := json.Unmarshal(cachedData, &result); err == nil {
+			// Phase 3: Update record with from_cache on cache hit
+			if queryID != "" {
+				extraJSONBytes, _ := json.Marshal(map[string]bool{"from_cache": true})
+				e.queryRepo.UpdateStatusConditional(ctx, queryID, "success", []string{"running"}, map[string]interface{}{
+					"progress":   "done",
+					"extra_json": string(extraJSONBytes),
+					"end_time":   time.Now(),
+					"changed_on": time.Now(),
+				})
+			}
+			rowCount := 0
+			if dataSlice, ok := result.Data.([]interface{}); ok {
+				rowCount = len(dataSlice)
+			}
+			return &ExecuteResponse{
+				Data:              result.Data,
+				Columns:           result.Columns,
+				FromCache:        true,
+				ResultsTruncated: false,
+				Query: query.ExecuteMeta{
+					ClientID:    req.ClientID,
+					SQL:        req.SQL,
+					ExecutedSQL: executedSQL,
+					RLSApplied:  rlsApplied,
+					Rows:       rowCount,
+					Progress:   "done",
+					Status:     "success",
+					StartTime:  startTime,
+					EndTime:    time.Now(),
+				},
+			}, nil
+		}
+	}
+
 	return e.executeAndRespond(ctx, req, userCtx, executedSQL, rlsApplied, startTime, false, roleNames, queryID, rlsHash)
 }
 
-func (e *QueryExecutor) executeSQL(ctx context.Context, databaseID uint, querySQL string) ([]interface{}, []string, int, error) {
-	dbInfo, err := e.databaseRepo.GetDatabaseByID(ctx, databaseID)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("getting database: %w", err)
+func buildExtraJSON(pid int, queue string, attempt int) string {
+	m := make(map[string]interface{})
+	if pid > 0 {
+		m["backend_pid"] = pid
 	}
-
-	dbConn, err := sql.Open("postgres", dbInfo.SQLAlchemyURI)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("opening database connection: %w", err)
+	if queue != "" {
+		m["queue"] = queue
 	}
-	defer dbConn.Close()
-
-	rows, err := dbConn.QueryContext(ctx, querySQL)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("executing query: %w", err)
+	if attempt > 0 {
+		m["attempt"] = attempt
 	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("getting columns: %w", err)
-	}
-
-	var result []interface{}
-	for rows.Next() {
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, nil, 0, fmt.Errorf("scanning row: %w", err)
-		}
-		result = append(result, values)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, nil, 0, fmt.Errorf("iterating rows: %w", err)
-	}
-
-	return result, columns, len(result), nil
+	bytes, _ := json.Marshal(m)
+	return string(bytes)
 }
 
 func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteRequest, userCtx authdomain.UserContext, executedSQL string, rlsApplied bool, startTime time.Time, fromCache bool, roleNames []string, queryID string, rlsHash string) (*ExecuteResponse, error) {
@@ -855,75 +806,97 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 	var columns []string
 	var columnInfos []query.ColumnInfo
 	var rowCount int
-	var execErr error
 
-	// Actually execute the query using connection pool
-	if e.connectionPool != nil {
-		dbInfo, err := e.databaseRepo.GetDatabaseByID(ctx, uint(req.DatabaseID))
-		if err != nil {
-			return e.buildErrorResponse(execCtx, err, queryID, "getting database", 500)
-		}
+	if e.connectionPool == nil {
+		return e.buildErrorResponse(execCtx, fmt.Errorf("connection pool not configured"), queryID, "no pool", 500)
+	}
 
-		conn, err := e.connectionPool.Get(execCtx, uint(req.DatabaseID), dbInfo.SQLAlchemyURI)
-		if err != nil {
-			return e.buildErrorResponse(execCtx, err, queryID, "getting connection", 500)
-		}
+	dbInfo, err := e.databaseRepo.GetDatabaseByID(ctx, uint(req.DatabaseID))
+	if err != nil {
+		return e.buildErrorResponse(execCtx, err, queryID, "getting database", 500)
+	}
 
-		rows, err := conn.QueryContext(execCtx, executedSQL)
-		if err != nil {
-			// QE-001 #6: Handle SQL errors as 400 Bad Request
-			return e.buildErrorResponse(execCtx, err, queryID, "executing query", 400)
-		}
-		defer rows.Close()
+	// Phase 1: Use pinned connection so PID matches the actual query connection
+	pinnedConn, err := e.connectionPool.GetPinned(execCtx, uint(req.DatabaseID), dbInfo.SQLAlchemyURI)
+	if err != nil {
+		return e.buildErrorResponse(execCtx, err, queryID, "getting pinned connection", 500)
+	}
+	defer pinnedConn.Close()
 
-		cols, err := rows.Columns()
-		if err != nil {
-			return e.buildErrorResponse(execCtx, err, queryID, "getting columns", 500)
-		}
-		columns = cols
-
-		// Convert column names to ColumnInfo type
-		columnInfos := make([]query.ColumnInfo, len(cols))
-		for i, col := range cols {
-			columnInfos[i] = query.ColumnInfo{Name: col}
-		}
-
-		for rows.Next() {
-			values := make([]interface{}, len(columns))
-			valuePtrs := make([]interface{}, len(columns))
-			for i := range values {
-				valuePtrs[i] = &values[i]
+	// Phase 1: Capture backend PID from the pinned connection (best-effort)
+	if e.rdb != nil && queryID != "" {
+		pidRows, pidErr := pinnedConn.QueryContext(execCtx, "SELECT pg_backend_pid()")
+		if pidErr == nil {
+			if pidRows.Next() {
+				var pid int
+				if scanErr := pidRows.Scan(&pid); scanErr == nil && pid > 0 {
+					pidStr := strconv.Itoa(pid)
+					e.rdb.Set(ctx, queryPIDKey+queryID, pidStr, CancelFlagTTL)
+					// Phase 2: Store PID in extra_json as well
+					e.queryRepo.UpdateStatusConditional(ctx, queryID, "running", []string{"pending", "running"}, map[string]interface{}{
+						"extra_json":   buildExtraJSON(pid, "", 0),
+						"tracking_url": fmt.Sprintf("pgsql://pid/%d", pid),
+					})
+				}
 			}
-
-			if err := rows.Scan(valuePtrs...); err != nil {
-				return e.buildErrorResponse(execCtx, err, queryID, "scanning row", 500)
-			}
-			resultData = append(resultData, values)
-		}
-
-		if err := rows.Err(); err != nil {
-			return e.buildErrorResponse(execCtx, err, queryID, "iterating rows", 500)
-		}
-		rowCount = len(resultData)
-	} else {
-		// Fallback: use direct SQL connection if no pool
-		resultData, columns, rowCount, execErr = e.executeSQL(execCtx, req.DatabaseID, executedSQL)
-		if execErr != nil {
-			// Check if it's a timeout error (QE-001 #4)
-			if execCtx.Err() == context.DeadlineExceeded {
-				e.updateQueryStatus(ctx, queryID, "timed_out", 0)
-				return nil, &QueryError{Code: 408, Message: "Query exceeded 30s timeout"}
-			}
-			// Check for SQL syntax errors (QE-001 #6)
-			return e.buildErrorResponse(execCtx, execErr, queryID, "executing query", 400)
-		}
-
-		// Convert column names to ColumnInfo type
-		columnInfos = make([]query.ColumnInfo, len(columns))
-		for i, col := range columns {
-			columnInfos[i] = query.ColumnInfo{Name: col}
+			pidRows.Close()
 		}
 	}
+
+	rows, err := pinnedConn.QueryContext(execCtx, executedSQL)
+	if err != nil {
+		// QE-001 #6: Handle SQL errors as 400 Bad Request
+		return e.buildErrorResponse(execCtx, err, queryID, "executing query", 400)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return e.buildErrorResponse(execCtx, err, queryID, "getting columns", 500)
+	}
+	columns = cols
+
+	// Convert column names to ColumnInfo type
+	columnInfos = make([]query.ColumnInfo, len(cols))
+	for i, col := range cols {
+		columnInfos[i] = query.ColumnInfo{Name: col}
+	}
+
+	// Phase 5: Progress tracking during fetch
+	rowCount = 0
+	progressTicker := time.NewTicker(500 * time.Millisecond)
+	defer progressTicker.Stop()
+
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return e.buildErrorResponse(execCtx, err, queryID, "scanning row", 500)
+		}
+		resultData = append(resultData, values)
+		rowCount = len(resultData)
+
+		// Publish progress every ~500ms
+		if e.rdb != nil && queryID != "" {
+			select {
+			case <-progressTicker.C:
+				event, _ := json.Marshal(map[string]interface{}{
+					"type": "progress", "query_id": queryID, "progress": "fetching", "percent": 80,
+				})
+				e.rdb.Publish(ctx, queryStatusChannel+queryID, event)
+			default:
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return e.buildErrorResponse(execCtx, err, queryID, "iterating rows", 500)
+	}
+	// rowCount already set in loop
 
 	endTime := time.Now()
 
