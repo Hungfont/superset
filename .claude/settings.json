@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "mempalace@mempalace": true
+  },
+  "env": {
+    "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
+  }
+}

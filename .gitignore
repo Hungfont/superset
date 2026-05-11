@@ -4,3 +4,6 @@ CONTRIBUTING.md
 
 .github/
 # .claude/
+
+# MemPalace local data
+.mempalace/
