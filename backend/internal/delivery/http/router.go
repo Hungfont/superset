@@ -137,6 +137,10 @@ func NewRouter(
 				protected.GET("/query/:id/status", queryHandler.GetStatus)
 				protected.GET("/query/:id/result", queryHandler.GetResult)
 				protected.DELETE("/query/:id", queryHandler.Cancel)
+
+				// QE-007: Query history and result retrieval
+				protected.GET("/query/history", queryHandler.ListHistory)
+				protected.DELETE("/query/history", middleware.AuthorizeAdminRole(roleRepo), queryHandler.DeleteHistory)
 			}
 		}
 	}

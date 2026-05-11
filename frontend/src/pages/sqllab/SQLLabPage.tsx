@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback, useState } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
@@ -13,16 +13,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   CacheBadge,
@@ -37,6 +27,7 @@ import {
 } from "@/components/query/QueryBadges";
 import { WsStatusBadge } from "@/components/query/WsStatusBadge";
 import { DownloadButton } from "@/components/query/DownloadButton";
+import { QueryHistoryTable } from "@/components/query/QueryHistoryTable";
 import { DataTable } from "@/components/ui/data-table";
 import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
@@ -85,7 +76,6 @@ export default function SQLLabPage() {
   const { toast } = useToast();
   const lastQueryDurationRef = useRef<number>(0);
   const pollingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   const {
     tabs,
@@ -544,7 +534,7 @@ export default function SQLLabPage() {
       ? Date.now() - new Date(activeTab.result.query.start_time).getTime()
       : 0;
     if (elapsed > 10000) {
-      setCancelDialogOpen(true);
+      doCancel();
     } else {
       doCancel();
     }
@@ -735,41 +725,66 @@ export default function SQLLabPage() {
               </Alert>
             )}
 
-            {tab.result ? (
-              <div className="border rounded-md">
-                <DataTable
-                  data={tableData}
-                  columns={columns}
-                />
-              </div>
-            ) : isRunning ? (
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                Run a query to see results
-              </div>
-            )}
-
-            {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
-
-            {tab.result && (
-              <div className="space-y-2">
-                {tab.result.results_truncated && (
-                  <Alert variant="default" className="bg-amber-50 border-amber-200">
-                    <AlertDescription className="text-amber-800">
-                      Results limited to {tab.result.query.rows.toLocaleString()} rows. Export for full data.
-                    </AlertDescription>
-                  </Alert>
+            <Tabs defaultValue="results" className="mt-4">
+              <TabsList>
+                <TabsTrigger value="results">Results</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
+              </TabsList>
+              <TabsContent value="results" className="space-y-2 mt-2">
+                {tab.result ? (
+                  <div className="border rounded-md">
+                    <DataTable
+                      data={tableData}
+                      columns={columns}
+                    />
+                  </div>
+                ) : isRunning ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    Run a query to see results
+                  </div>
                 )}
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>{tab.result.query.rows.toLocaleString()} rows</span>
-                </div>
-              </div>
-            )}
+
+                {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
+
+                {tab.result && (
+                  <div className="space-y-2">
+                    {tab.result.results_truncated && (
+                      <Alert variant="default" className="bg-amber-50 border-amber-200">
+                        <AlertDescription className="text-amber-800">
+                          Results limited to {tab.result.query.rows.toLocaleString()} rows. Export for full data.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>{tab.result.query.rows.toLocaleString()} rows</span>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="history" className="mt-2">
+                <QueryHistoryTable
+                  onRunQuery={(sql, dbId) => {
+                    updateTabSql(tab.id, sql);
+                    updateTabDatabase(tab.id, dbId);
+                    executeMutation.mutate({
+                      database_id: dbId,
+                      sql,
+                      tab_name: tab.title,
+                      sql_editor_id: tab.sqlEditorId,
+                    });
+                  }}
+                  onLoadSql={(sql) => {
+                    updateTabSql(tab.id, sql);
+                  }}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         ))}
       </Tabs>

@@ -26,7 +26,7 @@ func TestQE004_HandlerWithAsyncExecutor_SubmitReturns202(t *testing.T) {
 	require.NotNil(t, asyncExec, "async executor should be created")
 
 	// Create handler with both executors
-	handler := NewHandlerWithAsync(queryExec, asyncExec, nil, nil, nil)
+	handler := NewHandlerWithAsync(queryExec, asyncExec, nil, nil, nil, nil, nil)
 	require.NotNil(t, handler, "handler should be created")
 	require.NotNil(t, handler.asyncExecutor, "asyncExecutor should not be nil")
 
@@ -45,7 +45,7 @@ func TestQE004_HandlerSubmitIntegration(t *testing.T) {
 	require.NotNil(t, asyncExec, "async executor should be created")
 
 	// Create handler with both executors
-	handler := NewHandlerWithAsync(queryExec, asyncExec, nil, nil, nil)
+	handler := NewHandlerWithAsync(queryExec, asyncExec, nil, nil, nil, nil, nil)
 	require.NotNil(t, handler, "handler should be created")
 
 	// Verify the async executor is properly set

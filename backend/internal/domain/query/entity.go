@@ -184,3 +184,33 @@ type ListFilter struct {
 	Page       int
 	PageSize   int
 }
+
+// HistoryResponseItem represents a single query in history listings (QE-007)
+type HistoryResponseItem struct {
+	ID           string     `json:"id"`
+	ClientID     string     `json:"client_id"`
+	Status       string     `json:"status"`
+	SQL          string     `json:"sql"`
+	DatabaseID   uint       `json:"database_id"`
+	DatabaseName string     `json:"database_name"`
+	Rows         int        `json:"rows"`
+	StartTime    *time.Time `json:"start_time"`
+	EndTime      *time.Time `json:"end_time"`
+	DurationMs   int64      `json:"duration_ms"`
+	ErrorMessage string     `json:"error_message"`
+	ResultsKey   string     `json:"results_key"`
+	UserID       uint       `json:"user_id"`
+}
+
+// HistoryResponse is the paginated response for GET /query/history (QE-007)
+type HistoryResponse struct {
+	Queries  []*HistoryResponseItem `json:"queries"`
+	Total    int64                 `json:"total"`
+	Page     int                   `json:"page"`
+	PageSize int                   `json:"page_size"`
+}
+
+// DeleteHistoryResponse is the response for DELETE /query/history (QE-007)
+type DeleteHistoryResponse struct {
+	Deleted int64 `json:"deleted"`
+}

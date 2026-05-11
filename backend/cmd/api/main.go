@@ -78,6 +78,10 @@ func main() {
 		log.Fatalf("failed to migrate: %v", err)
 	}
 
+	// QE-007: GIN trigram index for ILIKE search on query.sql
+	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_query_sql_gin ON query USING gin (sql gin_trgm_ops)")
+
 	// Redis
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
@@ -189,7 +193,7 @@ func main() {
 
 	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
 	asyncQueryExecutor := svcquery.NewAsyncQueryExecutor(redisClient, queryRepo, rlsFilterRepo, datasetRepo, queryExecutor, poolManager, databaseRepo)
-	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor, pubKey, jwtRepo, userRepo)
+	queryHandler := httpquery.NewHandlerWithAsync(queryExecutor, asyncQueryExecutor, pubKey, jwtRepo, userRepo, queryRepo, roleRepo)
 
 	// QE-005: WebSocket handler for real-time query result streaming
 	wsHandler := httpquery.NewWSHandler(pubKey, jwtRepo, userRepo, rlsFilterRepo, queryRepo, redisClient)

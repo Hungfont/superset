@@ -111,6 +111,32 @@ export interface CancelQueryResponse {
   message?: string;
 }
 
+export interface QueryHistoryItem {
+  id: string;
+  status: string;
+  sql: string;
+  database_id: number;
+  database_name: string;
+  rows: number;
+  start_time: string;
+  end_time: string;
+  duration_ms: number;
+  error_message: string | null;
+  results_key: string | null;
+  user_id: number;
+}
+
+export interface QueryHistoryResponse {
+  queries: QueryHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface DeleteHistoryResponse {
+  deleted: number;
+}
+
 function getAuthHeaders(contentType = false): HeadersInit {
   const accessToken = useAuthStore.getState().accessToken;
   return {
@@ -156,12 +182,7 @@ export const queriesApi = {
     sql_contains?: string;
     page?: number;
     page_size?: number;
-  }): Promise<{
-    queries: QueryMeta[];
-    total: number;
-    page: number;
-    page_size: number;
-  }> => {
+  }): Promise<QueryHistoryResponse> => {
     const searchParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -176,6 +197,13 @@ export const queriesApi = {
       headers: getAuthHeaders(),
     });
   },
+
+  deleteHistory: (olderThan: string): Promise<DeleteHistoryResponse> =>
+    request(`/api/v1/query/history?older_than=${encodeURIComponent(olderThan)}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: getAuthHeaders(),
+    }),
 
   getResult: (
     queryId: string
