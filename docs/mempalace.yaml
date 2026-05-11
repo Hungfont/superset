@@ -1,0 +1,14 @@
+wing: docs
+rooms:
+  - name: codemaps
+    description: Codebase maps, navigation guides, and INDEX
+    keywords: [codemap, codebase, navigation, structure]
+  - name: db_schema
+    description: Database schemas, table definitions, and overviews
+    keywords: [database, db, schema, table, migration]
+  - name: architecture
+    description: Architecture diagrams, high-level design, and sequence diagrams
+    keywords: [architecture, diagram, hld, sequence, design]
+  - name: requirements
+    description: Feature requirements, specifications, and service docs
+    keywords: [requirement, spec, feature, service, phase]
