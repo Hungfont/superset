@@ -1,14 +1,5 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(Get-ChildItem D:/superset/backend/ -Recurse -Depth 1)",
-      "Bash(Select-Object FullName)"
-    ]
-  },
-  "enabledPlugins": {
-    "mempalace@mempalace": true
-  },
-   "env": {
+  "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:20128/v1",
     "ANTHROPIC_AUTH_TOKEN": "sk-a89291db57c622d5-8epocl-2f592797",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
@@ -17,7 +8,24 @@
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
   },
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem D:/superset/backend/ -Recurse -Depth 1)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path D:\\\\superset -Depth 2 -Directory | Select-Object -First 80 | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\superset\\\\frontend\\\\src\" -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\superset\\\\frontend\\\\src\" -Directory -Recurse | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"D:\\\\superset\\\\frontend\\\\src\\\\\", \"\"\\) })",
+      "Bash(Get-ChildItem *)",
+      "Skill(mempalace:search)",
+      "Bash(npx tsc *)"
+    ]
+  },
   "model": "haiku",
+  "enabledPlugins": {
+    "mempalace@mempalace": true
+  },
   "extraKnownMarketplaces": {
     "mempalace": {
       "source": {

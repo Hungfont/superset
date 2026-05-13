@@ -141,7 +141,7 @@ func (r *queryRepo) ListHistory(ctx context.Context, filter *query.ListFilter) (
 
 func (r *queryRepo) DeleteOlderThan(ctx context.Context, olderThan time.Time) (int64, error) {
 	result := r.db.WithContext(ctx).
-		Where("created_at < ?", olderThan).
+		Where("start_time < ?", olderThan).
 		Delete(&query.Query{})
 	if result.Error != nil {
 		return 0, fmt.Errorf("deleting old queries: %w", result.Error)

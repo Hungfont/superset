@@ -218,8 +218,12 @@ export function QueryHistoryTable({ onRunQuery, onLoadSql }: QueryHistoryTablePr
                         const result = await queriesApi.getResult(item.id);
                         // TODO: display result in a modal or result view
                         toast(`Result loaded - ${result.rows} rows`);
-                      } catch {
-                        toast("Result expired - rerun query");
+                      } catch (err: any) {
+                        if (err?.status === 410) {
+                          toast("Result expired - rerun query");
+                        } else {
+                          toast("Failed to load result");
+                        }
                       }
                     }}
                   >

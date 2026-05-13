@@ -65,6 +65,9 @@ func NewRouter(
 				return middleware.RequirePermission(roleRepo, rbacPermissionRepo, rbacPermissionCacheRepo, action, resource)
 			}
 
+			// QE-007: Query history (non-admin: own queries only; admin: all)
+			protected.GET("/query/history", queryHandler.ListHistory)
+
 			protected.GET("/datasets", datasetHandler.ListDatasets)
 			protected.GET("/datasets/:id", datasetHandler.GetDataset)
 			protected.POST("/datasets", datasetHandler.CreatePhysicalDataset)
@@ -138,8 +141,7 @@ func NewRouter(
 				protected.GET("/query/:id/result", queryHandler.GetResult)
 				protected.DELETE("/query/:id", queryHandler.Cancel)
 
-				// QE-007: Query history and result retrieval
-				protected.GET("/query/history", queryHandler.ListHistory)
+				// QE-007: Delete query history (admin only)
 				protected.DELETE("/query/history", middleware.AuthorizeAdminRole(roleRepo), queryHandler.DeleteHistory)
 			}
 		}

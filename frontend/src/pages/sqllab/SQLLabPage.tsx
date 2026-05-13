@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
@@ -491,6 +491,8 @@ export default function SQLLabPage() {
     },
   });
 
+  const [resultsTabValue, setResultsTabValue] = useState("results");
+
   const handleRun = () => {
     if (!activeTab?.databaseId || !activeTab?.sql) return;
 
@@ -725,7 +727,7 @@ export default function SQLLabPage() {
               </Alert>
             )}
 
-            <Tabs defaultValue="results" className="mt-4">
+            <Tabs value={resultsTabValue} onValueChange={setResultsTabValue} className="mt-4">
               <TabsList>
                 <TabsTrigger value="results">Results</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
@@ -772,6 +774,7 @@ export default function SQLLabPage() {
                   onRunQuery={(sql, dbId) => {
                     updateTabSql(tab.id, sql);
                     updateTabDatabase(tab.id, dbId);
+                    setResultsTabValue("results");
                     executeMutation.mutate({
                       database_id: dbId,
                       sql,
