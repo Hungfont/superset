@@ -19,7 +19,14 @@
       "PowerShell(Get-ChildItem -Path \"D:\\\\superset\\\\frontend\\\\src\" -Directory -Recurse | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"D:\\\\superset\\\\frontend\\\\src\\\\\", \"\"\\) })",
       "Bash(Get-ChildItem *)",
       "Skill(mempalace:search)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(dir D:superset *)",
+      "Bash(Get-Location *)",
+      "PowerShell(Get-ChildItem \"D:\\\\superset\" -Force | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\backend\" -Directory | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\frontend\" -Directory | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\docs\" -Directory | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\.claude\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\(\"D:\\\\superset\\\\\", \"\"\\) })"
     ]
   },
   "model": "haiku",
