@@ -7,12 +7,16 @@ import (
 	"strings"
 	"time"
 
+	dbpool "superset/auth-service/internal/app/db"
 	svcquery "superset/auth-service/internal/app/query"
 	domain "superset/auth-service/internal/domain/auth"
+	domdb "superset/auth-service/internal/domain/db"
 	domainquery "superset/auth-service/internal/domain/query"
 	"superset/auth-service/internal/delivery/http/middleware"
+	"superset/auth-service/internal/pkg/crypto"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
@@ -23,6 +27,9 @@ type Handler struct {
 	userRepo      domain.UserRepository
 	queryRepo     domainquery.Repository
 	roleRepo      domain.RoleRepository
+	rdb           *redis.Client
+	dbRepo        domdb.DatabaseRepository
+	poolMgr       dbpool.DatabaseConnectionPool
 }
 
 func NewHandler(executor *svcquery.QueryExecutor) *Handler {
@@ -31,6 +38,10 @@ func NewHandler(executor *svcquery.QueryExecutor) *Handler {
 
 func NewHandlerWithAsync(executor *svcquery.QueryExecutor, asyncExecutor *svcquery.AsyncQueryExecutor, pubKey *rsa.PublicKey, jwtRepo domain.JWTRepository, userRepo domain.UserRepository, queryRepo domainquery.Repository, roleRepo domain.RoleRepository) *Handler {
 	return &Handler{executor: executor, asyncExecutor: asyncExecutor, pubKey: pubKey, jwtRepo: jwtRepo, userRepo: userRepo, queryRepo: queryRepo, roleRepo: roleRepo}
+}
+
+func NewHandlerWithAsyncAndPool(executor *svcquery.QueryExecutor, asyncExecutor *svcquery.AsyncQueryExecutor, pubKey *rsa.PublicKey, jwtRepo domain.JWTRepository, userRepo domain.UserRepository, queryRepo domainquery.Repository, roleRepo domain.RoleRepository, rdb *redis.Client, dbRepo domdb.DatabaseRepository, poolMgr dbpool.DatabaseConnectionPool) *Handler {
+	return &Handler{executor: executor, asyncExecutor: asyncExecutor, pubKey: pubKey, jwtRepo: jwtRepo, userRepo: userRepo, queryRepo: queryRepo, roleRepo: roleRepo, rdb: rdb, dbRepo: dbRepo, poolMgr: poolMgr}
 }
 
 // Use domain types via type aliases
@@ -424,4 +435,81 @@ func (h *Handler) DeleteHistory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, domainquery.DeleteHistoryResponse{Deleted: deleted})
+}
+
+type EstimateRequest = domainquery.EstimateRequest
+
+func (h *Handler) Estimate(c *gin.Context) {
+	var req EstimateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	userVal, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userCtx, ok := userVal.(domain.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "invalid user context"})
+		return
+	}
+
+	// Rate limit: 30 requests per 60 seconds per user
+	if h.rdb != nil {
+		key := "rate:estimate:" + strconv.FormatUint(uint64(userCtx.ID), 10)
+		count, err := h.rdb.Incr(c.Request.Context(), key).Result()
+		if err == nil {
+			if count == 1 {
+				h.rdb.Expire(c.Request.Context(), key, 60*time.Second)
+			}
+			if count > 30 {
+				ttl, _ := h.rdb.TTL(c.Request.Context(), key).Result()
+				retryAfter := int(ttl.Seconds())
+				if retryAfter <= 0 {
+					retryAfter = 60
+				}
+				c.JSON(http.StatusTooManyRequests, gin.H{"error": "rate_limited", "retry_after": retryAfter})
+				return
+			}
+		}
+	}
+
+	// Look up database to get SQLAlchemyURI
+	db, err := h.dbRepo.GetDatabaseByID(c.Request.Context(), req.DatabaseID)
+	if err != nil || db == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "database not found"})
+		return
+	}
+
+	// Detect driver from SQLAlchemyURI scheme
+	parsedURI, err := crypto.ParseSQLAlchemyURI(db.SQLAlchemyURI)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "invalid database URI"})
+		return
+	}
+	driver := parsedURI.Scheme
+	if driver == "postgres" {
+		driver = "postgresql"
+	}
+
+	// Get connection from pool
+	conn, err := h.poolMgr.Get(c.Request.Context(), req.DatabaseID, db.SQLAlchemyURI)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get database connection"})
+		return
+	}
+
+	// Run estimate
+	estimator := svcquery.NewEstimator(driver)
+	result, err := estimator.Estimate(c.Request.Context(), req.SQL, conn)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_sql", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }

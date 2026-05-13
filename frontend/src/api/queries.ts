@@ -137,6 +137,20 @@ export interface DeleteHistoryResponse {
   deleted: number;
 }
 
+export interface EstimateRequest {
+  sql: string;
+  database_id: number;
+}
+
+export interface EstimateResult {
+  supported: boolean;
+  driver?: string;
+  total_cost?: number;
+  estimated_rows?: number;
+  bytes_processed?: number;
+  estimated_cost_usd?: number;
+}
+
 function getAuthHeaders(contentType = false): HeadersInit {
   const accessToken = useAuthStore.getState().accessToken;
   return {
@@ -212,5 +226,13 @@ export const queriesApi = {
       method: "GET",
       credentials: "include",
       headers: getAuthHeaders(),
+    }),
+
+  estimate: (data: EstimateRequest): Promise<EstimateResult> =>
+    request("/api/v1/query/estimate", {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(data),
     }),
 };

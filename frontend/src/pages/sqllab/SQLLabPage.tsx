@@ -24,15 +24,18 @@ import {
   AsyncStatusBadge,
   AsyncProgressBar,
   QueueBadge,
+  EstimateBadge,
 } from "@/components/query/QueryBadges";
 import { WsStatusBadge } from "@/components/query/WsStatusBadge";
 import { DownloadButton } from "@/components/query/DownloadButton";
 import { QueryHistoryTable } from "@/components/query/QueryHistoryTable";
+import { EstimatePopover } from "@/components/query/EstimatePopover";
 import { DataTable } from "@/components/ui/data-table";
 import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
+import { useEstimate } from "@/hooks/useEstimate";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
@@ -100,10 +103,30 @@ export default function SQLLabPage() {
 
   const activeTab = tabs.find(t => t.id === activeTabId);
 
+  const selectedDbId = activeTab?.databaseId ?? null;
+
   const { data: databasesData, isLoading: databasesLoading } = useQuery({
     queryKey: ["databases"],
     queryFn: () => databasesApi.getDatabases({}),
     enabled: databaseId === null,
+  });
+
+  const selectedDb = useMemo(() => {
+    if (!selectedDbId) return undefined;
+    return databasesData?.items?.find(db => db.id === selectedDbId);
+  }, [selectedDbId, databasesData]);
+
+  const {
+    estimate,
+    isLoading: estimateLoading,
+    trigger: triggerEstimate,
+    isSupported: estimateSupported,
+  } = useEstimate({
+    sql: activeTab?.sql ?? "",
+    tabId: activeTabId ?? "",
+    databaseId: selectedDbId,
+    backend: selectedDb?.backend,
+    enabled: true,
   });
 
   const executeMutation = useMutation({
@@ -671,6 +694,21 @@ export default function SQLLabPage() {
                       isRunning={isRunning}
                       isQueued={tab.asyncStatus === "pending" || tab.asyncStatus === "queued"}
                     />
+                    {estimateSupported && (
+                      <>
+                        <EstimatePopover
+                          estimate={estimate}
+                          isLoading={estimateLoading}
+                          onTrigger={triggerEstimate}
+                          isSupported={estimateSupported}
+                        />
+                        <EstimateBadge
+                          estimate={estimate}
+                          isLoading={estimateLoading}
+                          onClick={triggerEstimate}
+                        />
+                      </>
+                    )}
                   </>
                 )}
                 {tab.asyncStatus && (

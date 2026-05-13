@@ -140,6 +140,7 @@ func NewRouter(
 				protected.GET("/query/:id/status", queryHandler.GetStatus)
 				protected.GET("/query/:id/result", queryHandler.GetResult)
 				protected.DELETE("/query/:id", queryHandler.Cancel)
+				protected.POST("/query/estimate", queryHandler.Estimate)
 
 				// QE-007: Delete query history (admin only)
 				protected.DELETE("/query/history", middleware.AuthorizeAdminRole(roleRepo), queryHandler.DeleteHistory)

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { type EstimateResult } from "@/api/queries";
 
 interface QueryResultQueryMeta {
   id: string;
@@ -49,6 +50,7 @@ interface SqlLabTab {
   asyncQueue?: string;
   progress?: string;
   downloadUrl?: string;
+  estimate: EstimateResult | null;
 }
 
 interface SqlLabState {
@@ -69,6 +71,7 @@ interface SqlLabState {
   setAsyncResult: (id: string, result: SetAsyncResultPayload) => void;
   clearAsyncState: (id: string) => void;
   setDownloadUrl: (id: string, url: string) => void;
+  setEstimate: (id: string, estimate: EstimateResult | null) => void;
 }
 
 let tabCounter = 0;
@@ -92,6 +95,7 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
           result: null,
           status: "idle",
           error: null,
+          estimate: null,
         },
       ],
       activeTabId: id,
@@ -231,6 +235,14 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
     set(state => ({
       tabs: state.tabs.map(t =>
         t.id === id ? { ...t, downloadUrl: url, status: "success" as const } : t
+      ),
+    }));
+  },
+
+  setEstimate: (id, estimate) => {
+    set(state => ({
+      tabs: state.tabs.map(t =>
+        t.id === id ? { ...t, estimate } : t
       ),
     }));
   },

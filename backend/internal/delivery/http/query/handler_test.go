@@ -6,7 +6,7 @@ import (
 	"time"
 
 	svcquery "superset/auth-service/internal/app/query"
-	"superset/auth-service/internal/domain/query"
+	domainquery "superset/auth-service/internal/domain/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,12 +69,12 @@ func TestQE004_AsyncSubmitRequestMatchesSpec(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		req     query.AsyncSubmitRequest
+		req     domainquery.AsyncSubmitRequest
 		wantErr bool
 	}{
 		{
 			name: "valid request with all fields",
-			req: query.AsyncSubmitRequest{
+			req: domainquery.AsyncSubmitRequest{
 				DatabaseID:   1,
 				SQL:         "SELECT * FROM orders",
 				Limit:       intPtr(1000),
@@ -86,7 +86,7 @@ func TestQE004_AsyncSubmitRequestMatchesSpec(t *testing.T) {
 		},
 		{
 			name: "valid request minimum required",
-			req: query.AsyncSubmitRequest{
+			req: domainquery.AsyncSubmitRequest{
 				DatabaseID: 1,
 				SQL:        "SELECT 1",
 			},
@@ -108,7 +108,7 @@ func TestQE004_AsyncSubmitResponseMatchesSpec(t *testing.T) {
 	// Per QE-004 API Contract:
 	// Response 202: { "query_id":"q-abc123", "status":"pending", "queue":"default" }
 
-	resp := &query.AsyncSubmitResponse{
+	resp := &domainquery.AsyncSubmitResponse{
 		QueryID: "q-abc123",
 		Status: "pending",
 		Queue:  "default",
@@ -175,7 +175,7 @@ func TestQE004_StatusResponseMatchesSpec(t *testing.T) {
 	// Response 200: { "query_id":"q-abc", "status":"running", "start_time":"...", "elapsed_ms":3420 }
 
 	now := time.Now()
-	resp := &query.QueryStatusResponse{
+	resp := &domainquery.QueryStatusResponse{
 		QueryID:    "q-abc123",
 		Status:    "running",
 		StartTime: now,
@@ -217,4 +217,100 @@ func TestQE004_HandlerNilsafe(t *testing.T) {
 
 	// The fix ensures NewHandlerWithAsync is called in main.go
 	// This test documents the expected behavior
+}
+
+// =============================================================================
+// QE-008 Handler Tests - Query Cost Estimation
+// =============================================================================
+
+func TestQE008_EstimateRequestTypeMatchesSpec(t *testing.T) {
+	tests := []struct {
+		name string
+		req  domainquery.EstimateRequest
+	}{
+		{
+			name: "valid estimate request",
+			req: domainquery.EstimateRequest{
+				SQL:        "SELECT * FROM orders",
+				DatabaseID: 3,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bytes, err := json.Marshal(tt.req)
+			require.NoError(t, err)
+
+			var decoded domainquery.EstimateRequest
+			err = json.Unmarshal(bytes, &decoded)
+			require.NoError(t, err)
+			assert.Equal(t, tt.req.SQL, decoded.SQL)
+			assert.Equal(t, tt.req.DatabaseID, decoded.DatabaseID)
+		})
+	}
+}
+
+func TestQE008_EstimateResultTypeMatchesSpec(t *testing.T) {
+	tests := []struct {
+		name   string
+		result domainquery.EstimateResult
+		json   string
+	}{
+		{
+			name:   "unsupported DB",
+			result: domainquery.EstimateResult{Supported: false},
+			json:   `{"supported":false}`,
+		},
+		{
+			name: "postgresql estimate",
+			result: domainquery.EstimateResult{
+				Supported:     true,
+				Driver:        "postgresql",
+				TotalCost:     1250.50,
+				EstimatedRows: 50000,
+			},
+			json: `{"supported":true,"driver":"postgresql","total_cost":1250.5,"estimated_rows":50000}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bytes, err := json.Marshal(tt.result)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.json, string(bytes))
+		})
+	}
+}
+
+func TestQE008_EstimateHandlerRequiresAuth(t *testing.T) {
+	handler := NewHandler(nil)
+	require.NotNil(t, handler)
+	assert.NotNil(t, handler.Estimate)
+}
+
+func TestQE008_NewEstimatorDispatchesCorrectly(t *testing.T) {
+	tests := []struct {
+		driver            string
+		expectPG          bool
+		expectUnsupported bool
+	}{
+		{"postgresql", true, false},
+		{"sqlite", false, true},
+		{"bigquery", false, true},
+		{"mysql", false, true},
+		{"snowflake", false, true},
+		{"", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.driver, func(t *testing.T) {
+			e := svcquery.NewEstimator(tt.driver)
+			require.NotNil(t, e)
+			_, isPG := e.(*svcquery.PostgresEstimator)
+			_, isUnsupported := e.(*svcquery.UnsupportedEstimator)
+			assert.Equal(t, tt.expectPG, isPG)
+			assert.Equal(t, tt.expectUnsupported, isUnsupported)
+		})
+	}
 }

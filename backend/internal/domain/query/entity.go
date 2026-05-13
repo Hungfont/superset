@@ -214,3 +214,19 @@ type HistoryResponse struct {
 type DeleteHistoryResponse struct {
 	Deleted int64 `json:"deleted"`
 }
+
+// EstimateRequest is the body for POST /api/v1/query/estimate (QE-008)
+type EstimateRequest struct {
+	SQL        string `json:"sql" binding:"required"`
+	DatabaseID uint   `json:"database_id" binding:"required"`
+}
+
+// EstimateResult holds the cost estimate for a query (QE-008)
+type EstimateResult struct {
+	Supported        bool    `json:"supported"`
+	Driver           string  `json:"driver,omitempty"`
+	TotalCost        float64 `json:"total_cost,omitempty"`
+	EstimatedRows    int64   `json:"estimated_rows,omitempty"`
+	BytesProcessed   int64   `json:"bytes_processed,omitempty"`
+	EstimatedCostUSD float64 `json:"estimated_cost_usd,omitempty"`
+}

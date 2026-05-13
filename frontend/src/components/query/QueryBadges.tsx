@@ -1,4 +1,4 @@
-import { Play, RefreshCw, Loader2, ShieldAlert, Clock, StopCircle, CloudLightning } from "lucide-react";
+import { Play, RefreshCw, Loader2, ShieldAlert, Clock, StopCircle, CloudLightning, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -308,5 +308,58 @@ export function QueueBadge({ queue }: QueueBadgeProps) {
     <Badge variant="outline" className={`h-5 text-xs ${config.className}`}>
       {config.label}
     </Badge>
+  );
+}
+
+interface EstimateBadgeProps {
+  estimate: {
+    supported: boolean;
+    driver?: string;
+    total_cost?: number;
+    estimated_rows?: number;
+    bytes_processed?: number;
+    estimated_cost_usd?: number;
+  } | null;
+  isLoading: boolean;
+  onClick: () => void;
+}
+
+export function EstimateBadge({ estimate, isLoading, onClick }: EstimateBadgeProps) {
+  if (isLoading) {
+    return (
+      <Badge variant="outline" className="h-6 gap-1 cursor-pointer" onClick={onClick}>
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Estimating...
+      </Badge>
+    );
+  }
+
+  if (!estimate || !estimate.supported) return null;
+
+  let label = "";
+  if (estimate.estimated_cost_usd !== undefined) {
+    label = `~$${estimate.estimated_cost_usd.toFixed(4)}`;
+  } else if (estimate.estimated_rows !== undefined) {
+    label = `~${estimate.estimated_rows.toLocaleString()} rows`;
+  } else if (estimate.total_cost !== undefined) {
+    label = `cost: ${estimate.total_cost.toFixed(1)}`;
+  }
+
+  if (!label) return null;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger>
+          <Badge variant="outline" className="h-6 gap-1 cursor-pointer" onClick={onClick}>
+            <Zap className="h-3 w-3" />
+            {label}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="text-xs">Click to view estimate details</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
