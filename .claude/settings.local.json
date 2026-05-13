@@ -9,11 +9,11 @@
     "mempalace@mempalace": true
   },
    "env": {
-    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
-    "ANTHROPIC_AUTH_TOKEN": "sk-e5934305b5564f4cbaf48469a8578394",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
+    "ANTHROPIC_BASE_URL": "http://localhost:20128/v1",
+    "ANTHROPIC_AUTH_TOKEN": "sk-a89291db57c622d5-8epocl-2f592797",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
   },
@@ -26,7 +26,7 @@
       }
     }
   },
-  "effortLevel": "max",
+  "effortLevel": "xhigh",
   "theme": "dark",
   "hasCompletedOnboarding": true
 }

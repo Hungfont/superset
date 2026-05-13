@@ -1,8 +1,5 @@
 {
-  "enabledPlugins": {
-    "mempalace@mempalace": true
-  },
-   "env": {
+  "env": {
     "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "sk-e5934305b5564f4cbaf48469a8578394",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
@@ -12,6 +9,10 @@
     "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
   },
   "model": "haiku",
+  "enabledPlugins": {
+    "mempalace@mempalace": true,
+    "superpowers@superpowers-marketplace": true
+  },
   "extraKnownMarketplaces": {
     "mempalace": {
       "source": {
@@ -20,7 +21,6 @@
       }
     }
   },
-  "effortLevel": "max",
   "theme": "dark",
   "hasCompletedOnboarding": true
 }
