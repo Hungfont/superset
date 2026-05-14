@@ -218,7 +218,8 @@ func (f *fakeSchemaInspector) ListColumns(_ context.Context, _ svcauth.SQLConnec
 }
 
 type fakeSchemaCache struct {
-	store map[string]string
+	store             map[string]string
+	invalidatedPrefix []string
 }
 
 func (f *fakeSchemaCache) Get(_ context.Context, key string) (string, bool, error) {
@@ -241,6 +242,7 @@ func (f *fakeSchemaCache) Set(_ context.Context, key string, value string, _ tim
 }
 
 func (f *fakeSchemaCache) InvalidateByPrefix(_ context.Context, prefix string) error {
+	f.invalidatedPrefix = append(f.invalidatedPrefix, prefix)
 	if f.store == nil {
 		return nil
 	}
@@ -1052,6 +1054,59 @@ func TestDatabaseService_DeleteDatabaseAuditLogCalled(t *testing.T) {
 	}
 	if audit.deleteLastID != 11 {
 		t.Fatalf("expected audit last id 11, got %d", audit.deleteLastID)
+	}
+}
+
+func TestDatabaseService_UpdateDatabaseFlushesSchemaCache(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI}}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+	svc.SetConnectionPool(&fakeConnectionPool{})
+
+	cache := &fakeSchemaCache{store: map[string]string{}}
+	svc.SetSchemaCache(cache)
+
+	name := "new-name"
+	_, updateErr := svc.UpdateDatabase(context.Background(), 1, 7, domain.UpdateDatabaseRequest{
+		DatabaseName: &name,
+	})
+	if updateErr != nil {
+		t.Fatalf("expected nil error, got %v", updateErr)
+	}
+	if len(cache.invalidatedPrefix) != 1 || cache.invalidatedPrefix[0] != "schema:7:" {
+		t.Fatalf("expected schema cache invalidated with prefix 'schema:7:', got %v", cache.invalidatedPrefix)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseFlushesSchemaCache(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		isAdmin:       true,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"},
+		datasetCount:  0,
+	}
+	pool := &fakeConnectionPool{}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+	svc.SetConnectionPool(pool)
+
+	cache := &fakeSchemaCache{store: map[string]string{}}
+	svc.SetSchemaCache(cache)
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	if deleteErr != nil {
+		t.Fatalf("expected nil error, got %v", deleteErr)
+	}
+	if len(cache.invalidatedPrefix) != 1 || cache.invalidatedPrefix[0] != "schema:11:" {
+		t.Fatalf("expected schema cache invalidated with prefix 'schema:11:', got %v", cache.invalidatedPrefix)
 	}
 }
 

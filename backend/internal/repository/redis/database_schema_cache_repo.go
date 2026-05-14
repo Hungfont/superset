@@ -36,3 +36,16 @@ func (r *databaseSchemaCacheRepo) Set(ctx context.Context, key string, value str
 	}
 	return nil
 }
+
+func (r *databaseSchemaCacheRepo) InvalidateByPrefix(ctx context.Context, prefix string) error {
+	iter := r.client.Scan(ctx, 0, prefix+"*", 100).Iterator()
+	for iter.Next(ctx) {
+		if err := r.client.Del(ctx, iter.Val()).Err(); err != nil {
+			return fmt.Errorf("deleting schema cache key %s: %w", iter.Val(), err)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("scanning schema cache keys: %w", err)
+	}
+	return nil
+}
