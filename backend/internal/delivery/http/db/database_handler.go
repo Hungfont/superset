@@ -263,10 +263,16 @@ func (h *DatabaseHandler) ListTables(c *gin.Context) {
 		return
 	}
 
+	tableType := strings.ToUpper(strings.TrimSpace(c.Query("table_type")))
+	if tableType == "" {
+		tableType = "BASE TABLE"
+	}
+
 	req := domain.ListDatabaseTablesRequest{
-		Schema:   strings.TrimSpace(c.Query("schema")),
-		Page:     page,
-		PageSize: pageSize,
+		Schema:    strings.TrimSpace(c.Query("schema")),
+		Page:      page,
+		PageSize:  pageSize,
+		TableType: tableType,
 	}
 	if req.Schema == "" {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": domain.ErrInvalidDatabase.Error()})

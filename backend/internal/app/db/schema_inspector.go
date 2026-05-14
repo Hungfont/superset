@@ -17,7 +17,7 @@ const (
 // SchemaInspector abstracts schema discovery per SQL driver.
 type SchemaInspector interface {
 	ListSchemas(ctx context.Context, conn SQLConnection) ([]string, error)
-	ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int) ([]domain.DatabaseTable, int64, error)
+	ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int, tableType string) ([]domain.DatabaseTable, int64, error)
 	ListColumns(ctx context.Context, conn SQLConnection, schema string, table string) ([]domain.DatabaseColumn, error)
 }
 
@@ -74,7 +74,7 @@ func (postgresSchemaInspector) ListSchemas(ctx context.Context, conn SQLConnecti
 	return schemas, nil
 }
 
-func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int) ([]domain.DatabaseTable, int64, error) {
+func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int, tableType string) ([]domain.DatabaseTable, int64, error) {
 	normalizedSchema := strings.TrimSpace(schema)
 	if normalizedSchema == "" {
 		return nil, 0, domain.ErrInvalidDatabase
@@ -83,12 +83,15 @@ func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 	normalizedPage, normalizedPageSize := normalizeTablesPagination(page, pageSize)
 	offset := (normalizedPage - 1) * normalizedPageSize
 
-	countRows, err := conn.QueryContext(ctx, `
-		SELECT COUNT(*)
-		FROM information_schema.tables
-		WHERE table_schema = $1
-		  AND table_type = 'BASE TABLE'
-	`, normalizedSchema)
+	typeFilter := ""
+	typeArgs := []any{normalizedSchema}
+	if tableType != "" {
+		typeFilter = "  AND table_type = $2"
+		typeArgs = append(typeArgs, tableType)
+	}
+
+	countQuery := "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = $1" + typeFilter
+	countRows, err := conn.QueryContext(ctx, countQuery, typeArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting tables: %w", err)
 	}
@@ -104,14 +107,9 @@ func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	rows, err := conn.QueryContext(ctx, `
-		SELECT table_name
-		FROM information_schema.tables
-		WHERE table_schema = $1
-		  AND table_type = 'BASE TABLE'
-		ORDER BY table_name
-		LIMIT $2 OFFSET $3
-	`, normalizedSchema, normalizedPageSize, offset)
+	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = $1" + typeFilter + " ORDER BY table_name LIMIT $2 OFFSET $3"
+	dataArgs := append(typeArgs, normalizedPageSize, offset)
+	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing tables: %w", err)
 	}
@@ -213,7 +211,7 @@ func (mysqlSchemaInspector) ListSchemas(ctx context.Context, conn SQLConnection)
 	return schemas, nil
 }
 
-func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int) ([]domain.DatabaseTable, int64, error) {
+func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int, tableType string) ([]domain.DatabaseTable, int64, error) {
 	normalizedSchema := strings.TrimSpace(schema)
 	if normalizedSchema == "" {
 		return nil, 0, domain.ErrInvalidDatabase
@@ -222,12 +220,15 @@ func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, 
 	normalizedPage, normalizedPageSize := normalizeTablesPagination(page, pageSize)
 	offset := (normalizedPage - 1) * normalizedPageSize
 
-	countRows, err := conn.QueryContext(ctx, `
-		SELECT COUNT(*)
-		FROM information_schema.tables
-		WHERE table_schema = ?
-		  AND table_type = 'BASE TABLE'
-	`, normalizedSchema)
+	typeFilter := ""
+	typeArgs := []any{normalizedSchema}
+	if tableType != "" {
+		typeFilter = "  AND table_type = ?"
+		typeArgs = append(typeArgs, tableType)
+	}
+
+	countQuery := "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ?" + typeFilter
+	countRows, err := conn.QueryContext(ctx, countQuery, typeArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting tables: %w", err)
 	}
@@ -243,14 +244,9 @@ func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, 
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	rows, err := conn.QueryContext(ctx, `
-		SELECT table_name
-		FROM information_schema.tables
-		WHERE table_schema = ?
-		  AND table_type = 'BASE TABLE'
-		ORDER BY table_name
-		LIMIT ? OFFSET ?
-	`, normalizedSchema, normalizedPageSize, offset)
+	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
+	dataArgs := append(typeArgs, normalizedPageSize, offset)
+	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing tables: %w", err)
 	}
@@ -345,7 +341,7 @@ func (bigquerySchemaInspector) ListSchemas(ctx context.Context, conn SQLConnecti
 	return schemas, nil
 }
 
-func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int) ([]domain.DatabaseTable, int64, error) {
+func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int, tableType string) ([]domain.DatabaseTable, int64, error) {
 	normalizedSchema := strings.TrimSpace(schema)
 	if normalizedSchema == "" {
 		return nil, 0, domain.ErrInvalidDatabase
@@ -353,9 +349,15 @@ func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 	normalizedPage, normalizedPageSize := normalizeTablesPagination(page, pageSize)
 	offset := (normalizedPage - 1) * normalizedPageSize
 
-	countRows, err := conn.QueryContext(ctx,
-		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema AND table_type = 'BASE TABLE'",
-		normalizedSchema)
+	typeFilter := ""
+	typeArgs := []any{normalizedSchema}
+	if tableType != "" {
+		typeFilter = " AND table_type = @type"
+		typeArgs = append(typeArgs, tableType)
+	}
+
+	countQuery := "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema" + typeFilter
+	countRows, err := conn.QueryContext(ctx, countQuery, typeArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting tables: %w", err)
 	}
@@ -370,9 +372,9 @@ func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	rows, err := conn.QueryContext(ctx,
-		"SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema AND table_type = 'BASE TABLE' ORDER BY table_name LIMIT @limit OFFSET @offset",
-		normalizedSchema, normalizedPageSize, offset)
+	dataQuery := "SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema" + typeFilter + " ORDER BY table_name LIMIT @limit OFFSET @offset"
+	dataArgs := append(typeArgs, normalizedPageSize, offset)
+	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing tables: %w", err)
 	}
@@ -454,7 +456,7 @@ func (snowflakeSchemaInspector) ListSchemas(ctx context.Context, conn SQLConnect
 	return schemas, nil
 }
 
-func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int) ([]domain.DatabaseTable, int64, error) {
+func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, schema string, page int, pageSize int, tableType string) ([]domain.DatabaseTable, int64, error) {
 	normalizedSchema := strings.TrimSpace(schema)
 	if normalizedSchema == "" {
 		return nil, 0, domain.ErrInvalidDatabase
@@ -462,12 +464,15 @@ func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnecti
 	normalizedPage, normalizedPageSize := normalizeTablesPagination(page, pageSize)
 	offset := (normalizedPage - 1) * normalizedPageSize
 
-	countRows, err := conn.QueryContext(ctx, `
-		SELECT COUNT(*)
-		FROM information_schema.tables
-		WHERE table_schema = ?
-		  AND table_type = 'BASE TABLE'
-	`, normalizedSchema)
+	typeFilter := ""
+	typeArgs := []any{normalizedSchema}
+	if tableType != "" {
+		typeFilter = "  AND table_type = ?"
+		typeArgs = append(typeArgs, tableType)
+	}
+
+	countQuery := "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ?" + typeFilter
+	countRows, err := conn.QueryContext(ctx, countQuery, typeArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting tables: %w", err)
 	}
@@ -482,14 +487,9 @@ func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnecti
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	rows, err := conn.QueryContext(ctx, `
-		SELECT table_name
-		FROM information_schema.tables
-		WHERE table_schema = ?
-		  AND table_type = 'BASE TABLE'
-		ORDER BY table_name
-		LIMIT ? OFFSET ?
-	`, normalizedSchema, normalizedPageSize, offset)
+	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
+	dataArgs := append(typeArgs, normalizedPageSize, offset)
+	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing tables: %w", err)
 	}

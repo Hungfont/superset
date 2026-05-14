@@ -164,7 +164,7 @@ func (h *handlerDatabaseTester) ListSchemas(_ context.Context, _ svcauth.SQLConn
 	return append([]string(nil), h.schemas...), nil
 }
 
-func (h *handlerDatabaseTester) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int) ([]domain.DatabaseTable, int64, error) {
+func (h *handlerDatabaseTester) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int, _ string) ([]domain.DatabaseTable, int64, error) {
 	h.tablesCalls++
 	if h.tablesErr != nil {
 		return nil, 0, h.tablesErr

@@ -201,7 +201,7 @@ func (f *fakeSchemaInspector) ListSchemas(_ context.Context, _ svcauth.SQLConnec
 	return append([]string(nil), f.schemas...), nil
 }
 
-func (f *fakeSchemaInspector) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int) ([]domain.DatabaseTable, int64, error) {
+func (f *fakeSchemaInspector) ListTables(_ context.Context, _ svcauth.SQLConnection, _ string, _ int, _ int, _ string) ([]domain.DatabaseTable, int64, error) {
 	f.tablesCalls++
 	if f.tablesErr != nil {
 		return nil, 0, f.tablesErr

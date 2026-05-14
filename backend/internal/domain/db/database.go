@@ -134,9 +134,10 @@ type UpdateDatabaseRequest struct {
 
 // ListDatabaseTablesRequest is used by GET /api/v1/admin/databases/:id/tables.
 type ListDatabaseTablesRequest struct {
-	Schema   string
-	Page     int
-	PageSize int
+	Schema    string
+	Page      int
+	PageSize  int
+	TableType string // "BASE TABLE", "VIEW", or "" for all
 }
 
 // ListDatabaseColumnsRequest is used by GET /api/v1/admin/databases/:id/columns.
@@ -180,4 +181,8 @@ type DatabaseInUseError struct {
 
 func (e *DatabaseInUseError) Error() string {
 	return fmt.Sprintf("database is in use by %d dataset(s)", len(e.Datasets))
+}
+
+func (e *DatabaseInUseError) Is(target error) bool {
+	return target == ErrDatabaseInUse
 }

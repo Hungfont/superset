@@ -56,7 +56,7 @@ func (s *DatabaseService) ListTables(ctx context.Context, actorUserID uint, data
 		return nil, domain.ErrInvalidDatabase
 	}
 
-	cacheKey := fmt.Sprintf("schema:%d:%s:tables:%d:%d", databaseID, normalized.Schema, normalized.Page, normalized.PageSize)
+	cacheKey := fmt.Sprintf("schema:%d:%s:tables:%d:%d:%s", databaseID, normalized.Schema, normalized.Page, normalized.PageSize, normalized.TableType)
 	if !forceRefresh {
 		cachedValue := domain.DatabaseTableListResponse{}
 		if hit := s.readSchemaCache(ctx, cacheKey, &cachedValue); hit {
@@ -72,7 +72,7 @@ func (s *DatabaseService) ListTables(ctx context.Context, actorUserID uint, data
 	timeoutCtx, cancel := context.WithTimeout(ctx, databaseSchemaIntrospectionTimeout)
 	defer cancel()
 
-	tables, total, err := s.schemaInspector.ListTables(timeoutCtx, connection, normalized.Schema, normalized.Page, normalized.PageSize)
+	tables, total, err := s.schemaInspector.ListTables(timeoutCtx, connection, normalized.Schema, normalized.Page, normalized.PageSize, normalized.TableType)
 	if err != nil {
 		return nil, mapSchemaIntrospectionError(err)
 	}
@@ -198,9 +198,10 @@ func (s *DatabaseService) writeSchemaCache(ctx context.Context, key string, valu
 func normalizeListTablesRequest(req domain.ListDatabaseTablesRequest) domain.ListDatabaseTablesRequest {
 	page, pageSize := normalizeTablesPagination(req.Page, req.PageSize)
 	return domain.ListDatabaseTablesRequest{
-		Schema:   strings.TrimSpace(req.Schema),
-		Page:     page,
-		PageSize: pageSize,
+		Schema:    strings.TrimSpace(req.Schema),
+		Page:      page,
+		PageSize:  pageSize,
+		TableType: strings.TrimSpace(req.TableType),
 	}
 }
 
