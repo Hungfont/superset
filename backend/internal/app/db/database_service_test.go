@@ -28,6 +28,9 @@ type fakeDatabaseRepo struct {
 	visibleByIDResult *domain.DatabaseWithDatasetCount
 	visibleByIDErr    error
 
+	runningQueryCount int64
+	datasets          []domain.DatasetRef
+
 	created *domain.Database
 	updated *domain.Database
 	deleted uint
@@ -76,11 +79,11 @@ func (f *fakeDatabaseRepo) CountDatasetsByDatabaseID(_ context.Context, _ uint) 
 }
 
 func (f *fakeDatabaseRepo) CountRunningQueriesByDatabaseID(_ context.Context, _ uint) (int64, error) {
-	return 0, nil
+	return f.runningQueryCount, nil
 }
 
 func (f *fakeDatabaseRepo) ListDatasetsByDatabaseID(_ context.Context, _ uint) ([]domain.DatasetRef, error) {
-	return nil, nil
+	return append([]domain.DatasetRef(nil), f.datasets...), nil
 }
 
 func (f *fakeDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
@@ -722,7 +725,15 @@ func TestDatabaseService_UpdateDatabaseMergesMaskedPasswordAndReturnsMaskedURI(t
 }
 
 func TestDatabaseService_DeleteDatabaseReturnsInUseWhenDatasetsExist(t *testing.T) {
-	repo := &fakeDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"}, datasetCount: 2}
+	repo := &fakeDatabaseRepo{
+		isAdmin: true,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"},
+		datasetCount: 2,
+		datasets: []domain.DatasetRef{
+			{ID: 1, TableName: "orders"},
+			{ID: 2, TableName: "users"},
+		},
+	}
 	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
 	if err != nil {
 		t.Fatalf("expected nil constructor error, got %v", err)
@@ -935,6 +946,52 @@ func TestDatabaseService_ListColumnsMapsConnectionErrorsToBadGateway(t *testing.
 	_, listErr := svc.ListColumns(context.Background(), 1, 13, domain.ListDatabaseColumnsRequest{Schema: "public", Table: "orders"}, false, "")
 	if !errors.Is(listErr, domain.ErrDatabaseUnreachable) {
 		t.Fatalf("expected ErrDatabaseUnreachable, got %v", listErr)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseHasRunningQueriesReturns409(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		isAdmin: true,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics", CreatedByFK: 1},
+		datasetCount:       0,
+		runningQueryCount:  3,
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	if !errors.Is(deleteErr, domain.ErrDatabaseHasRunningQueries) {
+		t.Fatalf("expected ErrDatabaseHasRunningQueries, got %v", deleteErr)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseHasDatasetsReturns409WithList(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		isAdmin: true,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics", CreatedByFK: 1},
+		datasetCount: 2,
+		datasets: []domain.DatasetRef{
+			{ID: 1, TableName: "orders"},
+			{ID: 2, TableName: "users"},
+		},
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	var inUseErr *domain.DatabaseInUseError
+	if !errors.As(deleteErr, &inUseErr) {
+		t.Fatalf("expected DatabaseInUseError, got %v", deleteErr)
+	}
+	if len(inUseErr.Datasets) != 2 {
+		t.Fatalf("expected 2 datasets in error, got %d", len(inUseErr.Datasets))
+	}
+	if inUseErr.Datasets[0].TableName != "orders" {
+		t.Fatalf("expected first dataset 'orders', got '%s'", inUseErr.Datasets[0].TableName)
 	}
 }
 

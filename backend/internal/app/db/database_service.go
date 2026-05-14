@@ -536,13 +536,20 @@ func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, 
 		return domain.ErrForbidden
 	}
 
-	datasetCount, err := s.repo.CountDatasetsByDatabaseID(ctx, databaseID)
+	queryCount, err := s.repo.CountRunningQueriesByDatabaseID(ctx, databaseID)
 	if err != nil {
-		return fmt.Errorf("checking database dependencies: %w", err)
+		return fmt.Errorf("checking running queries: %w", err)
+	}
+	if queryCount > 0 {
+		return domain.ErrDatabaseHasRunningQueries
 	}
 
-	if datasetCount > 0 {
-		return domain.ErrDatabaseInUse
+	datasets, err := s.repo.ListDatasetsByDatabaseID(ctx, databaseID)
+	if err != nil {
+		return fmt.Errorf("listing database datasets: %w", err)
+	}
+	if len(datasets) > 0 {
+		return &domain.DatabaseInUseError{Datasets: datasets}
 	}
 
 	if s.poolManager != nil {
