@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,5 +52,17 @@ func (c *inMemorySchemaCache) Set(_ context.Context, key string, value string, t
 	c.mu.Lock()
 	c.entries[key] = schemaCacheEntry{value: value, expiresAt: expiresAt}
 	c.mu.Unlock()
+	return nil
+}
+
+func (c *inMemorySchemaCache) InvalidateByPrefix(_ context.Context, prefix string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key := range c.entries {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.entries, key)
+		}
+	}
 	return nil
 }

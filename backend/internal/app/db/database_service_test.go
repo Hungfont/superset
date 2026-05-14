@@ -75,6 +75,14 @@ func (f *fakeDatabaseRepo) CountDatasetsByDatabaseID(_ context.Context, _ uint) 
 	return f.datasetCount, nil
 }
 
+func (f *fakeDatabaseRepo) CountRunningQueriesByDatabaseID(_ context.Context, _ uint) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeDatabaseRepo) ListDatasetsByDatabaseID(_ context.Context, _ uint) ([]domain.DatasetRef, error) {
+	return nil, nil
+}
+
 func (f *fakeDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
 	if f.getByIDErr != nil {
 		return nil, f.getByIDErr
@@ -227,6 +235,18 @@ func (f *fakeSchemaCache) Set(_ context.Context, key string, value string, _ tim
 	return nil
 }
 
+func (f *fakeSchemaCache) InvalidateByPrefix(_ context.Context, prefix string) error {
+	if f.store == nil {
+		return nil
+	}
+	for key := range f.store {
+		if strings.HasPrefix(key, prefix) {
+			delete(f.store, key)
+		}
+	}
+	return nil
+}
+
 func (f *fakeConnectionPool) Get(_ context.Context, _ uint, _ string) (svcauth.SQLConnection, error) {
 	return nil, nil
 }
@@ -366,6 +386,100 @@ func TestDatabaseService_CreateDatabaseNonAdminReturnsForbidden(t *testing.T) {
 	})
 	if !errors.Is(createErr, domain.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", createErr)
+	}
+}
+
+func TestDatabaseService_UpdateDatabaseNonOwnerReturnsForbidden(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	// Database created by user 1 (CreatedByFK=1), actor is user 77 (non-admin, non-owner)
+	repo := &fakeDatabaseRepo{
+		isAdmin: false,
+		getByIDResult: &domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI, CreatedByFK: 1},
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	name := "new-name"
+	_, updateErr := svc.UpdateDatabase(context.Background(), 77, 7, domain.UpdateDatabaseRequest{
+		DatabaseName: &name,
+	})
+	if !errors.Is(updateErr, domain.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", updateErr)
+	}
+}
+
+func TestDatabaseService_UpdateDatabaseOwnerCanUpdate(t *testing.T) {
+	encryptedURI, err := svcauth.EncryptSQLAlchemyURIPasswordForTest("postgresql://alice:secret@localhost:5432/analytics", "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil encrypt error, got %v", err)
+	}
+
+	// Database created by user 77, actor is user 77 (non-admin, owner)
+	repo := &fakeDatabaseRepo{
+		isAdmin: false,
+		getByIDResult: &domain.Database{ID: 7, DatabaseName: "analytics", SQLAlchemyURI: encryptedURI, CreatedByFK: 77},
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	name := "new-name"
+	updated, updateErr := svc.UpdateDatabase(context.Background(), 77, 7, domain.UpdateDatabaseRequest{
+		DatabaseName: &name,
+	})
+	if updateErr != nil {
+		t.Fatalf("expected nil error, got %v", updateErr)
+	}
+	if updated.DatabaseName != "new-name" {
+		t.Fatalf("expected updated name, got %s", updated.DatabaseName)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseNonOwnerReturnsForbidden(t *testing.T) {
+	// Database created by user 1 (CreatedByFK=1), actor is user 77 (non-admin, non-owner)
+	repo := &fakeDatabaseRepo{
+		isAdmin: false,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics", CreatedByFK: 1},
+		datasetCount: 0,
+	}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 77, 11)
+	if !errors.Is(deleteErr, domain.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", deleteErr)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseOwnerCanDelete(t *testing.T) {
+	// Database created by user 77, actor is user 77 (non-admin, owner)
+	repo := &fakeDatabaseRepo{
+		isAdmin: false,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics", CreatedByFK: 77},
+		datasetCount: 0,
+	}
+	pool := &fakeConnectionPool{}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, &fakeDatabaseAuditLogger{}, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+	svc.SetConnectionPool(pool)
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 77, 11)
+	if deleteErr != nil {
+		t.Fatalf("expected nil error, got %v", deleteErr)
+	}
+	if repo.deleted != 11 {
+		t.Fatalf("expected deleted id 11, got %d", repo.deleted)
 	}
 }
 

@@ -279,6 +279,14 @@ func (s *DatabaseService) CreateDatabase(ctx context.Context, actorUserID uint, 
 		return nil, err
 	}
 
+	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("checking admin role: %w", err)
+	}
+	if !isAdmin {
+		return nil, domain.ErrForbidden
+	}
+
 	exists, err := s.repo.DatabaseNameExists(ctx, normalizedReq.DatabaseName)
 	if err != nil {
 		return nil, fmt.Errorf("checking duplicate database name: %w", err)
@@ -426,6 +434,14 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 		return nil, err
 	}
 
+	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
+	if err != nil {
+		return nil, fmt.Errorf("checking admin role: %w", err)
+	}
+	if !isAdmin && existing.CreatedByFK != actorUserID {
+		return nil, domain.ErrForbidden
+	}
+
 	normalizedReq, strictTest, err := normalizeUpdateDatabaseRequest(req)
 	if err != nil {
 		return nil, err
@@ -507,8 +523,17 @@ func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, 
 		return domain.ErrInvalidDatabase
 	}
 
-	if _, err := s.repo.GetDatabaseByID(ctx, databaseID); err != nil {
+	existing, err := s.repo.GetDatabaseByID(ctx, databaseID)
+	if err != nil {
 		return err
+	}
+
+	isAdmin, err := s.repo.IsAdmin(ctx, actorUserID)
+	if err != nil {
+		return fmt.Errorf("checking admin role: %w", err)
+	}
+	if !isAdmin && existing.CreatedByFK != actorUserID {
+		return domain.ErrForbidden
 	}
 
 	datasetCount, err := s.repo.CountDatasetsByDatabaseID(ctx, databaseID)
