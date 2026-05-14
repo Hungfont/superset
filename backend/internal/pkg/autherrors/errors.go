@@ -87,6 +87,35 @@ var (
 	ErrNoAggregateFunction = errors.New("expression must contain an aggregate function")
 )
 
+// Sentinel errors for chart and dashboard management.
+var (
+	ErrChartNotFound     = errors.New("chart not found")
+	ErrDashboardNotFound = errors.New("dashboard not found")
+)
+
+// Sentinel errors for alert and report management.
+var (
+	ErrReportScheduleNotFound = errors.New("report schedule not found")
+)
+
+// Sentinel errors for annotation management.
+var (
+	ErrAnnotationLayerNotFound = errors.New("annotation layer not found")
+	ErrAnnotationNotFound      = errors.New("annotation not found")
+)
+
+// Sentinel errors for tag management.
+var (
+	ErrTagNotFound = errors.New("tag not found")
+)
+
+// Sentinel errors for embedded and miscellaneous management.
+var (
+	ErrCssTemplateNotFound       = errors.New("css template not found")
+	ErrEmbeddedDashboardNotFound = errors.New("embedded dashboard not found")
+	ErrKeyValueNotFound          = errors.New("key value not found")
+)
+
 // Sentinel errors for general cases.
 var (
 	ErrNotFound = errors.New("not found")

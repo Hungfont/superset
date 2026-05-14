@@ -42,7 +42,20 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 4. Goal-Driven Execution
+## 4. Model Immutability
+
+**NEVER add, remove, or modify fields on GORM model structs.**
+
+Model structs (those with `TableName()` methods in `backend/internal/domain/*/`) are direct mappings to database tables defined in `docs/db/db_overview.md`. They are not to be altered for convenience, feature requests, or "consistency" with other models.
+
+- Do not add a field because another model has it.
+- Do not remove a field because it appears unused.
+- Do not rename a field to match a different convention.
+- Do not change field types, tags, or column mappings.
+
+If a change to a model seems necessary, stop and ask. Model changes require explicit approval and must be reflected in `docs/db/db_overview.md` first.
+
+## 5. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 
