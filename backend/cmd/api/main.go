@@ -24,10 +24,6 @@ import (
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
 	httpquery "superset/auth-service/internal/delivery/http/query"
-	"superset/auth-service/internal/domain/auth"
-	domaindataset "superset/auth-service/internal/domain/dataset"
-	domaindb "superset/auth-service/internal/domain/db"
-	domainquery "superset/auth-service/internal/domain/query"
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
 	reporedis "superset/auth-service/internal/repository/redis"
@@ -59,28 +55,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-
-	// Auto-migrate
-	if err := db.AutoMigrate(
-		&auth.RegisterUser{},
-		&auth.User{},
-		&auth.Role{},
-		&auth.Permission{},
-		&auth.ViewMenu{},
-		&auth.PermissionView{},
-		&domaindb.Database{},
-		&domaindataset.Dataset{},
-		&domainquery.Query{},
-		&domainquery.SavedQuery{},
-		&domainquery.TabState{},
-		&domainquery.TableSchema{},
-	); err != nil {
-		log.Fatalf("failed to migrate: %v", err)
-	}
-
-	// QE-007: GIN trigram index for ILIKE search on query.sql
-	db.Exec("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-	db.Exec("CREATE INDEX IF NOT EXISTS idx_query_sql_gin ON query USING gin (sql gin_trgm_ops)")
 
 	// Redis
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
