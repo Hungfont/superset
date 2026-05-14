@@ -200,6 +200,10 @@ func (f *fakeDatasetRepository) MetricNameExists(_ context.Context, _ uint, _ st
 	return f.metricNameExists, nil
 }
 
+func (f *fakeDatasetRepository) FindChartsReferencingMetric(_ context.Context, _ uint, _ string) ([]domain.ChartRef, error) {
+	return nil, nil
+}
+
 func (f *fakeDatasetRepository) DeleteDataset(_ context.Context, _ uint) error {
 	if f.deleteDatasetErr != nil {
 		return f.deleteDatasetErr
@@ -266,7 +270,7 @@ func TestDatasetService_CreatePhysicalDatasetSuccess(t *testing.T) {
 		database:  &dbdomain.Database{ID: 7, DatabaseName: "analytics"},
 	}
 	queue := &fakeSyncQueue{}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, queue)
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, queue, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -310,7 +314,7 @@ func TestDatasetService_NewServiceReturnsErrorWhenQueueIsNil(t *testing.T) {
 		database:  &dbdomain.Database{ID: 7, DatabaseName: "analytics"},
 	}
 
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, nil)
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -322,7 +326,7 @@ func TestDatasetService_NewServiceReturnsErrorWhenQueueIsNil(t *testing.T) {
 func TestDatasetService_CreatePhysicalDatasetGammaForbidden(t *testing.T) {
 	repo := &fakeDatasetRepository{}
 	databaseLookupRepo := &fakeDatabaseLookupRepository{roleNames: []string{"Gamma"}}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -345,7 +349,7 @@ func TestDatasetService_CreatePhysicalDatasetDuplicateReturnsConflict(t *testing
 		roleNames: []string{"Alpha"},
 		database:  &dbdomain.Database{ID: 7, DatabaseName: "analytics"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -366,7 +370,7 @@ func TestDatasetService_CreatePhysicalDatasetInvalidDatabaseIDReturns422(t *test
 		roleNames:   []string{"Admin"},
 		databaseErr: dbdomain.ErrDatabaseNotFound,
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -391,7 +395,7 @@ func TestDatasetService_CreateMetricSuccess(t *testing.T) {
 		roleNames: []string{"Admin"},
 		database:  &dbdomain.Database{ID: 1, DatabaseName: "analytics"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -419,7 +423,7 @@ func TestDatasetService_CreateMetricNoAggregateReturnsError(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -444,7 +448,7 @@ func TestDatasetService_CreateMetricDuplicateNameReturnsConflict(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -468,7 +472,7 @@ func TestDatasetService_CreateMetricInvalidNameReturnsError(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -488,7 +492,7 @@ func TestDatasetService_CreateMetricDatasetNotFound(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -515,7 +519,7 @@ func TestDatasetService_UpdateMetricSuccess(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -544,7 +548,7 @@ func TestDatasetService_UpdateMetricNotFound(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -569,7 +573,7 @@ func TestDatasetService_DeleteMetricSuccess(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -599,7 +603,7 @@ func TestDatasetService_GetMetricsSuccess(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}
@@ -626,7 +630,7 @@ func TestDatasetService_BulkUpdateMetricsSuccess(t *testing.T) {
 	databaseLookupRepo := &fakeDatabaseLookupRepository{
 		roleNames: []string{"Admin"},
 	}
-	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{})
+	svc, err := datasetsvc.NewService(repo, databaseLookupRepo, &fakeSyncQueue{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error creating service, got %v", err)
 	}

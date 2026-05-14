@@ -542,6 +542,14 @@ func (r *datasetRepo) MetricNameExists(ctx context.Context, tableID uint, metric
 
 func (r *datasetRepo) DeleteDataset(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("rls_filter_tables").Where("datasource_id = ? AND datasource_type = ?", id, "table").Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting RLS filter assignments: %w", err)
+		}
+
+		if err := tx.Table("tagged_object").Where("object_id = ? AND object_type = ?", id, "table").Delete(nil).Error; err != nil {
+			return fmt.Errorf("deleting tag assignments: %w", err)
+		}
+
 		if err := tx.Table("table_columns").Where("table_id = ?", id).Delete(nil).Error; err != nil {
 			return fmt.Errorf("deleting columns: %w", err)
 		}
@@ -653,6 +661,19 @@ func (r *datasetRepo) getColumnByName(ctx context.Context, tx *gorm.DB, datasetI
 		return nil, err
 	}
 	return &col, nil
+}
+
+func (r *datasetRepo) FindChartsReferencingMetric(ctx context.Context, datasetID uint, metricName string) ([]domain.ChartRef, error) {
+	var charts []domain.ChartRef
+	err := r.db.WithContext(ctx).Table("slices").
+		Select("id, slice_name as name").
+		Where("datasource_id = ?", strconv.FormatUint(uint64(datasetID), 10)).
+		Where("params ILIKE ?", "%"+metricName+"%").
+		Scan(&charts).Error
+	if err != nil {
+		return nil, fmt.Errorf("finding charts referencing metric: %w", err)
+	}
+	return charts, nil
 }
 
 var _ domain.Repository = (*datasetRepo)(nil)

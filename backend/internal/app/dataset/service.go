@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 
@@ -31,6 +32,34 @@ func (noopSyncQueue) EnqueueSyncColumns(_ context.Context, _ uint) (string, erro
 	return uuid.NewString(), nil
 }
 
+// SQLValidator validates SQL by running LIMIT 0 and returns discovered columns.
+type SQLValidator interface {
+	ValidateSQL(ctx context.Context, databaseID uint, sql string) ([]domain.Column, error)
+}
+type noopSQLValidator struct{}
+
+func (noopSQLValidator) ValidateSQL(_ context.Context, _ uint, _ string) ([]domain.Column, error) {
+	return nil, nil
+}
+
+// CacheFlusher flushes query cache entries for a given dataset.
+type CacheFlusher interface {
+	FlushCache(ctx context.Context, dbID uint) (int64, error)
+}
+type noopCacheFlusher struct{}
+
+func (noopCacheFlusher) FlushCache(_ context.Context, _ uint) (int64, error) {
+	return 0, nil
+}
+
+// AuditLogger emits asynchronous audit events for dataset operations.
+type AuditLogger interface {
+	LogDatasetDeleted(ctx context.Context, datasetID uint)
+}
+type noopAuditLogger struct{}
+
+func (noopAuditLogger) LogDatasetDeleted(_ context.Context, _ uint) {}
+
 // databaseLookupRepository provides only db lookups required by dataset service.
 type databaseLookupRepository interface {
 	GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error)
@@ -42,14 +71,26 @@ type Service struct {
 	repo         domain.Repository
 	databaseRepo databaseLookupRepository
 	queue        SyncQueue
+	sqlValidator SQLValidator
+	cacheFlusher CacheFlusher
+	auditLogger  AuditLogger
 }
 
-func NewService(repo domain.Repository, databaseRepo databaseLookupRepository, queue SyncQueue) (*Service, error) {
+func NewService(repo domain.Repository, databaseRepo databaseLookupRepository, queue SyncQueue, sqlValidator SQLValidator, cacheFlusher CacheFlusher, auditLogger AuditLogger) (*Service, error) {
 	if queue == nil {
 		queue = noopSyncQueue{}
 	}
+	if sqlValidator == nil {
+		sqlValidator = noopSQLValidator{}
+	}
+	if cacheFlusher == nil {
+		cacheFlusher = noopCacheFlusher{}
+	}
+	if auditLogger == nil {
+		auditLogger = noopAuditLogger{}
+	}
 
-	return &Service{repo: repo, databaseRepo: databaseRepo, queue: queue}, nil
+	return &Service{repo: repo, databaseRepo: databaseRepo, queue: queue, sqlValidator: sqlValidator, cacheFlusher: cacheFlusher, auditLogger: auditLogger}, nil
 }
 
 func (s *Service) CreatePhysicalDataset(ctx context.Context, actorUserID uint, req domain.CreatePhysicalDatasetRequest) (*domain.CreatePhysicalDatasetResponse, error) {
@@ -210,15 +251,33 @@ func (s *Service) CreateVirtualDataset(ctx context.Context, actorUserID uint, re
 		return nil, fmt.Errorf("creating virtual dataset: %w", err)
 	}
 
-	if _, err := s.queue.EnqueueSyncColumns(ctx, created.ID); err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrDatasetSyncEnqueue, err)
+	var immediateColumns []domain.Column
+	if normalizedReq.ValidateSQL {
+		columns, err := s.sqlValidator.ValidateSQL(ctx, normalizedReq.DatabaseID, sql)
+		if err != nil {
+			return nil, domain.ErrSQLSemanticError
+		}
+		immediateColumns = columns
+		if len(immediateColumns) > 0 {
+			if err := s.repo.RefreshDatasetColumns(ctx, created.ID, immediateColumns); err != nil {
+				return nil, fmt.Errorf("populating virtual dataset columns: %w", err)
+			}
+		}
+	} else {
+		if _, err := s.queue.EnqueueSyncColumns(ctx, created.ID); err != nil {
+			return nil, fmt.Errorf("%w: %v", domain.ErrDatasetSyncEnqueue, err)
+		}
 	}
 
-	return &domain.CreateVirtualDatasetResponse{
+	response := &domain.CreateVirtualDatasetResponse{
 		ID:             created.ID,
-		TableName:       created.Name,
-		BackgroundSync: true,
-	}, nil
+		TableName:      created.Name,
+		BackgroundSync: !normalizedReq.ValidateSQL,
+	}
+	if len(immediateColumns) > 0 {
+		response.Columns = immediateColumns
+	}
+	return response, nil
 }
 
 func normalizeVirtualCreateRequest(req domain.CreateVirtualDatasetRequest) (domain.CreateVirtualDatasetRequest, error) {
@@ -779,6 +838,13 @@ func (s *Service) DeleteMetric(ctx context.Context, actorUserID uint, datasetID 
 
 	warnings := []string{}
 
+	referencedInCharts, err := s.repo.FindChartsReferencingMetric(ctx, datasetID, metric.MetricName)
+	if err != nil {
+		log.Printf("[dataset] failed to scan chart references for metric %d: %v", metricID, err)
+	} else if len(referencedInCharts) > 0 {
+		warnings = append(warnings, fmt.Sprintf("metric referenced in %d charts", len(referencedInCharts)))
+	}
+
 	if err := s.repo.DeleteMetric(ctx, metricID); err != nil {
 		return nil, fmt.Errorf("deleting metric: %w", err)
 	}
@@ -920,8 +986,16 @@ func (s *Service) DeleteDataset(ctx context.Context, actorUserID uint, id uint, 
 		return nil, fmt.Errorf("deleting dataset: %w", err)
 	}
 
+	if dataset.Perm != "" {
+		if _, err := s.cacheFlusher.FlushCache(ctx, dataset.DatabaseID); err != nil {
+			log.Printf("[dataset] cache flush failed for dataset %d: %v", id, err)
+		}
+	}
+
+	go s.auditLogger.LogDatasetDeleted(context.Background(), id)
+
 	return &domain.DeleteDatasetResponse{
-		Deleted:          true,
+		Deleted:       true,
 		ChartsDeleted: int(chartCount),
 	}, nil
 }

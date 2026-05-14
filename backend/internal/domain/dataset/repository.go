@@ -50,4 +50,6 @@ type Repository interface {
 	CountChartsByDatasetID(ctx context.Context, datasetID uint) (int64, error)
 	// RefreshDatasetColumns syncs columns from remote database.
 	RefreshDatasetColumns(ctx context.Context, datasetID uint, columns []Column) error
+	// FindChartsReferencingMetric finds charts that reference a metric by name in their params.
+	FindChartsReferencingMetric(ctx context.Context, datasetID uint, metricName string) ([]ChartRef, error)
 }

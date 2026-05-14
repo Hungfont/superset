@@ -165,10 +165,6 @@ func main() {
 		log.Fatalf("failed to initialize database service: %v", err)
 	}
 	datasetAsyncQueue := reporedis.NewDatasetAsyncQueue(redisClient)
-	datasetSvc, err := svcdataset.NewService(datasetRepo, databaseRepo, datasetAsyncQueue)
-	if err != nil {
-		log.Fatalf("failed to initialize dataset service: %v", err)
-	}
 	databaseSvc.SetSchemaCache(schemaCacheRepo)
 
 	columnSyncWorker := worker.NewColumnSyncWorker(redisClient, columnSyncRepo, databaseSvc, poolManager)
@@ -201,6 +197,12 @@ func main() {
 	// Start query worker for async query processing
 	queryWorker := worker.NewQueryWorker(redisClient, queryExecutor, asyncQueryExecutor, worker.DefaultQueryWorkerConfig())
 	queryWorker.Start()
+
+	sqlValidator := svcdataset.NewSQLValidator(&poolToDatasetAdapter{pool: poolManager}, databaseRepo)
+	datasetSvc, err := svcdataset.NewService(datasetRepo, databaseRepo, datasetAsyncQueue, sqlValidator, queryExecutor, nil)
+	if err != nil {
+		log.Fatalf("failed to initialize dataset service: %v", err)
+	}
 
 	datasetHandler := httpdataset.NewHandler(datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, datasetSvc, queryExecutor)
 
