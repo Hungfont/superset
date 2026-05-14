@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"sync"
@@ -16,6 +15,8 @@ import (
 	domain "superset/auth-service/internal/domain/db"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/snowflakedb/gosnowflake"
 )
 
 const (
@@ -115,8 +116,7 @@ func (l *defaultDatabaseTestRateLimiter) Allow(_ context.Context, key string, ca
 }
 
 func (defaultDatabaseConnectionProber) Probe(ctx context.Context, sqlalchemyURI string) (domain.TestConnectionResult, error) {
-	log.Println("[database_prober] sqlalchemyURI:" + sqlalchemyURI)
-	parsedURI, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI)
+parsedURI, err := crypto.ParseSQLAlchemyURI(sqlalchemyURI)
 	if err != nil {
 		return domain.TestConnectionResult{}, err
 	}
@@ -147,7 +147,7 @@ func (defaultDatabaseConnectionProber) Probe(ctx context.Context, sqlalchemyURI 
 	}
 
 	var dbVersion string
-	if err := db.QueryRowContext(ctx, "SELECT version()").Scan(&dbVersion); err != nil {
+	if err := db.QueryRowContext(ctx, driverVersionQuery(driverName)).Scan(&dbVersion); err != nil {
 		return domain.TestConnectionResult{
 			Success:   false,
 			LatencyMS: time.Since(startedAt).Milliseconds(),
@@ -169,9 +169,35 @@ func resolveSQLDriver(scheme string) (string, string, error) {
 	switch value {
 	case "postgres", "postgresql":
 		return "pgx", "postgresql", nil
+	case "mysql":
+		return "mysql", "mysql", nil
+	case "bigquery":
+		return "bigquery", "bigquery", nil
+	case "snowflake":
+		return "snowflake", "snowflake", nil
 	default:
 		return "", "", domain.ErrUnknownDatabaseDriver
 	}
+}
+
+func driverVersionQuery(driverName string) string {
+	switch driverName {
+	case "pgx":
+		return "SELECT version()"
+	case "mysql":
+		return "SELECT VERSION()"
+	case "bigquery":
+		return "SELECT CURRENT_VERSION()"
+	case "snowflake":
+		return "SELECT CURRENT_VERSION()"
+	default:
+		return "SELECT version()"
+	}
+}
+
+// ResolveSQLDriverForTest exposes resolveSQLDriver for tests.
+func ResolveSQLDriverForTest(scheme string) (string, string, error) {
+	return resolveSQLDriver(scheme)
 }
 
 // DatabaseService handles admin database connection management.

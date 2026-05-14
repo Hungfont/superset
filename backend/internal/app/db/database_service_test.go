@@ -995,6 +995,30 @@ func TestDatabaseService_DeleteDatabaseHasDatasetsReturns409WithList(t *testing.
 	}
 }
 
+func TestResolveSQLDriver_SupportsMySQL(t *testing.T) {
+	driverName, driverLabel, err := svcauth.ResolveSQLDriverForTest("mysql")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if driverName != "mysql" || driverLabel != "mysql" {
+		t.Fatalf("expected mysql/mysql, got %s/%s", driverName, driverLabel)
+	}
+}
+
+func TestResolveSQLDriver_SupportsBigQuery(t *testing.T) {
+	_, _, err := svcauth.ResolveSQLDriverForTest("bigquery")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
+func TestResolveSQLDriver_SupportsSnowflake(t *testing.T) {
+	_, _, err := svcauth.ResolveSQLDriverForTest("snowflake")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
 func boolPtr(value bool) *bool {
 	return &value
 }
