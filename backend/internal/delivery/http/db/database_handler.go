@@ -329,6 +329,11 @@ func (h *DatabaseHandler) ListColumns(c *gin.Context) {
 }
 
 func (h *DatabaseHandler) handleError(c *gin.Context, err error) {
+	var inUseErr *domain.DatabaseInUseError
+	if errors.As(err, &inUseErr) {
+		c.JSON(http.StatusConflict, gin.H{"error": inUseErr.Error(), "datasets": inUseErr.Datasets})
+		return
+	}
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
@@ -343,6 +348,8 @@ func (h *DatabaseHandler) handleError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrDatabaseNameExists):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrDatabaseInUse):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, domain.ErrDatabaseHasRunningQueries):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrUnknownDatabaseDriver), errors.Is(err, domain.ErrInvalidDatabase), errors.Is(err, domain.ErrInvalidDatabaseURI), errors.Is(err, domain.ErrDatabaseConnectionTestFailed):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})

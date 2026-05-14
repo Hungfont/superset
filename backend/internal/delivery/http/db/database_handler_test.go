@@ -3,6 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +35,8 @@ type handlerDatabaseRepo struct {
 	visibleByIDErr    error
 	updated           *domain.Database
 	deletedID         uint
+	runningQueryCount int64
+	datasets          []domain.DatasetRef
 }
 
 func (h *handlerDatabaseRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
@@ -77,6 +80,14 @@ func (h *handlerDatabaseRepo) DeleteDatabase(_ context.Context, databaseID uint)
 
 func (h *handlerDatabaseRepo) CountDatasetsByDatabaseID(_ context.Context, _ uint) (int64, error) {
 	return h.datasetCount, nil
+}
+
+func (h *handlerDatabaseRepo) CountRunningQueriesByDatabaseID(_ context.Context, _ uint) (int64, error) {
+	return h.runningQueryCount, nil
+}
+
+func (h *handlerDatabaseRepo) ListDatasetsByDatabaseID(_ context.Context, _ uint) ([]domain.DatasetRef, error) {
+	return append([]domain.DatasetRef(nil), h.datasets...), nil
 }
 
 func (h *handlerDatabaseRepo) GetDatabaseByID(_ context.Context, _ uint) (*domain.Database, error) {
@@ -183,9 +194,15 @@ func (handlerConnectionPool) Shutdown(_ context.Context) error {
 	return nil
 }
 
+func (handlerConnectionPool) GetPinned(_ context.Context, _ uint, _ string) (*sql.Conn, error) {
+	return nil, nil
+}
+
 type handlerDatabaseAuditLogger struct{}
 
 func (h *handlerDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, _ uint) {}
+
+func (h *handlerDatabaseAuditLogger) LogDatabaseDeleted(_ context.Context, _ uint) {}
 
 func newDatabaseRouter(repo *handlerDatabaseRepo, tester *handlerDatabaseTester) *gin.Engine {
 	svc, err := svcauth.NewDatabaseService(repo, tester, &handlerDatabaseAuditLogger{}, "12345678901234567890123456789012")
@@ -421,7 +438,7 @@ func TestDatabaseHandler_DeleteReturns204(t *testing.T) {
 
 func TestDatabaseHandler_DeleteReturns409WhenInUse(t *testing.T) {
 	r := newDatabaseRouter(
-		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: "postgresql://superset:enc@localhost:5432/analytics"}, datasetCount: 3},
+		&handlerDatabaseRepo{isAdmin: true, getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: "postgresql://superset:enc@localhost:5432/analytics", CreatedByFK: 1}, datasets: []domain.DatasetRef{{ID: 1, TableName: "sales"}}},
 		&handlerDatabaseTester{allowRate: true},
 	)
 
@@ -431,6 +448,31 @@ func TestDatabaseHandler_DeleteReturns409WhenInUse(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDatabaseHandler_DeleteReturns409WithDatasetList(t *testing.T) {
+	r := newDatabaseRouter(
+		&handlerDatabaseRepo{
+			isAdmin:       true,
+			getByIDResult: &domain.Database{ID: 2, SQLAlchemyURI: "postgresql://superset:enc@localhost:5432/analytics", CreatedByFK: 1},
+			datasets:      []domain.DatasetRef{{ID: 1, TableName: "orders"}, {ID: 2, TableName: "users"}},
+		},
+		&handlerDatabaseTester{allowRate: true},
+	)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/admin/databases/2", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("\"datasets\"")) {
+		t.Fatalf("expected datasets field in response, got: %s", w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("\"orders\"")) {
+		t.Fatalf("expected orders dataset in response, got: %s", w.Body.String())
 	}
 }
 
