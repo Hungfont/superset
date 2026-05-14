@@ -16,4 +16,5 @@ var (
 	ErrDatabaseConnectionTestFailed = pkgerrors.ErrDatabaseConnectionTestFailed
 	ErrDatabaseCredentialEncryption = pkgerrors.ErrDatabaseCredentialEncryption
 	ErrUnknownDatabaseDriver        = pkgerrors.ErrUnknownDatabaseDriver
+	ErrDatabaseHasRunningQueries    = pkgerrors.ErrDatabaseHasRunningQueries
 )

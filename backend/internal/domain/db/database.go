@@ -1,6 +1,9 @@
 package db
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Database maps to dbs.
 type Database struct {
@@ -162,4 +165,19 @@ type DatabaseColumn struct {
 	IsNullable   bool   `json:"is_nullable"`
 	DefaultValue string `json:"default_value,omitempty"`
 	IsDttm       bool   `json:"is_dttm"`
+}
+
+// DatasetRef is a lightweight reference to a dataset bound to a database.
+type DatasetRef struct {
+	ID        uint   `json:"id"`
+	TableName string `json:"table_name"`
+}
+
+// DatabaseInUseError is returned when a database cannot be deleted because datasets depend on it.
+type DatabaseInUseError struct {
+	Datasets []DatasetRef `json:"datasets"`
+}
+
+func (e *DatabaseInUseError) Error() string {
+	return fmt.Sprintf("database is in use by %d dataset(s)", len(e.Datasets))
 }

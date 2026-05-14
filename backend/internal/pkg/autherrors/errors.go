@@ -54,6 +54,7 @@ var (
 	ErrDatabaseConnectionTestFailed = errors.New("database connection test failed")
 	ErrDatabaseCredentialEncryption = errors.New("database credential encryption failed")
 	ErrUnknownDatabaseDriver        = errors.New("unknown database driver")
+	ErrDatabaseHasRunningQueries    = errors.New("database has running queries")
 )
 
 // Sentinel errors for dataset management.

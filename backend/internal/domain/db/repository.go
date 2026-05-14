@@ -27,10 +27,16 @@ type DatabaseRepository interface {
 	DeleteDatabase(ctx context.Context, databaseID uint) error
 	// CountDatasetsByDatabaseID returns number of datasets bound to the database.
 	CountDatasetsByDatabaseID(ctx context.Context, databaseID uint) (int64, error)
+	// CountRunningQueriesByDatabaseID returns the number of in-flight queries against a database.
+	CountRunningQueriesByDatabaseID(ctx context.Context, databaseID uint) (int64, error)
+	// ListDatasetsByDatabaseID returns dataset references bound to a database.
+	ListDatasetsByDatabaseID(ctx context.Context, databaseID uint) ([]DatasetRef, error)
 }
 
 // SchemaCacheRepository stores and retrieves serialized introspection payloads.
 type SchemaCacheRepository interface {
 	Get(ctx context.Context, key string) (string, bool, error)
 	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+	// InvalidateByPrefix removes all cache entries whose keys start with the given prefix.
+	InvalidateByPrefix(ctx context.Context, prefix string) error
 }
