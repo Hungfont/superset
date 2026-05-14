@@ -132,8 +132,10 @@ func (f *fakeDatabaseTester) TestConnection(_ context.Context, sqlalchemyURI str
 }
 
 type fakeDatabaseAuditLogger struct {
-	called int
-	lastID uint
+	called        int
+	lastID        uint
+	deleteCalled  int
+	deleteLastID  uint
 }
 
 type fakeConnectionProbe struct {
@@ -272,6 +274,11 @@ func (f *fakeConnectionPool) Shutdown(_ context.Context) error {
 func (f *fakeDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, databaseID uint) {
 	f.called++
 	f.lastID = databaseID
+}
+
+func (f *fakeDatabaseAuditLogger) LogDatabaseDeleted(_ context.Context, databaseID uint) {
+	f.deleteCalled++
+	f.deleteLastID = databaseID
 }
 
 func TestDatabaseService_CreateDatabaseEncryptsAndMasksURI(t *testing.T) {
@@ -1016,6 +1023,35 @@ func TestResolveSQLDriver_SupportsSnowflake(t *testing.T) {
 	_, _, err := svcauth.ResolveSQLDriverForTest("snowflake")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
+	}
+}
+
+func TestDatabaseService_DeleteDatabaseAuditLogCalled(t *testing.T) {
+	repo := &fakeDatabaseRepo{
+		isAdmin:       true,
+		getByIDResult: &domain.Database{ID: 11, SQLAlchemyURI: "postgresql://alice:enc@localhost:5432/analytics"},
+		datasetCount:  0,
+	}
+	pool := &fakeConnectionPool{}
+	audit := &fakeDatabaseAuditLogger{}
+	svc, err := svcauth.NewDatabaseService(repo, &fakeDatabaseTester{}, audit, "12345678901234567890123456789012")
+	if err != nil {
+		t.Fatalf("expected nil constructor error, got %v", err)
+	}
+	svc.SetConnectionPool(pool)
+
+	deleteErr := svc.DeleteDatabase(context.Background(), 1, 11)
+	if deleteErr != nil {
+		t.Fatalf("expected nil error, got %v", deleteErr)
+	}
+
+	// Wait briefly for async goroutine
+	time.Sleep(10 * time.Millisecond)
+	if audit.deleteCalled != 1 {
+		t.Fatalf("expected delete audit called once, got %d", audit.deleteCalled)
+	}
+	if audit.deleteLastID != 11 {
+		t.Fatalf("expected audit last id 11, got %d", audit.deleteLastID)
 	}
 }
 

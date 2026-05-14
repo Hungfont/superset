@@ -50,6 +50,7 @@ type DatabaseTestRateLimiter interface {
 // DatabaseAuditLogger emits asynchronous audit events.
 type DatabaseAuditLogger interface {
 	LogDatabaseCreated(ctx context.Context, databaseID uint)
+	LogDatabaseDeleted(ctx context.Context, databaseID uint)
 }
 
 type defaultDatabaseConnectionTester struct{}
@@ -89,6 +90,8 @@ func (defaultDatabaseConnectionTester) TestConnection(ctx context.Context, sqlal
 }
 
 func (noopDatabaseAuditLogger) LogDatabaseCreated(_ context.Context, _ uint) {}
+
+func (noopDatabaseAuditLogger) LogDatabaseDeleted(_ context.Context, _ uint) {}
 
 func newDefaultDatabaseTestRateLimiter() *defaultDatabaseTestRateLimiter {
 	return &defaultDatabaseTestRateLimiter{entries: map[string]databaseRateLimitState{}}
@@ -527,6 +530,10 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, actorUserID uint, 
 		}
 	}
 
+	if s.schemaCache != nil {
+		_ = s.schemaCache.InvalidateByPrefix(ctx, "schema:"+fmt.Sprintf("%d", databaseID)+":")
+	}
+
 	maskedURI, err := crypto.MaskSQLAlchemyURI(updated.SQLAlchemyURI)
 	if err != nil {
 		return nil, err
@@ -584,9 +591,15 @@ func (s *DatabaseService) DeleteDatabase(ctx context.Context, actorUserID uint, 
 		}
 	}
 
+	if s.schemaCache != nil {
+		_ = s.schemaCache.InvalidateByPrefix(ctx, "schema:"+fmt.Sprintf("%d", databaseID)+":")
+	}
+
 	if err := s.repo.DeleteDatabase(ctx, databaseID); err != nil {
 		return err
 	}
+
+	go s.auditLogger.LogDatabaseDeleted(context.Background(), databaseID)
 
 	return nil
 }
