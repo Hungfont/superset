@@ -211,6 +211,32 @@ func (r *databaseRepo) CountDatasetsByDatabaseID(ctx context.Context, databaseID
 	return count, nil
 }
 
+func (r *databaseRepo) CountRunningQueriesByDatabaseID(ctx context.Context, databaseID uint) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("query").
+		Where("database_id = ? AND status IN ?", databaseID, []string{"running", "queued"}).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("counting running queries by database id: %w", err)
+	}
+	return count, nil
+}
+
+func (r *databaseRepo) ListDatasetsByDatabaseID(ctx context.Context, databaseID uint) ([]domain.DatasetRef, error) {
+	items := make([]domain.DatasetRef, 0)
+	err := r.db.WithContext(ctx).
+		Table("tables").
+		Select("id, table_name").
+		Where("database_id = ?", databaseID).
+		Order("table_name ASC").
+		Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing datasets by database id: %w", err)
+	}
+	return items, nil
+}
+
 func applyVisibilityScope(query *gorm.DB, scope domain.DatabaseVisibilityScope, actorUserID uint) *gorm.DB {
 	switch scope {
 	case domain.DatabaseVisibilityAdmin:
