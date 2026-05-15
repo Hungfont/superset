@@ -525,7 +525,17 @@ func (e *AsyncQueryExecutor) executeQuery(ctx context.Context, task *query.Query
 		}
 
 		resp, err := e.executeWithWorkerSlot(queueKey, func() (*ExecuteResponse, error) {
-			return e.queryCache.Execute(ctx, execReq, userCtx)
+			execCtx := WithProgressCallback(ctx, func(fetchedRows, totalRows int) {
+				pct := 50
+				if totalRows > 0 {
+					pct = 50 + int(float64(fetchedRows)/float64(totalRows)*50.0)
+					if pct > 99 {
+						pct = 99
+					}
+				}
+				e.publishProgress(ctx, queryID, "fetching", pct)
+			})
+			return e.queryCache.Execute(execCtx, execReq, userCtx)
 		})
 		if err == nil {
 			// Phase 2: extra_json with PID + queue + attempt
@@ -716,23 +726,30 @@ func (e *AsyncQueryExecutor) handleQuerySuccess(ctx context.Context, queryID str
 	return nil
 }
 
-// publishProgress publishes a progress event via Redis pub/sub
-// Per spec: { "type": "progress", "query_id": "...", "percent": 42 }
-func (e *AsyncQueryExecutor) publishProgress(ctx context.Context, queryID, progress string) {
+// publishProgress publishes a progress event via Redis pub/sub with an optional
+// dynamic percent. If percent < 0, it is derived from the progress stage name.
+func (e *AsyncQueryExecutor) publishProgress(ctx context.Context, queryID, progress string, optPercent ...int) {
 	if e.rdb == nil {
 		return
 	}
 
-	percent := 0
-	switch progress {
-	case "queued":
-		percent = 10
-	case "running":
-		percent = 50
-	case "fetching":
-		percent = 80
-	case "done":
-		percent = 100
+	percent := -1
+	if len(optPercent) > 0 {
+		percent = optPercent[0]
+	}
+	if percent < 0 {
+		switch progress {
+		case "queued":
+			percent = 10
+		case "running":
+			percent = 50
+		case "fetching":
+			percent = 80
+		case "done":
+			percent = 100
+		default:
+			percent = 0
+		}
 	}
 
 	event := map[string]interface{}{
@@ -895,8 +912,8 @@ func generateQueryID() string {
 	return fmt.Sprintf("%08x", time.Now().UnixNano())
 }
 
-// GetResult gets the result of a completed query
-func (e *AsyncQueryExecutor) GetResult(ctx context.Context, queryID string) (*ExecuteResponse, error) {
+// GetResult gets the result of a completed query with optional pagination.
+func (e *AsyncQueryExecutor) GetResult(ctx context.Context, queryID string, offset, limit int) (*ExecuteResponse, error) {
 	q, err := e.queryRepo.GetByID(ctx, queryID)
 	if err != nil {
 		return nil, err
@@ -916,7 +933,7 @@ func (e *AsyncQueryExecutor) GetResult(ctx context.Context, queryID string) (*Ex
 		if err == nil {
 			var result ExecuteResponse
 			if err := json.Unmarshal(resultJSON, &result); err == nil {
-				return &result, nil
+				return paginateResult(&result, offset, limit), nil
 			}
 		}
 	}
@@ -927,6 +944,47 @@ func (e *AsyncQueryExecutor) GetResult(ctx context.Context, queryID string) (*Ex
 		Columns:   []query.ColumnInfo{},
 		FromCache: false,
 	}, nil
+}
+
+// paginateResult slices the result data to the requested page.
+func paginateResult(resp *ExecuteResponse, offset, limit int) *ExecuteResponse {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	data, ok := resp.Data.([]interface{})
+	if !ok || len(data) == 0 {
+		return resp
+	}
+
+	total := len(data)
+	if offset >= total {
+		return &ExecuteResponse{
+			Data:      []interface{}{},
+			Columns:   resp.Columns,
+			FromCache: resp.FromCache,
+			Query:     resp.Query,
+		}
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	// Copy to avoid aliasing the underlying Redis-cached slice
+	page := make([]interface{}, end-offset)
+	copy(page, data[offset:end])
+
+	return &ExecuteResponse{
+		Data:      page,
+		Columns:   resp.Columns,
+		FromCache: resp.FromCache,
+		Query:     resp.Query,
+	}
 }
 
 // GetResultForUser retrieves result with ownership check (for download link auth)
@@ -950,5 +1008,5 @@ func (e *AsyncQueryExecutor) GetResultForUser(ctx context.Context, queryID strin
 		return nil, fmt.Errorf("query not completed")
 	}
 
-	return e.GetResult(ctx, queryID)
+	return e.GetResult(ctx, queryID, 0, 0) // 0 means no pagination
 }

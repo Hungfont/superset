@@ -78,7 +78,7 @@ function RLSSection({
 export default function SQLLabPage() {
   const { toast } = useToast();
   const lastQueryDurationRef = useRef<number>(0);
-  const pollingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const {
     tabs,
@@ -189,8 +189,8 @@ export default function SQLLabPage() {
           const s = useSqlLabStore.getState();
           s.setTabError(tabId, "Query timed out after 30 seconds");
           showSystemNotification("Query Timeout", "Your async query exceeded the 30 second timeout.");
-          if (pollingTimeoutRef.current) {
-            clearTimeout(pollingTimeoutRef.current);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
           }
           wsUnsubscribe(queryId);
           s.clearAsyncState(tabId);
@@ -227,8 +227,15 @@ export default function SQLLabPage() {
       }
 
       if (status.status === "success" || status.status === "failed" || status.status === "stopped") {
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+        }
+
+        // Guard: if WS already delivered results, don't overwrite
+        const freshTab = useSqlLabStore.getState().tabs.find(t => t.id === tabId);
+        if ((status.status === "success" || status.status === "failed") && freshTab?.result?.query?.client_id === queryId) {
+          useSqlLabStore.getState().clearAsyncState(tabId);
+          return;
         }
 
         if (status.status === "success") {
@@ -275,8 +282,12 @@ export default function SQLLabPage() {
   }, [toast, wsUnsubscribe]);
 
   const startPolling = useCallback((queryId: string) => {
-    if (pollingTimeoutRef.current) {
-      clearTimeout(pollingTimeoutRef.current);
+    const tab = useSqlLabStore.getState().tabs.find(t => t.asyncQueryId === queryId);
+    if (!tab) return;
+    if (tab.asyncStatus === "done" || tab.asyncStatus === "failed" || tab.asyncStatus === "stopped") return;
+
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
     }
 
     const poll = () => {
@@ -284,7 +295,7 @@ export default function SQLLabPage() {
     };
 
     poll();
-    pollingTimeoutRef.current = setInterval(poll, POLLING_INTERVAL_MS);
+    pollingIntervalRef.current = setInterval(poll, POLLING_INTERVAL_MS);
   }, [fetchQueryStatus]);
 
   const handleWsEvent = useCallback((queryId: string) => {
@@ -324,8 +335,8 @@ export default function SQLLabPage() {
         });
         store.setTabStatus(tabId, "success");
 
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
         }
         wsUnsub(queryId);
 
@@ -357,8 +368,8 @@ export default function SQLLabPage() {
           ),
         });
         store.setDownloadUrl(tabId, data.download_url);
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
         }
         wsUnsub(queryId);
 
@@ -374,8 +385,8 @@ export default function SQLLabPage() {
         });
         store.setTabError(tabId, data.message || "Query failed");
         showSystemNotification("Query Failed", data.message || "Your query failed to execute.");
-        if (pollingTimeoutRef.current) {
-          clearTimeout(pollingTimeoutRef.current);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
         }
         wsUnsub(queryId);
         store.clearAsyncState(tabId);
@@ -391,9 +402,10 @@ export default function SQLLabPage() {
     return () => {
       if (activeTab?.asyncQueryId) {
         wsUnsubscribe(activeTab.asyncQueryId);
+        subscribedQueryIds.current.delete(activeTab.asyncQueryId);
       }
-      if (pollingTimeoutRef.current) {
-        clearTimeout(pollingTimeoutRef.current);
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
       }
     };
   }, [activeTab?.asyncQueryId, wsUnsubscribe]);
@@ -431,8 +443,32 @@ export default function SQLLabPage() {
     if (prevConnStatusRef.current === "connected" && wsConnectionStatus === "reconnecting") {
       toast("Connection lost. Reconnecting...");
     }
+    if (prevConnStatusRef.current === "reconnecting" && wsConnectionStatus === "disconnected") {
+      toast("Connection lost. Falling back to polling.");
+    }
+    // WS connected: check if the query already completed while we were connecting
+    // (Redis Pub/Sub drops messages published before subscription, so the "done"
+    // event may have been missed.)
+    if (prevConnStatusRef.current !== "connected" && wsConnectionStatus === "connected") {
+      const queryId = activeTab?.asyncQueryId;
+      if (queryId) {
+        fetchQueryStatus(queryId);
+      }
+    }
     prevConnStatusRef.current = wsConnectionStatus;
-  }, [wsConnectionStatus, toast]);
+  }, [wsConnectionStatus, toast, activeTab?.asyncQueryId, fetchQueryStatus]);
+
+  // WebSocket disconnect → polling fallback: when WS enters "disconnected" while
+  // a query is still running (pending/queued/running), start HTTP polling.
+  useEffect(() => {
+    if (
+      wsConnectionStatus === "disconnected" &&
+      activeTab?.asyncQueryId &&
+      (activeTab.asyncStatus === "pending" || activeTab.asyncStatus === "queued" || activeTab.asyncStatus === "running")
+    ) {
+      startPolling(activeTab.asyncQueryId);
+    }
+  }, [wsConnectionStatus, activeTab?.asyncQueryId, activeTab?.asyncStatus, startPolling]);
 
   const submitAsyncMutation = useMutation({
     mutationFn: queriesApi.submit,
@@ -444,7 +480,8 @@ export default function SQLLabPage() {
           description: "Results will appear when complete.",
         });
 
-        startPolling(data.query_id);
+        // Polling starts lazily: either via 7s WS fallback timer (WS never connects)
+        // or via the WS-disconnect→polling effect below (WS connected then dropped).
       }
     },
     onError: (error: Error) => {
@@ -461,9 +498,9 @@ export default function SQLLabPage() {
 
       const queryId = activeTab?.asyncQueryId;
 
-      if (pollingTimeoutRef.current) {
-        clearTimeout(pollingTimeoutRef.current);
-        pollingTimeoutRef.current = null;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
 
       // If the query already completed (e.g. success/failed), treat as completion

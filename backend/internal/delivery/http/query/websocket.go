@@ -3,9 +3,9 @@ package query
 import (
 	"context"
 	"crypto/rsa"
+	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,31 +25,6 @@ const (
 	wsWriteTimeout      = 10 * time.Second
 	wsReadTimeout       = 35 * time.Second
 )
-
-var defaultUpgrader = websocket.Upgrader{
-	ReadBufferSize:  4096,
-	WriteBufferSize: 4096,
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		allowedOrigins := []string{
-			"http://localhost:5173",
-			"http://localhost:3000",
-			"http://localhost:8080",
-			"https://localhost:5173",
-			"https://localhost:3000",
-			"https://localhost:8080",
-		}
-		for _, allowed := range allowedOrigins {
-			if origin == allowed {
-				return true
-			}
-		}
-		return strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "https://localhost:")
-	},
-}
 
 type WSHandler struct {
 	pubKey    *rsa.PublicKey
@@ -76,7 +51,13 @@ func NewWSHandler(
 		rlsRepo:   rlsRepo,
 		queryRepo: queryRepo,
 		rdb:       rdb,
-		upgrader:  defaultUpgrader,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  4096,
+			WriteBufferSize: 4096,
+			// Accept all origins — authentication is handled via JWT in query string,
+			// so the origin check is redundant and would break non-localhost deployments.
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
 }
 
@@ -120,7 +101,9 @@ func (h *WSHandler) Handle(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive context from the Gin request so cancellation is tied to the HTTP
+	// request lifecycle (client disconnect propagates to all child goroutines).
+	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 
 	redisSub := h.rdb.Subscribe(ctx, "query:status:"+queryID)
@@ -183,6 +166,11 @@ func (h *WSHandler) Handle(c *gin.Context) {
 		return nil
 	})
 
+	// Send current query state — if the worker finished before the WebSocket
+	// connected (Redis Pub/Sub drops pre-subscription messages), the client
+	// would otherwise never learn the result.
+	h.sendQueryState(conn, queryID)
+
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
@@ -194,6 +182,77 @@ func (h *WSHandler) Handle(c *gin.Context) {
 	cancel()
 	conn.Close()
 	wg.Wait()
+}
+
+func (h *WSHandler) sendQueryState(conn *websocket.Conn, queryID string) {
+	q, err := h.queryRepo.GetByID(context.Background(), queryID)
+	if err != nil || q == nil {
+		return
+	}
+
+	switch q.Status {
+	case "success":
+		// Query already completed — try to send result
+		if q.ResultsKey != "" && h.rdb != nil {
+			resultJSON, rerr := h.rdb.Get(context.Background(), q.ResultsKey).Bytes()
+			if rerr == nil {
+				var result svcquery.ExecuteResponse
+				if json.Unmarshal(resultJSON, &result) == nil {
+					data := map[string]interface{}{
+						"rows":    result.Data,
+						"columns": result.Columns,
+					}
+					event := map[string]interface{}{
+						"type":     "done",
+						"query_id": queryID,
+						"data":     data,
+					}
+					if eventJSON, jerr := json.Marshal(event); jerr == nil {
+						conn.WriteMessage(websocket.TextMessage, eventJSON)
+					}
+					return
+				}
+			}
+		}
+		// Fallback: send result_ready so client can poll
+		event := map[string]interface{}{
+			"type":         "result_ready",
+			"query_id":     queryID,
+			"download_url": "/api/v1/query/" + queryID + "/result/download",
+		}
+		if eventJSON, jerr := json.Marshal(event); jerr == nil {
+			conn.WriteMessage(websocket.TextMessage, eventJSON)
+		}
+
+	case "failed", "stopped":
+		msg := q.ErrorMessage
+		if msg == "" {
+			msg = "Query " + q.Status
+		}
+		event := map[string]interface{}{
+			"type":     "error",
+			"query_id": queryID,
+			"message":  msg,
+		}
+		if eventJSON, jerr := json.Marshal(event); jerr == nil {
+			conn.WriteMessage(websocket.TextMessage, eventJSON)
+		}
+
+	case "running", "pending":
+		pct := 50
+		if q.Status == "pending" {
+			pct = 10
+		}
+		event := map[string]interface{}{
+			"type":     "progress",
+			"query_id": queryID,
+			"progress": q.Status,
+			"percent":  pct,
+		}
+		if eventJSON, jerr := json.Marshal(event); jerr == nil {
+			conn.WriteMessage(websocket.TextMessage, eventJSON)
+		}
+	}
 }
 
 func isAdminRole(roles []string) bool {

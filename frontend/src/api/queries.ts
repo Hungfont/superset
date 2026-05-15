@@ -220,13 +220,19 @@ export const queriesApi = {
     }),
 
   getResult: (
-    queryId: string
-  ): Promise<{ data: Record<string, unknown>[]; columns: QueryColumn[]; rows: number }> =>
-    request(`/api/v1/query/${queryId}/result`, {
+    queryId: string,
+    params?: { offset?: number; limit?: number }
+  ): Promise<{ data: Record<string, unknown>[]; columns: QueryColumn[]; rows: number }> => {
+    const searchParams = new URLSearchParams();
+    if (params?.offset !== undefined) searchParams.append("offset", String(params.offset));
+    if (params?.limit !== undefined) searchParams.append("limit", String(params.limit));
+    const qs = searchParams.toString();
+    return request(`/api/v1/query/${queryId}/result${qs ? `?${qs}` : ""}`, {
       method: "GET",
       credentials: "include",
       headers: getAuthHeaders(),
-    }),
+    });
+  },
 
   estimate: (data: EstimateRequest): Promise<EstimateResult> =>
     request("/api/v1/query/estimate", {

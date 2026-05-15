@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAuthStore } from "@/stores/authStore";
 
 export type WsConnectionStatus = "connected" | "connecting" | "reconnecting" | "disconnected";
 
@@ -53,16 +54,7 @@ const BACKOFF_DELAYS = [1000, 2000, 4000];
 const MAX_RETRIES = 3;
 
 function getToken(): string | null {
-  try {
-    const stored = localStorage.getItem("auth-storage");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return parsed?.state?.accessToken || null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
+  return useAuthStore.getState().accessToken;
 }
 
 export const useWsStore = create<WsStoreState>((set, get) => ({

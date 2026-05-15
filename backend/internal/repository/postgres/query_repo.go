@@ -98,7 +98,7 @@ func (r *queryRepo) ListHistory(ctx context.Context, filter *query.ListFilter) (
 		Table("query").
 		Select(`query.id, query.client_id, query.status, query.sql, query.database_id,
 				COALESCE(dbs.database_name, '') AS database_name, query.rows, query.start_time, query.end_time,
-				COALESCE(EXTRACT(EPOCH FROM (query.end_time - query.start_time)) * 1000, 0) AS duration_ms,
+				COALESCE((EXTRACT(EPOCH FROM (query.end_time - query.start_time)) * 1000)::BIGINT, 0) AS duration_ms,
 				query.error_message, query.results_key, query.user_id`).
 		Joins("LEFT JOIN dbs ON dbs.id = query.database_id")
 

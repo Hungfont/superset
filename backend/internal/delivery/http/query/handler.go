@@ -279,7 +279,7 @@ func (h *Handler) GetResultByToken(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// GetResult handles getting query result with ownership check (QE-007)
+// GetResult handles getting query result with ownership check and optional pagination.
 func (h *Handler) GetResult(c *gin.Context) {
 	if h.asyncExecutor == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "async_not_available"})
@@ -290,6 +290,12 @@ func (h *Handler) GetResult(c *gin.Context) {
 	if queryID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "query id required"})
 		return
+	}
+
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "1000"))
+	if err != nil || limit <= 0 || limit > 100000 {
+		limit = 1000
 	}
 
 	userVal, exists := c.Get("user")
@@ -327,13 +333,13 @@ func (h *Handler) GetResult(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.asyncExecutor.GetResult(c.Request.Context(), queryID)
+	resp, err := h.asyncExecutor.GetResult(c.Request.Context(), queryID, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "result_not_found", "message": err.Error()})
 		return
 	}
 
-	// Check if result expired: query was successful and has ResultsKey but Redis returned empty
+	// Check if result expired
 	if q.ResultsKey != "" {
 		dataLen := 0
 		if resp.Data != nil {

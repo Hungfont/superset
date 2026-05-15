@@ -421,10 +421,21 @@ type QueryExecutor struct {
 	rlsInjector      *RLSInjector
 	rlsRepo          authdomain.RLSFilterRepository
 	datasetRepo      dataset.Repository
-	databaseRepo     domdb.DatabaseRepository // For DB permission check (QE-001 #5)
-	queryRepo       query.Repository        // For query recording (QE-001)
+	databaseRepo     domdb.DatabaseRepository
+	queryRepo       query.Repository
 	rdb             *redis.Client
-	connectionPool  dbpool.DatabaseConnectionPool // Connection pool for query execution
+	connectionPool  dbpool.DatabaseConnectionPool
+}
+
+// progressKeyType is a context key for progress callbacks.
+type progressKeyType struct{}
+
+// ProgressFunc is called during row fetching with (fetchedRows, totalRows).
+type ProgressFunc func(fetchedRows, totalRows int)
+
+// WithProgressCallback attaches a progress callback to the context.
+func WithProgressCallback(ctx context.Context, fn ProgressFunc) context.Context {
+	return context.WithValue(ctx, progressKeyType{}, fn)
 }
 
 func NewQueryExecutor(rlsInjector *RLSInjector, rlsRepo authdomain.RLSFilterRepository, datasetRepo dataset.Repository, databaseRepo domdb.DatabaseRepository, queryRepo query.Repository, rdb *redis.Client, connectionPool dbpool.DatabaseConnectionPool) *QueryExecutor {
@@ -862,11 +873,10 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 		columnInfos[i] = query.ColumnInfo{Name: col}
 	}
 
-	// Phase 5: Progress tracking during fetch
+	// Phase 5: Row fetching with progress tracking
 	rowCount = 0
-	progressTicker := time.NewTicker(500 * time.Millisecond)
-	defer progressTicker.Stop()
-
+	totalBudget := effectiveLimit
+	lastReported := 0
 	for rows.Next() {
 		values := make([]interface{}, len(columns))
 		valuePtrs := make([]interface{}, len(columns))
@@ -880,17 +890,15 @@ func (e *QueryExecutor) executeAndRespond(ctx context.Context, req ExecuteReques
 		resultData = append(resultData, values)
 		rowCount = len(resultData)
 
-		// Publish progress every ~500ms
-		if e.rdb != nil && queryID != "" {
-			select {
-			case <-progressTicker.C:
-				event, _ := json.Marshal(map[string]interface{}{
-					"type": "progress", "query_id": queryID, "progress": "fetching", "percent": 80,
-				})
-				e.rdb.Publish(ctx, queryStatusChannel+queryID, event)
-			default:
-			}
+		// Fire progress callback every ~1000 rows or at 25%/50%/75% thresholds
+		if fn, ok := execCtx.Value(progressKeyType{}).(ProgressFunc); ok && rowCount-lastReported >= 1000 {
+			fn(rowCount, totalBudget)
+			lastReported = rowCount
 		}
+	}
+	// Final progress callback at completion
+	if fn, ok := execCtx.Value(progressKeyType{}).(ProgressFunc); ok && rowCount > lastReported {
+		fn(rowCount, totalBudget)
 	}
 
 	if err := rows.Err(); err != nil {

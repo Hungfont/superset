@@ -2,6 +2,7 @@ package http
 
 import (
 	"crypto/rsa"
+	"fmt"
 
 	httpauth "superset/auth-service/internal/delivery/http/auth"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
@@ -38,7 +39,26 @@ func NewRouter(
 	rbacPermissionCacheRepo domain.RBACPermissionCacheRepository,
 ) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{}, // Keep default
+		Formatter: func(params gin.LogFormatterParams) string {
+			// Redact sensitive query params from access logs
+			u := *params.Request.URL
+			q := u.Query()
+			if q.Get("token") != "" {
+				q.Set("token", "[REDACTED]")
+				u.RawQuery = q.Encode()
+			}
+			return fmt.Sprintf("[GIN] %s | %3d | %13v | %-15s | %-7s %s\n",
+				params.TimeStamp.Format("2006/01/02 - 15:04:05"),
+				params.StatusCode,
+				params.Latency,
+				params.ClientIP,
+				params.Method,
+				u.String(),
+			)
+		},
+	}), gin.Recovery())
 
 	// WebSocket endpoint (JWT in query string, not header)
 	r.GET("/ws/query/:query_id", wsHandler.Handle)

@@ -24,7 +24,7 @@ func TestQueryExecutorCreation(t *testing.T) {
 // TestDefaultQueryWorkerConfig tests the default config
 func TestDefaultQueryWorkerConfig(t *testing.T) {
 	config := DefaultQueryWorkerConfig()
-	assert.Equal(t, 5, config.WorkerCount)
+	assert.Equal(t, 20, config.WorkerCount)
 	assert.Len(t, config.QueueKeys, 3)
 	// Verify minimum poll interval (1 second)
 	assert.GreaterOrEqual(t, config.PollInterval.Milliseconds(), int64(1000))

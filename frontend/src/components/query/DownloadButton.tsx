@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuthStore } from "@/stores/authStore";
 
 interface DownloadButtonProps {
   downloadUrl: string;
@@ -8,19 +9,7 @@ interface DownloadButtonProps {
 
 export function DownloadButton({ downloadUrl }: DownloadButtonProps) {
   const handleDownload = () => {
-    const token = (() => {
-      try {
-        const stored = localStorage.getItem("auth-storage");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          return parsed?.state?.accessToken || null;
-        }
-      } catch {
-        return null;
-      }
-      return null;
-    })();
-
+    const token = useAuthStore.getState().accessToken;
     const separator = downloadUrl.includes("?") ? "&" : "?";
     const url = token ? `${downloadUrl}${separator}token=${encodeURIComponent(token)}` : downloadUrl;
     window.open(url, "_blank");

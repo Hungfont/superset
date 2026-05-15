@@ -23,6 +23,11 @@ export default defineConfig(({ mode }) => {
           target: backendURL,
           changeOrigin: true,
         },
+        "/ws": {
+          target: backendURL,
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
     test: {
