@@ -16,9 +16,9 @@ type Query struct {
 	UserID     uint `gorm:"index" json:"user_id"`
 
 	// Tab metadata
-	Status       string `gorm:"type:varchar(20);index" json:"status"`
-	TabName      string `gorm:"type:varchar(255)" json:"tab_name"`
-	SqlEditorID  string `gorm:"type:varchar(36)" json:"sql_editor_id"`
+	Status      string `gorm:"type:varchar(20);index" json:"status"`
+	TabName     string `gorm:"type:varchar(255)" json:"tab_name"`
+	SqlEditorID string `gorm:"type:varchar(36)" json:"sql_editor_id"`
 
 	// Query context
 	Schema  string `json:"schema"`

@@ -9,13 +9,20 @@ import (
 type Database struct {
 	ID              uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	DatabaseName    string    `gorm:"column:database_name;uniqueIndex;not null" json:"database_name"`
-	Password        string    `gorm:"column:password" json:"password"`
 	SQLAlchemyURI   string    `gorm:"column:sqlalchemy_uri;not null" json:"sqlalchemy_uri"`
-	AllowDML        bool      `gorm:"column:allow_dml;default:false" json:"allow_dml"`
-	ExposeInSQLLab  bool      `gorm:"column:expose_in_sqllab;default:false" json:"expose_in_sqllab"`
+	Password        string    `gorm:"column:password" json:"password"`
+	Extra           string    `gorm:"column:extra;type:text" json:"extra"`
+	EncryptedExtra  string    `gorm:"column:encrypted_extra;type:text" json:"encrypted_extra"`
+	ServerCert      string    `gorm:"column:server_cert" json:"server_cert"`
 	AllowRunAsync   bool      `gorm:"column:allow_run_async;default:false" json:"allow_run_async"`
+	AllowDML        bool      `gorm:"column:allow_dml;default:false" json:"allow_dml"`
 	AllowFileUpload bool      `gorm:"column:allow_file_upload;default:false" json:"allow_file_upload"`
-	CreatedByFK     uint      `gorm:"column:created_by_fk" json:"-"`
+	ExposeInSQLLab  bool      `gorm:"column:expose_in_sqllab;default:false" json:"expose_in_sqllab"`
+	AllowCTAS       bool      `gorm:"column:allow_ctas;default:false" json:"allow_ctas"`
+	AllowCVAS       bool      `gorm:"column:allow_cvas;default:false" json:"allow_cvas"`
+	CacheTimeout    int       `gorm:"column:cache_timeout;default:0" json:"cache_timeout"`
+	CreatedByFK     uint      `gorm:"column:created_by_fk;index" json:"-"`
+	ChangedByFK     uint      `gorm:"column:changed_by_fk;index" json:"-"`
 	CreatedOn       time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
 	ChangedOn       time.Time `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
 }

@@ -8,21 +8,30 @@ import (
 // Dataset maps to tables.
 type Dataset struct {
 	ID                  uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name                string    `gorm:"column:table_name;not null" json:"table_name"`
+	Name                string    `gorm:"column:table_name;not null;uniqueIndex:uq_tables_db_table,priority:2" json:"table_name"`
 	Schema              string    `gorm:"column:schema" json:"schema,omitempty"`
-	DatabaseID          uint      `gorm:"column:database_id;not null" json:"database_id"`
-	SQL                 string    `gorm:"column:sql" json:"sql,omitempty"`
-	Perm                string    `gorm:"column:perm;not null" json:"perm"`
+	Catalog             string    `gorm:"column:catalog" json:"catalog,omitempty"`
+	DatabaseID          uint      `gorm:"column:database_id;not null;index;uniqueIndex:uq_tables_db_table,priority:1" json:"database_id"`
 	Description         string    `gorm:"column:description" json:"description,omitempty"`
 	MainDttmCol         string    `gorm:"column:main_dttm_col" json:"main_dttm_col,omitempty"`
+	SQL                 string    `gorm:"column:sql;type:text" json:"sql,omitempty"`
+	Params              string    `gorm:"column:params;type:text" json:"params,omitempty"`
 	CacheTimeout        int       `gorm:"column:cache_timeout;default:0" json:"cache_timeout"`
+	Perm                string    `gorm:"column:perm" json:"perm"`
+	SchemaPerm          string    `gorm:"column:schema_perm" json:"schema_perm,omitempty"`
 	FilterSelectEnabled bool      `gorm:"column:filter_select_enabled;default:false" json:"filter_select_enabled"`
 	NormalizeColumns    bool      `gorm:"column:normalize_columns;default:false" json:"normalize_columns"`
 	IsFeatured          bool      `gorm:"column:is_featured;default:false" json:"is_featured"`
+	IsManagedExternally bool      `gorm:"column:is_managed_externally;default:false" json:"is_managed_externally"`
+	ExternalURL         string    `gorm:"column:external_url" json:"external_url,omitempty"`
 	CreatedByFK         uint      `gorm:"column:created_by_fk" json:"-"`
 	ChangedByFK         uint      `gorm:"column:changed_by_fk" json:"-"`
 	CreatedOn           time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
 	ChangedOn           time.Time `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
+
+// Relationships
+	Columns     []Column    `gorm:"foreignKey:TableID" json:"columns,omitempty"`
+	SqlMetrics []SqlMetric `gorm:"foreignKey:TableID" json:"sql_metrics,omitempty"`
 }
 
 func (Dataset) TableName() string { return "tables" }
@@ -65,20 +74,24 @@ type CreateVirtualDatasetResponse struct {
 
 // Column represents a dataset column.
 type Column struct {
-	ID               uint   `json:"id"`
-	TableID          uint   `gorm:"column:table_id" json:"-"`
-	ColumnName       string `json:"column_name"`
-	Type             string `json:"type"`
-	IsDateTime       bool   `gorm:"column:is_dttm" json:"is_dttm"`
-	IsActive         bool   `gorm:"column:is_active" json:"is_active"`
-	VerboseName      string `gorm:"column:verbose_name" json:"verbose_name,omitempty"`
-	Description      string `gorm:"column:description" json:"description,omitempty"`
-	Filterable       bool   `gorm:"column:filterable" json:"filterable"`
-	GroupBy          bool   `gorm:"column:groupby" json:"groupby"`
-	PythonDateFormat string `gorm:"column:python_date_format" json:"python_date_format,omitempty"`
-	Expression       string `gorm:"column:expression" json:"expression,omitempty"`
-	ColumnType       string `gorm:"column:type" json:"column_type,omitempty"`
-	Exported         bool   `gorm:"column:exported" json:"exported"`
+	ID               uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	TableID          uint      `gorm:"column:table_id;not null;index;uniqueIndex:uq_cols_table_col,priority:1" json:"-"`
+	ColumnName       string    `gorm:"column:column_name;not null;uniqueIndex:uq_cols_table_col,priority:2" json:"column_name"`
+	Type             string    `gorm:"column:type" json:"type"`
+	Expression       string    `gorm:"column:expression" json:"expression,omitempty"`
+	VerboseName      string    `gorm:"column:verbose_name" json:"verbose_name,omitempty"`
+	Description      string    `gorm:"column:description" json:"description,omitempty"`
+	Filterable       bool      `gorm:"column:filterable;default:false" json:"filterable"`
+	GroupBy          bool      `gorm:"column:groupby;default:false" json:"groupby"`
+	IsActive         bool      `gorm:"column:is_active;default:true" json:"is_active"`
+	IsDateTime       bool      `gorm:"column:is_dttm;default:false" json:"is_dttm"`
+	Exported         bool      `gorm:"column:exported;default:false" json:"exported"`
+	PythonDateFormat string    `gorm:"column:python_date_format" json:"python_date_format,omitempty"`
+	Extra            string    `gorm:"column:extra;type:text" json:"extra,omitempty"`
+	CreatedByFK      uint      `gorm:"column:created_by_fk" json:"-"`
+	ChangedByFK      uint      `gorm:"column:changed_by_fk" json:"-"`
+	CreatedOn        time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
+	ChangedOn        time.Time `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
 }
 
 func (Column) TableName() string { return "table_columns" }
@@ -115,8 +128,8 @@ type DatasetDetail struct {
 // SqlMetric maps to sql_metrics table.
 type SqlMetric struct {
 	ID                   uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	TableID              uint      `gorm:"column:table_id;not null" json:"table_id"`
-	MetricName           string    `gorm:"column:metric_name;not null" json:"metric_name"`
+	TableID              uint      `gorm:"column:table_id;not null;index;uniqueIndex:uq_metrics_tbl_name,priority:1" json:"table_id"`
+	MetricName           string    `gorm:"column:metric_name;not null;uniqueIndex:uq_metrics_tbl_name,priority:2" json:"metric_name"`
 	VerboseName          string    `gorm:"column:verbose_name" json:"verbose_name,omitempty"`
 	MetricType           string    `gorm:"column:metric_type;not null" json:"metric_type"`
 	Expression           string    `gorm:"column:expression;not null" json:"expression"`

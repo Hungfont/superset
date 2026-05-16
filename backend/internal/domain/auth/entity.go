@@ -22,17 +22,20 @@ func (RegisterUser) TableName() string { return "ab_register_user" }
 
 // User maps to ab_user — activated accounts.
 type User struct {
-	ID         uint       `gorm:"primaryKey;autoIncrement"`
-	FirstName  string     `gorm:"column:first_name;not null"`
-	LastName   string     `gorm:"column:last_name;not null"`
-	Username   string     `gorm:"column:username;uniqueIndex;not null"`
-	Email      string     `gorm:"column:email;uniqueIndex;not null"`
-	Password   string     `gorm:"column:password;not null"`
-	Active     bool       `gorm:"column:active;default:true"`
-	LoginCount int        `gorm:"column:login_count;default:0"`
-	LastLogin  *time.Time `gorm:"column:last_login"`
-	CreatedOn  time.Time  `gorm:"column:created_on;autoCreateTime"`
-	ChangedOn  time.Time  `gorm:"column:changed_on;autoUpdateTime"`
+	ID            uint       `gorm:"primaryKey;autoIncrement"`
+	FirstName     string     `gorm:"column:first_name;not null"`
+	LastName      string     `gorm:"column:last_name;not null"`
+	Username      string     `gorm:"column:username;uniqueIndex;not null"`
+	Email         string     `gorm:"column:email;uniqueIndex;not null"`
+	Password      string     `gorm:"column:password;not null"`
+	Active        bool       `gorm:"column:active;default:true"`
+	LoginCount    int        `gorm:"column:login_count;default:0"`
+	FailLoginCount int       `gorm:"column:fail_login_count;default:0"`
+	LastLogin     *time.Time `gorm:"column:last_login"`
+	CreatedByFK   uint       `gorm:"column:created_by_fk;index"`
+	ChangedByFK   uint       `gorm:"column:changed_by_fk;index"`
+	CreatedOn     time.Time  `gorm:"column:created_on;autoCreateTime"`
+	ChangedOn     time.Time  `gorm:"column:changed_on;autoUpdateTime"`
 }
 
 func (User) TableName() string { return "ab_user" }
@@ -88,6 +91,15 @@ type Role struct {
 }
 
 func (Role) TableName() string { return "ab_role" }
+
+// UserRole maps to ab_user_role.
+type UserRole struct {
+	ID     uint `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID uint `gorm:"column:user_id;not null;index" json:"user_id"`
+	RoleID uint `gorm:"column:role_id;not null;index" json:"role_id"`
+}
+
+func (UserRole) TableName() string { return "ab_user_role" }
 
 // UpsertRoleRequest is used by create/update role endpoints.
 type UpsertRoleRequest struct {
@@ -193,14 +205,23 @@ func (ViewMenu) TableName() string { return "ab_view_menu" }
 // PermissionView maps to ab_permission_view.
 type PermissionView struct {
 	ID           uint `gorm:"primaryKey;autoIncrement" json:"id"`
-	PermissionID uint `gorm:"column:permission_id;not null;uniqueIndex:idx_perm_view,priority:1" json:"permission_id"`
-	ViewMenuID   uint `gorm:"column:view_menu_id;not null;uniqueIndex:idx_perm_view,priority:2" json:"view_menu_id"`
+	PermissionID uint `gorm:"column:permission_id;not null;index;uniqueIndex:idx_perm_view,priority:1" json:"permission_id"`
+	ViewMenuID   uint `gorm:"column:view_menu_id;not null;index;uniqueIndex:idx_perm_view,priority:2" json:"view_menu_id"`
 
 	PermissionName string `gorm:"->;-:migration;column:permission_name" json:"permission_name,omitempty"`
 	ViewMenuName   string `gorm:"->;-:migration;column:view_menu_name" json:"view_menu_name,omitempty"`
 }
 
 func (PermissionView) TableName() string { return "ab_permission_view" }
+
+// PermissionViewRole maps to ab_permission_view_role.
+type PermissionViewRole struct {
+	ID               uint `gorm:"primaryKey;autoIncrement" json:"id"`
+	PermissionViewID uint `gorm:"column:permission_view_id;not null;index" json:"permission_view_id"`
+	RoleID           uint `gorm:"column:role_id;not null;index" json:"role_id"`
+}
+
+func (PermissionViewRole) TableName() string { return "ab_permission_view_role" }
 
 // UpsertPermissionRequest is used by create permission endpoint.
 type UpsertPermissionRequest struct {
@@ -244,8 +265,8 @@ type RLSFilter struct {
 	Clause     string       `gorm:"column:clause;not null" json:"clause"`
 	GroupKey   string       `gorm:"column:group_key;default:''" json:"group_key"`
 	Description string    `gorm:"column:description" json:"description"`
-	CreatedByFK uint        `gorm:"column:created_by_fk" json:"created_by_fk"`
-	ChangedByFK uint        `gorm:"column:changed_by_fk" json:"changed_by_fk"`
+	CreatedByFK uint        `gorm:"column:created_by_fk;index" json:"created_by_fk"`
+	ChangedByFK uint        `gorm:"column:changed_by_fk;index" json:"changed_by_fk"`
 	CreatedOn  time.Time   `gorm:"column:created_on;autoCreateTime" json:"created_on"`
 	ChangedOn  time.Time   `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
 	Roles      []Role     `gorm:"many2many:rls_filter_roles" json:"roles"`
@@ -256,15 +277,15 @@ func (RLSFilter) TableName() string { return "row_level_security_filters" }
 
 type RLSFilterRoleJunction struct {
 	ID     uint `gorm:"primaryKey;autoIncrement" json:"id"`
-	RLSID  uint `gorm:"column:rls_id;not null" json:"rls_id"`
-	RoleID uint `gorm:"column:role_id;not null" json:"role_id"`
+	RLSID  uint `gorm:"column:rls_id;not null;index" json:"rls_id"`
+	RoleID uint `gorm:"column:role_id;not null;index" json:"role_id"`
 }
 
 func (RLSFilterRoleJunction) TableName() string { return "rls_filter_roles" }
 
 type RLSFilterTableJunction struct {
 	ID              uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	RLSID           uint   `gorm:"column:rls_id;not null" json:"rls_id"`
+	RLSID           uint   `gorm:"column:rls_id;not null;index" json:"rls_id"`
 	DatasourceID   uint   `gorm:"column:datasource_id;not null" json:"datasource_id"`
 	DatasourceType string `gorm:"column:datasource_type;not null" json:"datasource_type"`
 	Table           string `gorm:"column:table_name;not null" json:"table_name"`
@@ -293,7 +314,7 @@ const (
 
 type RLSAuditLog struct {
 	ID          uint           `gorm:"primaryKey;autoIncrement" json:"id"`
-	FilterID   uint           `gorm:"column:rls_id;not null" json:"rls_id"`
+	FilterID   uint           `gorm:"column:rls_id;not null;index" json:"rls_id"`
 	FilterName string         `gorm:"column:rls_name;not null" json:"rls_name"`
 	EventType RLSAuditEventType `gorm:"column:event_type;not null" json:"event_type"`
 	OldValue   string         `gorm:"column:old_value" json:"old_value"`
