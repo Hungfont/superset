@@ -1,0 +1,59 @@
+import { request } from "@/utils/request";
+import { useAuthStore } from "@/stores/authStore";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+export interface TabStateResponse {
+  id: number;
+  label: string;
+  db_id: number;
+  schema: string;
+  catalog: string;
+  sql: string;
+  active: boolean;
+  query_limit: number;
+  latest_query_id: string;
+  latest_query_status: string;
+  hide_left_bar: boolean;
+  created_on: string;
+}
+
+export interface CreateTabRequest {
+  db_id: number;
+  schema?: string;
+  catalog?: string;
+  sql?: string;
+  query_limit?: number;
+}
+
+export interface CreateTabResponse {
+  id: number;
+  label: string;
+  active: boolean;
+}
+
+export async function fetchTabs(): Promise<TabStateResponse[]> {
+  return request<TabStateResponse[]>("/api/v1/sqllab/tabs", {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function createTab(data: CreateTabRequest): Promise<CreateTabResponse> {
+  return request<CreateTabResponse>("/api/v1/sqllab/tabs", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchTab(id: number): Promise<TabStateResponse> {
+  return request<TabStateResponse>(`/api/v1/sqllab/tabs/${id}`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+}
