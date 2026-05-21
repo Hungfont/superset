@@ -24,6 +24,7 @@ import (
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
 	httpquery "superset/auth-service/internal/delivery/http/query"
+	httpsqllab "superset/auth-service/internal/delivery/http/sqllab"
 	"superset/auth-service/internal/pkg/email"
 	repopostgres "superset/auth-service/internal/repository/postgres"
 	reporedis "superset/auth-service/internal/repository/redis"
@@ -168,6 +169,9 @@ func main() {
 	// QE-005: WebSocket handler for real-time query result streaming
 	wsHandler := httpquery.NewWSHandler(pubKey, jwtRepo, userRepo, rlsFilterRepo, queryRepo, redisClient)
 
+	sqllabRepo := repopostgres.NewSQLLabRepository(db)
+	sqllabHandler := httpsqllab.NewHandler(sqllabRepo, databaseRepo)
+
 	// Start query worker for async query processing
 	queryWorker := worker.NewQueryWorker(redisClient, queryExecutor, asyncQueryExecutor, worker.DefaultQueryWorkerConfig())
 	queryWorker.Start()
@@ -195,6 +199,7 @@ func main() {
 		rlsHandler,
 		queryHandler,
 		wsHandler,
+		sqllabHandler,
 		pubKey,
 		jwtRepo,
 		userRepo,
