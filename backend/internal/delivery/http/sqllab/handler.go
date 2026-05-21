@@ -1,0 +1,160 @@
+package sqllab
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	domain "superset/auth-service/internal/domain/auth"
+	domdb "superset/auth-service/internal/domain/db"
+	domainquery "superset/auth-service/internal/domain/query"
+
+	"github.com/gin-gonic/gin"
+)
+
+type Handler struct {
+	sqllabRepo   domainquery.SQLLabRepository
+	databaseRepo domdb.DatabaseRepository
+}
+
+func NewHandler(sqllabRepo domainquery.SQLLabRepository, databaseRepo domdb.DatabaseRepository) *Handler {
+	return &Handler{sqllabRepo: sqllabRepo, databaseRepo: databaseRepo}
+}
+
+func (h *Handler) CreateTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	var req domainquery.CreateTabRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	// Validate database exists
+	if _, err := h.databaseRepo.GetDatabaseByID(c.Request.Context(), req.DbID); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "db_not_visible", "message": "Database not accessible"})
+		return
+	}
+
+	label := h.generateLabel(c.Request.Context(), userCtx.ID)
+
+	tab := &domainquery.TabState{
+		UserID:     userCtx.ID,
+		DbID:       req.DbID,
+		Schema:     req.Schema,
+		Catalog:    req.Catalog,
+		SQL:        req.SQL,
+		QueryLimit: req.QueryLimit,
+		Label:      label,
+		Active:     true,
+		CreatedByFK: userCtx.ID,
+		ChangedByFK: userCtx.ID,
+		CreatedOn:  time.Now(),
+		ChangedOn:  time.Now(),
+	}
+
+	if err := h.sqllabRepo.Create(c.Request.Context(), tab); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "create_failed", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": tab.ID, "label": tab.Label, "active": true})
+}
+
+func (h *Handler) ListTabs(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	tabs, err := h.sqllabRepo.ListByUser(c.Request.Context(), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": err.Error()})
+		return
+	}
+
+	resp := make([]domainquery.TabResponse, 0, len(tabs))
+	for _, t := range tabs {
+		resp = append(resp, tabToResponse(t))
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) GetTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": err.Error()})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tabToResponse(tab))
+}
+
+func (h *Handler) generateLabel(ctx context.Context, userID uint) string {
+	tabs, err := h.sqllabRepo.ListByUser(ctx, userID)
+	if err != nil {
+		return "Untitled Query 1"
+	}
+
+	maxN := 0
+	prefix := "Untitled Query "
+	for _, t := range tabs {
+		if strings.HasPrefix(t.Label, prefix) {
+			if n, err := strconv.Atoi(t.Label[len(prefix):]); err == nil && n > maxN {
+				maxN = n
+			}
+		}
+	}
+	return prefix + strconv.Itoa(maxN+1)
+}
+
+func getUserContext(c *gin.Context) (domain.UserContext, bool) {
+	userVal, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return domain.UserContext{}, false
+	}
+	userCtx, ok := userVal.(domain.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "invalid user context"})
+		return domain.UserContext{}, false
+	}
+	return userCtx, true
+}
+
+func tabToResponse(t *domainquery.TabState) domainquery.TabResponse {
+	return domainquery.TabResponse{
+		ID:            t.ID,
+		Label:         t.Label,
+		DbID:          t.DbID,
+		Schema:        t.Schema,
+		Catalog:       t.Catalog,
+		SQL:           t.SQL,
+		Active:        t.Active,
+		QueryLimit:    t.QueryLimit,
+		LatestQueryID: t.LatestQueryID,
+		HideLeftBar:   t.HideLeftBar,
+		CreatedOn:     t.CreatedOn.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
