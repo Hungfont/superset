@@ -10,6 +10,7 @@ import (
 	"superset/auth-service/internal/delivery/http/middleware"
 	httpquery "superset/auth-service/internal/delivery/http/query"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
+	httpsqllab "superset/auth-service/internal/delivery/http/sqllab"
 	domain "superset/auth-service/internal/domain/auth"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,7 @@ func NewRouter(
 	rlsHandler *httpsrls.Handler,
 	queryHandler *httpquery.Handler,
 	wsHandler *httpquery.WSHandler,
+	sqllabHandler *httpsqllab.Handler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
 	userRepo domain.UserRepository,
@@ -164,6 +166,13 @@ func NewRouter(
 
 				// QE-007: Delete query history (admin only)
 				protected.DELETE("/query/history", middleware.AuthorizeAdminRole(roleRepo), queryHandler.DeleteHistory)
+			}
+
+			sqlLab := protected.Group("/sqllab")
+			{
+				sqlLab.POST("/tabs", sqllabHandler.CreateTab)
+				sqlLab.GET("/tabs", sqllabHandler.ListTabs)
+				sqlLab.GET("/tabs/:id", sqllabHandler.GetTab)
 			}
 		}
 	}
