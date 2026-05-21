@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { type EstimateResult } from "@/api/queries";
 
+interface TabStateFromAPI {
+  id: number;
+  label: string;
+  db_id: number;
+  schema: string;
+  sql: string;
+  query_limit: number;
+  latest_query_status: string;
+}
+
 interface QueryResultQueryMeta {
   id: string;
   client_id?: string;
@@ -51,6 +61,8 @@ interface SqlLabTab {
   progress?: string;
   downloadUrl?: string;
   estimate: EstimateResult | null;
+  isDirty?: boolean;
+  latestQueryStatus?: string;
 }
 
 interface SqlLabState {
@@ -72,6 +84,7 @@ interface SqlLabState {
   clearAsyncState: (id: string) => void;
   setDownloadUrl: (id: string, url: string) => void;
   setEstimate: (id: string, estimate: EstimateResult | null) => void;
+  initTabs: (tabs: TabStateFromAPI[]) => void;
 }
 
 let tabCounter = 0;
@@ -101,6 +114,34 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
       activeTabId: id,
     }));
   },
+
+  initTabs: (tabs) =>
+    set((state) => ({
+      tabs: tabs.map((t) => {
+        const existing = state.tabs.find((et) => et.id === String(t.id));
+        if (existing) return existing;
+        return {
+          id: String(t.id),
+          title: t.label,
+          sql: t.sql || "",
+          databaseId: t.db_id,
+          schema: t.schema || "public",
+          catalog: undefined,
+          result: null,
+          status: "idle" as const,
+          error: null,
+          estimate: null,
+          isDirty: false,
+          latestQueryStatus: t.latest_query_status,
+        };
+      }),
+      activeTabId:
+        state.activeTabId ||
+        (tabs.length > 0 ? String(tabs[0].id) : null),
+      databaseId:
+        state.databaseId ||
+        (tabs.length > 0 ? tabs[0].db_id : null),
+    })),
 
   removeTab: (id) => {
     set(state => {
