@@ -1,10 +1,12 @@
 import { request } from "@/utils/request";
 import { useAuthStore } from "@/stores/authStore";
 
-function getAuthHeaders(): Record<string, string> {
+function getAuthHeaders(): HeadersInit {
   const token = useAuthStore.getState().accessToken;
-  if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
 export interface TabStateResponse {

@@ -6,6 +6,7 @@ interface TabStateFromAPI {
   label: string;
   db_id: number;
   schema: string;
+  catalog: string;
   sql: string;
   query_limit: number;
   latest_query_status: string;
@@ -126,7 +127,7 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
           sql: t.sql || "",
           databaseId: t.db_id,
           schema: t.schema || "public",
-          catalog: undefined,
+          catalog: t.catalog,
           result: null,
           status: "idle" as const,
           error: null,
