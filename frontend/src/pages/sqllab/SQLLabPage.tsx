@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { Plus, X } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Editor from "@monaco-editor/react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
 import {
   CacheBadge,
@@ -35,6 +41,7 @@ import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
+import { fetchTabs, createTab as createTabApi } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
@@ -80,11 +87,12 @@ export default function SQLLabPage() {
   const lastQueryDurationRef = useRef<number>(0);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const queryClient = useQueryClient();
+
   const {
     tabs,
     activeTabId,
     databaseId,
-    addTab,
     removeTab,
     setActiveTab,
     updateTabSql,
@@ -94,6 +102,7 @@ export default function SQLLabPage() {
     setTabError,
     setDatabaseId,
     setAsyncState,
+    initTabs,
   } = useSqlLabStore();
 
   const wsSubscribe = useWsStore(s => s.subscribe);
@@ -628,11 +637,29 @@ export default function SQLLabPage() {
     }
   };
 
+  // SQL-001: Restore tabs from API on mount
+  const { data: tabsData, isLoading: tabsLoading } = useQuery({
+    queryKey: ["sqllab-tabs"],
+    queryFn: fetchTabs,
+    staleTime: 0,
+  });
+
+  const createTabMutation = useMutation({
+    mutationFn: createTabApi,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] }),
+  });
+
+  const tabsRestoredRef = useRef(false);
+
   useEffect(() => {
-    if (tabs.length === 0) {
-      addTab();
+    if (!tabsData || tabsRestoredRef.current) return;
+    tabsRestoredRef.current = true;
+    if (tabsData.length === 0) {
+      createTabMutation.mutate({ db_id: databaseId || 1 });
+    } else {
+      initTabs(tabsData);
     }
-  }, [tabs.length, addTab]);
+  }, [tabsData]);
 
   const columns = useMemo(() => {
     if (!activeTab?.result?.columns) return [];
@@ -648,37 +675,69 @@ export default function SQLLabPage() {
   const isRunning = executeMutation.isPending;
   const isAsyncRunning = activeTab?.asyncStatus === "running" || activeTab?.asyncStatus === "queued" || activeTab?.asyncStatus === "pending";
 
-  return (
-    <div className="container mx-auto py-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">SQL Lab {activeTab?.asyncQueryId && <WsStatusBadge queryId={activeTab.asyncQueryId} />}</h1>
-        <div className="flex items-center gap-2">
-          <Select onValueChange={handleDatabaseSelect} value={databaseId?.toString()}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select database" />
-            </SelectTrigger>
-            <SelectContent>
-              {databasesLoading ? (
-                <SelectItem value="loading" disabled>
-                  Loading...
-                </SelectItem>
-              ) : (
-                databasesData?.items?.map(db => (
-                  <SelectItem key={db.id} value={db.id.toString()}>
-                    {db.database_name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          <Button onClick={addTab} size="sm" variant="outline">
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
+  if (tabsLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Skeleton className="h-8 w-8 rounded-full" />
       </div>
+    );
+  }
 
-      <Tabs value={activeTabId ?? ""} onValueChange={setActiveTab}>
-        <TabsList>
+  return (
+    <div className="h-screen">
+      <ResizablePanelGroup direction="horizontal" className="h-full">
+        {/* Left: Schema Browser (placeholder for SQL-006) */}
+        <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
+          <div className="h-full border-r p-3">
+            <h3 className="text-sm font-semibold mb-2">Schema Browser</h3>
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-3/4 mb-2" />
+            <Skeleton className="h-4 w-5/6 mb-2" />
+            <Skeleton className="h-4 w-2/3 mb-2" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
+
+        {/* Center: Tabs + Editor + Results */}
+        <ResizablePanel defaultSize={82}>
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between px-3 py-2 border-b">
+              <h1 className="text-lg font-bold flex items-center gap-2">
+                SQL Lab {activeTab?.asyncQueryId && <WsStatusBadge queryId={activeTab.asyncQueryId} />}
+              </h1>
+              <div className="flex items-center gap-2">
+                <Select onValueChange={handleDatabaseSelect} value={databaseId?.toString()}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select database" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {databasesLoading ? (
+                      <SelectItem value="loading" disabled>
+                        Loading...
+                      </SelectItem>
+                    ) : (
+                      databasesData?.items?.map(db => (
+                        <SelectItem key={db.id} value={db.id.toString()}>
+                          {db.database_name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={() => createTabMutation.mutate({ db_id: databaseId || 1 })}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+      <Tabs value={activeTabId ?? ""} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <TabsList className="px-2 pt-1 border-b rounded-none justify-start shrink-0">
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.id}
@@ -783,17 +842,28 @@ export default function SQLLabPage() {
                 <AsyncProgressBar status={tab.asyncStatus} progress={tab.progress} />
               )}
 
-              <textarea
-                value={tab.sql}
-                onChange={e => {
-                  if (activeTabId) {
-                    updateTabSql(activeTabId, e.target.value);
-                  }
-                }}
-                placeholder="SELECT * FROM ..."
-                className="w-full h-48 p-4 font-mono text-sm bg-muted/30 border rounded-md resize-none"
-                disabled={isRunning || isAsyncRunning}
-              />
+              <div className="border rounded-md overflow-hidden" style={{ height: "300px" }}>
+                <Editor
+                  height="100%"
+                  language="sql"
+                  theme="vs-dark"
+                  value={tab.sql}
+                  onChange={(value) => {
+                    if (activeTabId) {
+                      updateTabSql(activeTabId, value || "");
+                    }
+                  }}
+                  options={{
+                    minimap: { enabled: false },
+                    lineNumbers: "on",
+                    fontSize: 13,
+                    wordWrap: "on",
+                    readOnly: isRunning || isAsyncRunning,
+                  }}
+                  aria-label="SQL Editor"
+                  loading={<Skeleton className="h-full w-full" />}
+                />
+              </div>
             </div>
 
             {tab.error && (
@@ -866,6 +936,9 @@ export default function SQLLabPage() {
           </TabsContent>
         ))}
       </Tabs>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
