@@ -37,7 +37,7 @@ func (h *Handler) CreateTab(c *gin.Context) {
 
 	scope, err := h.resolveVisibilityScope(c.Request.Context(), userCtx.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to resolve visibility"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to resolve visibility"})
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *Handler) CreateTab(c *gin.Context) {
 
 	label, err := h.generateLabel(c.Request.Context(), userCtx.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to generate label"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to generate tab label"})
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *Handler) CreateTab(c *gin.Context) {
 	}
 
 	if err := h.sqllabRepo.Create(c.Request.Context(), tab); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "create_failed", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "create_failed", "message": "Failed to create tab"})
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *Handler) ListTabs(c *gin.Context) {
 
 	tabs, err := h.sqllabRepo.ListByUser(c.Request.Context(), userCtx.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to list tabs"})
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *Handler) GetTab(c *gin.Context) {
 
 	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to retrieve tab"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
 		return
 	}
 	if tab == nil {
