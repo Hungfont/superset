@@ -35,27 +35,36 @@ func (h *Handler) CreateTab(c *gin.Context) {
 		return
 	}
 
-	// Validate database exists
-	if _, err := h.databaseRepo.GetDatabaseByID(c.Request.Context(), req.DbID); err != nil {
+	scope, err := h.resolveVisibilityScope(c.Request.Context(), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to resolve visibility"})
+		return
+	}
+
+	if _, err := h.databaseRepo.GetVisibleDatabaseByID(c.Request.Context(), req.DbID, scope, userCtx.ID); err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "db_not_visible", "message": "Database not accessible"})
 		return
 	}
 
-	label := h.generateLabel(c.Request.Context(), userCtx.ID)
+	label, err := h.generateLabel(c.Request.Context(), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to generate label"})
+		return
+	}
 
 	tab := &domainquery.TabState{
-		UserID:     userCtx.ID,
-		DbID:       req.DbID,
-		Schema:     req.Schema,
-		Catalog:    req.Catalog,
-		SQL:        req.SQL,
-		QueryLimit: req.QueryLimit,
-		Label:      label,
-		Active:     true,
+		UserID:      userCtx.ID,
+		DbID:        req.DbID,
+		Schema:      req.Schema,
+		Catalog:     req.Catalog,
+		SQL:         req.SQL,
+		QueryLimit:  req.QueryLimit,
+		Label:       label,
+		Active:      true,
 		CreatedByFK: userCtx.ID,
 		ChangedByFK: userCtx.ID,
-		CreatedOn:  time.Now(),
-		ChangedOn:  time.Now(),
+		CreatedOn:   time.Now(),
+		ChangedOn:   time.Now(),
 	}
 
 	if err := h.sqllabRepo.Create(c.Request.Context(), tab); err != nil {
@@ -100,7 +109,7 @@ func (h *Handler) GetTab(c *gin.Context) {
 
 	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to retrieve tab"})
 		return
 	}
 	if tab == nil {
@@ -111,22 +120,42 @@ func (h *Handler) GetTab(c *gin.Context) {
 	c.JSON(http.StatusOK, tabToResponse(tab))
 }
 
-func (h *Handler) generateLabel(ctx context.Context, userID uint) string {
+func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
+	roleNames, err := h.databaseRepo.GetRoleNamesByUser(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range roleNames {
+		n := strings.ToLower(strings.TrimSpace(name))
+		if n == "admin" {
+			return domdb.DatabaseVisibilityAdmin, nil
+		}
+	}
+	for _, name := range roleNames {
+		n := strings.ToLower(strings.TrimSpace(name))
+		if n == "alpha" {
+			return domdb.DatabaseVisibilityAlpha, nil
+		}
+	}
+	return domdb.DatabaseVisibilityGamma, nil
+}
+
+func (h *Handler) generateLabel(ctx context.Context, userID uint) (string, error) {
 	tabs, err := h.sqllabRepo.ListByUser(ctx, userID)
 	if err != nil {
-		return "Untitled Query 1"
+		return "", err
 	}
 
 	maxN := 0
 	prefix := "Untitled Query "
 	for _, t := range tabs {
 		if strings.HasPrefix(t.Label, prefix) {
-			if n, err := strconv.Atoi(t.Label[len(prefix):]); err == nil && n > maxN {
+			if n, nErr := strconv.Atoi(t.Label[len(prefix):]); nErr == nil && n > maxN {
 				maxN = n
 			}
 		}
 	}
-	return prefix + strconv.Itoa(maxN+1)
+	return prefix + strconv.Itoa(maxN+1), nil
 }
 
 func getUserContext(c *gin.Context) (domain.UserContext, bool) {
