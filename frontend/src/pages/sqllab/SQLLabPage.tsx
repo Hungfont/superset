@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Editor from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useToast } from "@/hooks/use-toast";
 import {
   CacheBadge,
@@ -41,8 +49,9 @@ import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
-import { fetchTabs, createTab as createTabApi } from "@/api/sqllab";
+import { fetchTabs, createTab as createTabApi, updateTab } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
@@ -97,12 +106,14 @@ export default function SQLLabPage() {
     setActiveTab,
     updateTabSql,
     updateTabDatabase,
+    updateTabLabel,
     setTabResult,
     setTabStatus,
     setTabError,
     setDatabaseId,
     setAsyncState,
     initTabs,
+    closeAllTabs,
   } = useSqlLabStore();
 
   const wsSubscribe = useWsStore(s => s.subscribe);
@@ -419,6 +430,11 @@ export default function SQLLabPage() {
     };
   }, [activeTab?.asyncQueryId, wsUnsubscribe]);
 
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
   const subscribedQueryIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -562,17 +578,18 @@ export default function SQLLabPage() {
 
   const [resultsTabValue, setResultsTabValue] = useState("results");
 
-  const handleRun = () => {
-    if (!activeTab?.databaseId || !activeTab?.sql) return;
+  const handleRun = (sql?: string) => {
+    const sqlToRun = sql ?? activeTab?.sql;
+    if (!activeTab?.databaseId || !sqlToRun) return;
 
     const useAsync = lastQueryDurationRef.current > AUTO_ASYNC_THRESHOLD_MS;
 
     if (useAsync) {
-      handleRunAsync(true);
+      handleRunAsync(true, sqlToRun);
     } else {
       executeMutation.mutate({
         database_id: activeTab.databaseId,
-        sql: activeTab.sql,
+        sql: sqlToRun,
         catalog: activeTab.catalog,
         tab_name: activeTab.title,
         sql_editor_id: activeTab.sqlEditorId,
@@ -580,8 +597,24 @@ export default function SQLLabPage() {
     }
   };
 
-  const handleRunAsync = (_autoDetected = false) => {
-    if (!activeTab?.databaseId || !activeTab?.sql) return;
+  const handleEditorMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    editor.addAction({
+      id: "run-query",
+      label: "Run Query",
+      keybindings: [2048 | 3], // Ctrl+Enter: 2048=Cmd/Ctrl mod, 3=Enter keycode
+      run: () => {
+        const selection = editor.getSelection();
+        const selectedText = selection ? editor.getModel()?.getValueInRange(selection)?.trim() : null;
+        const sql = selectedText || activeTab?.sql || "";
+        handleRun(sql);
+      },
+    });
+  };
+
+  const handleRunAsync = (_autoDetected = false, sql?: string) => {
+    const sqlToRun = sql ?? activeTab?.sql;
+    if (!activeTab?.databaseId || !sqlToRun) return;
 
     if (activeTab.asyncQueryId) {
       setTabError(activeTabId!, "A query is already running in this tab");
@@ -590,7 +623,7 @@ export default function SQLLabPage() {
 
     submitAsyncMutation.mutate({
       database_id: activeTab.databaseId,
-      sql: activeTab.sql,
+      sql: sqlToRun,
       catalog: activeTab.catalog,
       tab_name: activeTab.title,
       sql_editor_id: activeTab.sqlEditorId,
@@ -661,6 +694,22 @@ export default function SQLLabPage() {
     }
   }, [tabsData]);
 
+  const debouncedSql = useDebounce(activeTab?.sql, 1000);
+  const debouncedLabel = useDebounce(activeTab?.title, 1000);
+
+  useEffect(() => {
+    if (!activeTabId || !activeTab) return;
+    const tabId = Number(activeTabId);
+    if (isNaN(tabId)) return;
+    updateTab(tabId, {
+      sql: activeTab.sql,
+      schema: activeTab.schema,
+      label: activeTab.title,
+    }).catch(() => {
+      // Silently ignore auto-save failures
+    });
+  }, [debouncedSql, debouncedLabel, activeTab?.schema]);
+
   const columns = useMemo(() => {
     if (!activeTab?.result?.columns) return [];
     return activeTab.result.columns.map((col: { name: string; type?: string }) => ({
@@ -685,7 +734,7 @@ export default function SQLLabPage() {
 
   return (
     <div className="h-screen">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
+      <ResizablePanelGroup orientation="horizontal" className="h-full">
         {/* Left: Schema Browser (placeholder for SQL-006) */}
         <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
           <div className="h-full border-r p-3">
@@ -737,202 +786,276 @@ export default function SQLLabPage() {
             </div>
 
       <Tabs value={activeTabId ?? ""} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-        <TabsList className="px-2 pt-1 border-b rounded-none justify-start shrink-0">
+        <TabsList
+          role="tablist"
+          aria-label="SQL Editor Tabs"
+          className="px-2 pt-1 border-b rounded-none justify-start shrink-0"
+        >
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.id}
               value={tab.id}
               className="relative"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setRenamingTabId(tab.id);
+                setRenameValue(tab.title);
+                setTimeout(() => renameInputRef.current?.focus(), 0);
+              }}
             >
-              <span className="mr-2">{tab.title}</span>
-              {tabs.length > 1 && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={e => {
-                    e.stopPropagation();
-                    removeTab(tab.id);
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      removeTab(tab.id);
-                    }
-                  }}
-                  className="ml-1 hover:text-red-500 cursor-pointer"
-                >
-                  <X className="h-3 w-3" />
-                </span>
-              )}
-              {tab.asyncStatus ? (
-                <AsyncStatusBadge status={tab.asyncStatus} progress={tab.progress} />
-              ) : (
-                <QueryStatusBadge status={tab.status} />
-              )}
+              <ContextMenu>
+                <ContextMenuTrigger className="flex items-center">
+                  {renamingTabId === tab.id ? (
+                    <Input
+                      ref={renameInputRef}
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => {
+                        updateTabLabel(tab.id, renameValue || tab.title);
+                        setRenamingTabId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          updateTabLabel(tab.id, renameValue || tab.title);
+                          setRenamingTabId(null);
+                        } else if (e.key === "Escape") {
+                          setRenamingTabId(null);
+                        }
+                      }}
+                      className="h-5 w-28 text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="mr-2">{tab.title}</span>
+                  )}
+                  {(!renamingTabId || renamingTabId !== tab.id) && (
+                    <>
+                      {tabs.length > 1 && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={e => {
+                            e.stopPropagation();
+                            removeTab(tab.id);
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              removeTab(tab.id);
+                            }
+                          }}
+                          className="ml-1 hover:text-red-500 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </span>
+                      )}
+                      {tab.asyncStatus ? (
+                        <AsyncStatusBadge status={tab.asyncStatus} progress={tab.progress} />
+                      ) : (
+                        <QueryStatusBadge status={tab.status} />
+                      )}
+                    </>
+                  )}
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-48">
+                  <ContextMenuItem
+                    onClick={() => {
+                      setRenamingTabId(tab.id);
+                      setRenameValue(tab.title);
+                      setTimeout(() => renameInputRef.current?.focus(), 0);
+                    }}
+                  >
+                    Rename
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onClick={() => removeTab(tab.id)}
+                    disabled={tabs.length <= 1}
+                  >
+                    Close
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => closeAllTabs()}>
+                    Close All
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             </TabsTrigger>
           ))}
         </TabsList>
 
         {tabs.map(tab => (
-          <TabsContent key={tab.id} value={tab.id} className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                {!tab.asyncStatus && (
-                  <>
-                    <RunButton
-                      onClick={handleRun}
-                      disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
-                      isRunning={isRunning}
-                    />
-                    <RunAsyncButton
-                      onClick={() => handleRunAsync(false)}
-                      disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
-                      isRunning={isRunning}
-                      isQueued={tab.asyncStatus === "pending" || tab.asyncStatus === "queued"}
-                    />
-                    {estimateSupported && (
+          <TabsContent key={tab.id} value={tab.id} className="flex-1 min-h-0 mt-0 p-0">
+            <ResizablePanelGroup orientation="vertical" className="h-full">
+              <ResizablePanel defaultSize={55} minSize={25}>
+                <div className="flex flex-col h-full px-4 pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {!tab.asyncStatus && (
                       <>
-                        <EstimatePopover
-                          estimate={estimate}
-                          isLoading={estimateLoading}
-                          onTrigger={triggerEstimate}
-                          isSupported={estimateSupported}
+                        <span aria-label="Run Query (Ctrl+Enter)">
+                          <RunButton
+                            onClick={handleRun}
+                            disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
+                            isRunning={isRunning}
+                          />
+                        </span>
+                        <RunAsyncButton
+                          onClick={() => handleRunAsync(false)}
+                          disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
+                          isRunning={isRunning}
+                          isQueued={tab.asyncStatus === "pending" || tab.asyncStatus === "queued"}
                         />
-                        <EstimateBadge
-                          estimate={estimate}
-                          isLoading={estimateLoading}
-                          onClick={triggerEstimate}
-                        />
+                        {estimateSupported && (
+                          <>
+                            <EstimatePopover
+                              estimate={estimate}
+                              isLoading={estimateLoading}
+                              onTrigger={triggerEstimate}
+                              isSupported={estimateSupported}
+                            />
+                            <EstimateBadge
+                              estimate={estimate}
+                              isLoading={estimateLoading}
+                              onClick={triggerEstimate}
+                            />
+                          </>
+                        )}
                       </>
                     )}
-                  </>
-                )}
-                {tab.asyncStatus && (
-                  <>
-                    <CancelButton
-                      onClick={handleCancel}
-                      disabled={tab.asyncStatus === "done" || tab.asyncStatus === "failed" || tab.asyncStatus === "stopped"}
-                      isCancelling={cancelMutation.isPending}
-                    />
-                    {tab.asyncStatus === "pending" || tab.asyncStatus === "queued" ? (
-                      <QueueBadge queue={tab.asyncQueue || "default"} />
-                    ) : null}
-                  </>
-                )}
-                {tab.result && tab.result.query && (
-                  <>
-                    <CacheBadge
-                      fromCache={tab.result.from_cache}
-                      durationMs={
-                        tab.result.query.start_time && tab.result.query.end_time
-                          ? calculateDurationMs(
-                              tab.result.query.start_time,
-                              tab.result.query.end_time
-                            )
-                          : undefined
-                      }
-                      onForceRefresh={handleForceRefresh}
-                    />
-                    <RLSSection response={tab.result} />
-                  </>
-                )}
-              </div>
-
-              {tab.asyncStatus && (
-                <AsyncProgressBar status={tab.asyncStatus} progress={tab.progress} />
-              )}
-
-              <div className="border rounded-md overflow-hidden" style={{ height: "300px" }}>
-                <Editor
-                  height="100%"
-                  language="sql"
-                  theme="vs-dark"
-                  value={tab.sql}
-                  onChange={(value) => {
-                    if (activeTabId) {
-                      updateTabSql(activeTabId, value || "");
-                    }
-                  }}
-                  options={{
-                    minimap: { enabled: false },
-                    lineNumbers: "on",
-                    fontSize: 13,
-                    wordWrap: "on",
-                    readOnly: isRunning || isAsyncRunning,
-                  }}
-                  aria-label="SQL Editor"
-                  loading={<Skeleton className="h-full w-full" />}
-                />
-              </div>
-            </div>
-
-            {tab.error && (
-              <Alert variant="destructive">
-                <AlertDescription>{tab.error}</AlertDescription>
-              </Alert>
-            )}
-
-            <Tabs value={resultsTabValue} onValueChange={setResultsTabValue} className="mt-4">
-              <TabsList>
-                <TabsTrigger value="results">Results</TabsTrigger>
-                <TabsTrigger value="history">History</TabsTrigger>
-              </TabsList>
-              <TabsContent value="results" className="space-y-2 mt-2">
-                {tab.result ? (
-                  <div className="border rounded-md">
-                    <DataTable
-                      data={tableData}
-                      columns={columns}
-                    />
-                  </div>
-                ) : isRunning ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    Run a query to see results
-                  </div>
-                )}
-
-                {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
-
-                {tab.result && (
-                  <div className="space-y-2">
-                    {tab.result.results_truncated && (
-                      <Alert variant="default" className="bg-amber-50 border-amber-200">
-                        <AlertDescription className="text-amber-800">
-                          Results limited to {tab.result.query.rows.toLocaleString()} rows. Export for full data.
-                        </AlertDescription>
-                      </Alert>
+                    {tab.asyncStatus && (
+                      <>
+                        <CancelButton
+                          onClick={handleCancel}
+                          disabled={tab.asyncStatus === "done" || tab.asyncStatus === "failed" || tab.asyncStatus === "stopped"}
+                          isCancelling={cancelMutation.isPending}
+                        />
+                        {tab.asyncStatus === "pending" || tab.asyncStatus === "queued" ? (
+                          <QueueBadge queue={tab.asyncQueue || "default"} />
+                        ) : null}
+                      </>
                     )}
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{tab.result.query.rows.toLocaleString()} rows</span>
-                    </div>
+                    {tab.result && tab.result.query && (
+                      <>
+                        <CacheBadge
+                          fromCache={tab.result.from_cache}
+                          durationMs={
+                            tab.result.query.start_time && tab.result.query.end_time
+                              ? calculateDurationMs(
+                                  tab.result.query.start_time,
+                                  tab.result.query.end_time
+                                )
+                              : undefined
+                          }
+                          onForceRefresh={handleForceRefresh}
+                        />
+                        <RLSSection response={tab.result} />
+                      </>
+                    )}
                   </div>
-                )}
-              </TabsContent>
-              <TabsContent value="history" className="mt-2">
-                <QueryHistoryTable
-                  onRunQuery={(sql, dbId) => {
-                    updateTabSql(tab.id, sql);
-                    updateTabDatabase(tab.id, dbId);
-                    setResultsTabValue("results");
-                    executeMutation.mutate({
-                      database_id: dbId,
-                      sql,
-                      tab_name: tab.title,
-                      sql_editor_id: tab.sqlEditorId,
-                    });
-                  }}
-                  onLoadSql={(sql) => {
-                    updateTabSql(tab.id, sql);
-                  }}
-                />
-              </TabsContent>
-            </Tabs>
+
+                  {tab.asyncStatus && (
+                    <AsyncProgressBar status={tab.asyncStatus} progress={tab.progress} />
+                  )}
+
+                  <div className="border rounded-md overflow-hidden flex-1">
+                    <Editor
+                      height="100%"
+                      language="sql"
+                      theme="vs-dark"
+                      value={tab.sql}
+                      onMount={handleEditorMount}
+                      onChange={(value) => {
+                        if (activeTabId) {
+                          updateTabSql(activeTabId, value || "");
+                        }
+                      }}
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: "on",
+                        fontSize: 13,
+                        wordWrap: "on",
+                        readOnly: isRunning || isAsyncRunning,
+                      }}
+                      aria-label="SQL Editor"
+                      loading={<Skeleton className="h-full w-full" />}
+                    />
+                  </div>
+                </div>
+              </ResizablePanel>
+
+              <ResizableHandle withHandle />
+
+              <ResizablePanel defaultSize={45} minSize={15}>
+                <div className="flex flex-col h-full px-4 pb-4 overflow-auto">
+                  {tab.error && (
+                    <Alert variant="destructive" className="mt-2">
+                      <AlertDescription>{tab.error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Tabs value={resultsTabValue} onValueChange={setResultsTabValue} className="flex-1 flex flex-col min-h-0 mt-2">
+                    <TabsList>
+                      <TabsTrigger value="results">Results</TabsTrigger>
+                      <TabsTrigger value="history">History</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="results" className="flex-1 min-h-0 space-y-2 mt-2">
+                      {tab.result ? (
+                        <div className="border rounded-md">
+                          <DataTable
+                            data={tableData}
+                            columns={columns}
+                          />
+                        </div>
+                      ) : isRunning ? (
+                        <div className="space-y-2">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12 text-muted-foreground">
+                          Run a query to see results
+                        </div>
+                      )}
+
+                      {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
+
+                      {tab.result && (
+                        <div className="space-y-2">
+                          {tab.result.results_truncated && (
+                            <Alert variant="default" className="bg-amber-50 border-amber-200">
+                              <AlertDescription className="text-amber-800">
+                                Results limited to {tab.result.query.rows.toLocaleString()} rows. Export for full data.
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>{tab.result.query.rows.toLocaleString()} rows</span>
+                          </div>
+                        </div>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="history" className="flex-1 min-h-0 mt-2">
+                      <QueryHistoryTable
+                        onRunQuery={(sql, dbId) => {
+                          updateTabSql(tab.id, sql);
+                          updateTabDatabase(tab.id, dbId);
+                          setResultsTabValue("results");
+                          executeMutation.mutate({
+                            database_id: dbId,
+                            sql,
+                            tab_name: tab.title,
+                            sql_editor_id: tab.sqlEditorId,
+                          });
+                        }}
+                        onLoadSql={(sql) => {
+                          updateTabSql(tab.id, sql);
+                        }}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </TabsContent>
         ))}
       </Tabs>
