@@ -73,9 +73,11 @@ interface SqlLabState {
 
   addTab: () => void;
   removeTab: (id: string) => void;
+  closeAllTabs: () => void;
   setActiveTab: (id: string) => void;
   updateTabSql: (id: string, sql: string) => void;
   updateTabDatabase: (id: string, dbId: number | null) => void;
+  updateTabLabel: (id: string, label: string) => void;
   setTabResult: (id: string, result: QueryResult) => void;
   setTabStatus: (id: string, status: SqlLabTab["status"]) => void;
   setTabError: (id: string, error: string | null) => void;
@@ -155,6 +157,8 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
     });
   },
 
+  closeAllTabs: () => set({ tabs: [], activeTabId: null }),
+
   setActiveTab: (id) => set({ activeTabId: id }),
 
   updateTabSql: (id, sql) => {
@@ -169,6 +173,14 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
     set(state => ({
       tabs: state.tabs.map(t =>
         t.id === id ? { ...t, databaseId } : t
+      ),
+    }));
+  },
+
+  updateTabLabel: (id, label) => {
+    set(state => ({
+      tabs: state.tabs.map(t =>
+        t.id === id ? { ...t, title: label, isDirty: true } : t
       ),
     }));
   },

@@ -59,3 +59,19 @@ export async function fetchTab(id: number): Promise<TabStateResponse> {
     headers: getAuthHeaders(),
   });
 }
+
+export interface UpdateTabRequest {
+  label?: string;
+  sql?: string;
+  schema?: string;
+  catalog?: string;
+  query_limit?: number;
+}
+
+export async function updateTab(id: number, data: UpdateTabRequest): Promise<TabStateResponse> {
+  return request<TabStateResponse>(`/api/v1/sqllab/tabs/${id}`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+}
