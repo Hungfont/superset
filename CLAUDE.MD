@@ -2,6 +2,12 @@
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
+## Agent MemPalace Protocol
+
+When spawning ANY sub-agent (Explore, Plan, general-purpose, etc.), always prepend this to their prompt:
+
+> Search MemPalace first via `mempalace_search` MCP tool before touching the filesystem. Only grep/glob/read files if MemPalace results are missing or stale (>7 days).
+
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 DO NOT ADD NEW ATTRIBUTES OR FIELDS FOR MODELS.
 ## 1. Think Before Coding
