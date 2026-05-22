@@ -9,6 +9,16 @@ type CreateTabRequest struct {
 	QueryLimit int    `json:"query_limit"`
 }
 
+// UpdateTabRequest is the request body for updating a SQL Lab tab.
+// All fields are optional — only non-nil fields are applied.
+type UpdateTabRequest struct {
+	Label      *string `json:"label"`
+	SQL        *string `json:"sql"`
+	Schema     *string `json:"schema"`
+	Catalog    *string `json:"catalog"`
+	QueryLimit *int    `json:"query_limit"`
+}
+
 // TabResponse is the API response for a SQL Lab tab.
 type TabResponse struct {
 	ID                uint   `json:"id"`
