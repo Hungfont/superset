@@ -2,6 +2,7 @@ package sqllab
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -120,6 +121,61 @@ func (h *Handler) GetTab(c *gin.Context) {
 	c.JSON(http.StatusOK, tabToResponse(tab))
 }
 
+func (h *Handler) UpdateTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+		return
+	}
+
+	var req domainquery.UpdateTabRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	if req.Label != nil {
+		tab.Label = *req.Label
+	}
+	if req.SQL != nil {
+		tab.SQL = *req.SQL
+	}
+	if req.Schema != nil {
+		tab.Schema = *req.Schema
+	}
+	if req.Catalog != nil {
+		tab.Catalog = *req.Catalog
+	}
+	if req.QueryLimit != nil {
+		tab.QueryLimit = *req.QueryLimit
+	}
+
+	tab.ChangedOn = time.Now()
+	tab.ChangedByFK = userCtx.ID
+
+	if err := h.sqllabRepo.Update(c.Request.Context(), tab); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update_failed", "message": "Failed to update tab"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tabToResponse(tab))
+}
+
 func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
 	roleNames, err := h.databaseRepo.GetRoleNamesByUser(ctx, userID)
 	if err != nil {
@@ -173,7 +229,7 @@ func getUserContext(c *gin.Context) (domain.UserContext, bool) {
 }
 
 func tabToResponse(t *domainquery.TabState) domainquery.TabResponse {
-	return domainquery.TabResponse{
+	resp := domainquery.TabResponse{
 		ID:            t.ID,
 		Label:         t.Label,
 		DbID:          t.DbID,
@@ -186,4 +242,13 @@ func tabToResponse(t *domainquery.TabState) domainquery.TabResponse {
 		HideLeftBar:   t.HideLeftBar,
 		CreatedOn:     t.CreatedOn.Format("2006-01-02T15:04:05Z07:00"),
 	}
+	if t.ExtraJSON != "" {
+		var extra struct {
+			LatestQueryStatus string `json:"latest_query_status"`
+		}
+		if json.Unmarshal([]byte(t.ExtraJSON), &extra) == nil && extra.LatestQueryStatus != "" {
+			resp.LatestQueryStatus = extra.LatestQueryStatus
+		}
+	}
+	return resp
 }

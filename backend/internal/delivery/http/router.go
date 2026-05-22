@@ -173,6 +173,7 @@ func NewRouter(
 				sqlLab.POST("/tabs", sqllabHandler.CreateTab)
 				sqlLab.GET("/tabs", sqllabHandler.ListTabs)
 				sqlLab.GET("/tabs/:id", sqllabHandler.GetTab)
+				sqlLab.PUT("/tabs/:id", sqllabHandler.UpdateTab)
 			}
 		}
 	}
