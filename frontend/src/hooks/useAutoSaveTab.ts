@@ -1,20 +1,12 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { updateTab, type UpdateTabRequest } from "@/api/sqllab";
-import { useSqlLabStore } from "@/stores/sqlLabStore";
+import { useSqlLabStore, type SqlLabTab } from "@/stores/sqlLabStore";
 import { useDebounce } from "@/hooks/useDebounce";
 
-interface SqlLabTab {
-  id: string;
-  sql: string;
-  title: string;
-  schema: string;
-  databaseId: number | null;
-  catalog?: string;
-  isDirty?: boolean;
-}
+type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'catalog' | 'isDirty'>;
 
-export function useAutoSaveTab(activeTabId: string | null, activeTab: SqlLabTab | undefined) {
+export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAutoSave | undefined) {
   const { toast } = useToast();
 
   const debouncedSql = useDebounce(activeTab?.sql, 1000);
@@ -34,11 +26,7 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: SqlLabTab 
     updateTab(numericId, changes)
       .then(() => {
         if (activeTabIdRef.current === tabId) {
-          useSqlLabStore.setState(state => ({
-            tabs: state.tabs.map(t =>
-              t.id === tabId ? { ...t, isDirty: false } : t
-            ),
-          }));
+          useSqlLabStore.getState().clearTabDirty(tabId);
         }
       })
       .catch(() => {

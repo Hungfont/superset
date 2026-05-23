@@ -45,7 +45,7 @@ interface SetAsyncResultPayload {
   query: Partial<QueryResultQueryMeta>;
 }
 
-interface SqlLabTab {
+export interface SqlLabTab {
   id: string;
   title: string;
   sql: string;
@@ -88,6 +88,7 @@ interface SqlLabState {
   setDownloadUrl: (id: string, url: string) => void;
   setEstimate: (id: string, estimate: EstimateResult | null) => void;
   initTabs: (tabs: TabStateFromAPI[]) => void;
+  clearTabDirty: (id: string) => void;
 }
 
 let tabCounter = 0;
@@ -297,6 +298,14 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
     set(state => ({
       tabs: state.tabs.map(t =>
         t.id === id ? { ...t, estimate } : t
+      ),
+    }));
+  },
+
+  clearTabDirty: (id) => {
+    set(state => ({
+      tabs: state.tabs.map(t =>
+        t.id === id ? { ...t, isDirty: false } : t
       ),
     }));
   },
