@@ -39,12 +39,15 @@ func (m *mockSQLLabRepo) ListByUser(_ context.Context, _ uint) ([]*domainquery.T
 	}
 	return out, nil
 }
-func (m *mockSQLLabRepo) GetByID(_ context.Context, id uint, _ uint) (*domainquery.TabState, error) {
+func (m *mockSQLLabRepo) GetByID(_ context.Context, id uint, userID uint) (*domainquery.TabState, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	t, ok := m.tabs[id]
 	if !ok {
+		return nil, nil
+	}
+	if t.UserID != userID {
 		return nil, nil
 	}
 	return t, nil
@@ -212,7 +215,7 @@ func TestUpdateTab_AllFieldsIncludingNew(t *testing.T) {
 	}
 }
 
-func TestUpdateTab_66KB_SQL_Allowed(t *testing.T) {
+func TestUpdateTab_64KB_SQL_Allowed(t *testing.T) {
 	tab := &domainquery.TabState{ID: 1, UserID: 1, DbID: 1, Label: "test"}
 	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
 	router := newSQLLabRouter(repo)
