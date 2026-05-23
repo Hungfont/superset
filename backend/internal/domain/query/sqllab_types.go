@@ -12,11 +12,15 @@ type CreateTabRequest struct {
 // UpdateTabRequest is the request body for updating a SQL Lab tab.
 // All fields are optional — only non-nil fields are applied.
 type UpdateTabRequest struct {
-	Label      *string `json:"label"`
-	SQL        *string `json:"sql"`
-	Schema     *string `json:"schema"`
-	Catalog    *string `json:"catalog"`
-	QueryLimit *int    `json:"query_limit"`
+	Label         *string `json:"label"`
+	SQL           *string `json:"sql"`
+	Schema        *string `json:"schema"`
+	Catalog       *string `json:"catalog"`
+	QueryLimit    *int    `json:"query_limit"`
+	DbID          *uint   `json:"db_id"`
+	LatestQueryID *string `json:"latest_query_id"`
+	HideLeftBar   *bool   `json:"hide_left_bar"`
+	ExtraJSON     *string `json:"extra_json"`
 }
 
 // TabResponse is the API response for a SQL Lab tab.
