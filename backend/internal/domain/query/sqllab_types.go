@@ -38,3 +38,9 @@ type TabResponse struct {
 	HideLeftBar       bool   `json:"hide_left_bar"`
 	CreatedOn         string `json:"created_on"`
 }
+
+// CloseAllTabsRequest is the request body for closing all tabs.
+// ExceptID, when set, excludes that tab from being closed (used for "Close Others").
+type CloseAllTabsRequest struct {
+	ExceptID *uint `json:"except_id"`
+}
