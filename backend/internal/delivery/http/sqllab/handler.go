@@ -82,7 +82,9 @@ func (h *Handler) ListTabs(c *gin.Context) {
 		return
 	}
 
-	tabs, err := h.sqllabRepo.ListByUser(c.Request.Context(), userCtx.ID)
+	includeClosed := c.Query("include_closed") == "true"
+
+	tabs, err := h.sqllabRepo.ListByUser(c.Request.Context(), userCtx.ID, includeClosed)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to list tabs"})
 		return
@@ -194,6 +196,110 @@ func (h *Handler) UpdateTab(c *gin.Context) {
 	c.JSON(http.StatusOK, tabToResponse(tab))
 }
 
+func (h *Handler) CloseTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	err = h.sqllabRepo.CloseTab(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+		if getErr != nil || tab == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to close this tab"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"closed": true})
+}
+
+func (h *Handler) CloseAllTabs(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	var req domainquery.CloseAllTabsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		req = domainquery.CloseAllTabsRequest{}
+	}
+
+	closed, err := h.sqllabRepo.CloseAllTabs(c.Request.Context(), userCtx.ID, req.ExceptID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to close tabs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"closed": closed})
+}
+
+func (h *Handler) ReopenTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	err = h.sqllabRepo.ReopenTab(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+		if getErr != nil || tab == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to reopen this tab"})
+		return
+	}
+
+	tab, _ := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	label := ""
+	if tab != nil {
+		label = tab.Label
+	}
+
+	c.JSON(http.StatusOK, gin.H{"reopened": true, "id": id, "label": label})
+}
+
+func (h *Handler) HardDeleteTab(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	err = h.sqllabRepo.HardDelete(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+		if getErr != nil || tab == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to delete this tab"})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil)
+}
+
 func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
 	roleNames, err := h.databaseRepo.GetRoleNamesByUser(ctx, userID)
 	if err != nil {
@@ -215,7 +321,7 @@ func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domd
 }
 
 func (h *Handler) generateLabel(ctx context.Context, userID uint) (string, error) {
-	tabs, err := h.sqllabRepo.ListByUser(ctx, userID)
+	tabs, err := h.sqllabRepo.ListByUser(ctx, userID, false)
 	if err != nil {
 		return "", err
 	}
