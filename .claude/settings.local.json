@@ -26,12 +26,18 @@
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\backend\" -Directory | ForEach-Object { $_.Name })",
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\frontend\" -Directory | ForEach-Object { $_.Name })",
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\docs\" -Directory | ForEach-Object { $_.Name })",
-      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\.claude\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\(\"D:\\\\superset\\\\\", \"\"\\) })"
+      "PowerShell(Get-ChildItem \"D:\\\\superset\\\\.claude\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\(\"D:\\\\superset\\\\\", \"\"\\) })",
+      "Skill(mempalace:mine)",
+      "Skill(mempalace:mempalace)",
+      "Bash(mempalace status *)",
+      "Bash(mempalace mine *)",
+      "mcp__plugin_mempalace_mempalace__mempalace_search"
     ]
   },
-  "model": "haiku",
+  "model": "sonnet",
   "enabledPlugins": {
-    "mempalace@mempalace": true
+    "mempalace@mempalace": true,
+    "superpowers@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "mempalace": {

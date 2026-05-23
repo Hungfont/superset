@@ -18,7 +18,7 @@ export interface TabStateResponse {
   sql: string;
   active: boolean;
   query_limit: number;
-  latest_query_id: string;
+  latest_query_id: string | null;
   latest_query_status: string;
   hide_left_bar: boolean;
   created_on: string;

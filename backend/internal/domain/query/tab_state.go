@@ -16,7 +16,7 @@ type TabState struct {
 	Active        bool   `json:"active"`
 	SQL           string `gorm:"type:text" json:"sql"`
 	QueryLimit    int    `gorm:"column:query_limit" json:"query_limit"`
-	LatestQueryID string `gorm:"column:latest_query_id;type:varchar(36)" json:"latest_query_id"`
+	LatestQueryID *string `gorm:"column:latest_query_id;type:varchar(36)" json:"latest_query_id"`
 	HideLeftBar   bool   `json:"hide_left_bar"`
 	SavedQueryID  *uint  `json:"saved_query_id"`
 

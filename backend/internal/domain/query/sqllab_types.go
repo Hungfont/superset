@@ -29,7 +29,7 @@ type TabResponse struct {
 	SQL               string `json:"sql"`
 	Active            bool   `json:"active"`
 	QueryLimit        int    `json:"query_limit"`
-	LatestQueryID     string `json:"latest_query_id"`
+	LatestQueryID     *string `json:"latest_query_id,omitempty"`
 	LatestQueryStatus string `json:"latest_query_status"`
 	HideLeftBar       bool   `json:"hide_left_bar"`
 	CreatedOn         string `json:"created_on"`

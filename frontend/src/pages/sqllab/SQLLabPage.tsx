@@ -682,13 +682,12 @@ export default function SQLLabPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] }),
   });
 
-  const tabsRestoredRef = useRef(false);
-
   useEffect(() => {
-    if (!tabsData || tabsRestoredRef.current) return;
-    tabsRestoredRef.current = true;
+    if (!tabsData) return;
     if (tabsData.length === 0) {
-      createTabMutation.mutate({ db_id: databaseId || 1 });
+      if (databaseId != null) {
+        createTabMutation.mutate({ db_id: databaseId });
+      }
     } else {
       initTabs(tabsData);
     }
@@ -776,7 +775,7 @@ export default function SQLLabPage() {
                   </SelectContent>
                 </Select>
                 <Button
-                  onClick={() => createTabMutation.mutate({ db_id: databaseId || 1 })}
+                  onClick={() => databaseId != null && createTabMutation.mutate({ db_id: databaseId })}
                   size="sm"
                   variant="outline"
                 >
