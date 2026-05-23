@@ -66,6 +66,10 @@ export interface UpdateTabRequest {
   schema?: string;
   catalog?: string;
   query_limit?: number;
+  db_id?: number;
+  latest_query_id?: string;
+  hide_left_bar?: boolean;
+  extra_json?: string;
 }
 
 export async function updateTab(id: number, data: UpdateTabRequest): Promise<TabStateResponse> {
