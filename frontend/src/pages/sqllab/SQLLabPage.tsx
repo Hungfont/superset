@@ -713,7 +713,10 @@ export default function SQLLabPage() {
 
   const createTabMutation = useMutation({
     mutationFn: createTabApi,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
+      setActiveTab(String(data.id));
+    },
   });
 
   const [isClosedSheetOpen, setIsClosedSheetOpen] = useState(false);
@@ -768,7 +771,7 @@ export default function SQLLabPage() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "T") {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "t") {
         e.preventDefault();
         setIsClosedSheetOpen(true);
       }
@@ -911,10 +914,11 @@ export default function SQLLabPage() {
                           tabIndex={0}
                           onClick={e => {
                             e.stopPropagation();
-                            if (tab.status === "running" || tab.isDirty) {
+                            if (tab.status === "running" || tab.isDirty || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending") {
+                              const isRunning = tab.status === "running" || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending";
                               const reason =
-                                tab.status === "running" && tab.isDirty ? "both"
-                                : tab.status === "running" ? "running"
+                                isRunning && tab.isDirty ? "both"
+                                : isRunning ? "running"
                                 : "dirty";
                               setConfirmClose({ tabId: tab.id, reason });
                             } else {
@@ -924,10 +928,11 @@ export default function SQLLabPage() {
                           onKeyDown={e => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.stopPropagation();
-                              if (tab.status === "running" || tab.isDirty) {
+                              if (tab.status === "running" || tab.isDirty || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending") {
+                                const isRunning = tab.status === "running" || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending";
                                 const reason =
-                                  tab.status === "running" && tab.isDirty ? "both"
-                                  : tab.status === "running" ? "running"
+                                  isRunning && tab.isDirty ? "both"
+                                  : isRunning ? "running"
                                   : "dirty";
                                 setConfirmClose({ tabId: tab.id, reason });
                               } else {
@@ -961,10 +966,11 @@ export default function SQLLabPage() {
                   <ContextMenuSeparator />
                   <ContextMenuItem
                     onClick={() => {
-                      if (tab.status === "running" || tab.isDirty) {
+                      if (tab.status === "running" || tab.isDirty || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending") {
+                        const isRunning = tab.status === "running" || tab.asyncStatus === "running" || tab.asyncStatus === "queued" || tab.asyncStatus === "pending";
                         const reason =
-                          tab.status === "running" && tab.isDirty ? "both"
-                          : tab.status === "running" ? "running"
+                          isRunning && tab.isDirty ? "both"
+                          : isRunning ? "running"
                           : "dirty";
                         setConfirmClose({ tabId: tab.id, reason });
                       } else {
