@@ -38,8 +38,13 @@ export interface CreateTabResponse {
   active: boolean;
 }
 
-export async function fetchTabs(): Promise<TabStateResponse[]> {
-  return request<TabStateResponse[]>("/api/v1/sqllab/tabs", {
+interface FetchTabsOptions {
+  include_closed?: boolean;
+}
+
+export async function fetchTabs(options?: FetchTabsOptions): Promise<TabStateResponse[]> {
+  const params = options?.include_closed ? "?include_closed=true" : "";
+  return request<TabStateResponse[]>(`/api/v1/sqllab/tabs${params}`, {
     method: "GET",
     headers: getAuthHeaders(),
   });
@@ -77,5 +82,27 @@ export async function updateTab(id: number, data: UpdateTabRequest): Promise<Tab
     method: "PUT",
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
+  });
+}
+
+export async function closeTab(id: number): Promise<{ closed: boolean }> {
+  return request<{ closed: boolean }>(`/api/v1/sqllab/tabs/${id}/close`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function closeAllTabs(exceptId?: number): Promise<{ closed: number }> {
+  return request<{ closed: number }>("/api/v1/sqllab/tabs/close-all", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(exceptId !== undefined ? { except_id: exceptId } : {}),
+  });
+}
+
+export async function reopenTab(id: number): Promise<{ reopened: boolean; id: number; label: string }> {
+  return request<{ reopened: boolean; id: number; label: string }>(`/api/v1/sqllab/tabs/${id}/reopen`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
   });
 }
