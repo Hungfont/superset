@@ -223,45 +223,24 @@ func (h *Handler) CloseAllTabs(c *gin.Context) {
 		return
 	}
 
-	var req domainquery.CloseAllTabsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		req = domainquery.CloseAllTabsRequest{}
+	var exceptID *uint
+	if exceptStr := c.Query("except_id"); exceptStr != "" {
+		id, err := strconv.ParseUint(exceptStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid except_id"})
+			return
+		}
+		uid := uint(id)
+		exceptID = &uid
 	}
 
-	closed, err := h.sqllabRepo.CloseAllTabs(c.Request.Context(), userCtx.ID, req.ExceptID)
+	closed, err := h.sqllabRepo.CloseAllTabs(c.Request.Context(), userCtx.ID, exceptID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to close tabs"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"closed": closed})
-}
-
-func (h *Handler) ReopenTab(c *gin.Context) {
-	userCtx, ok := getUserContext(c)
-	if !ok {
-		return
-	}
-
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
-		return
-	}
-
-	err = h.sqllabRepo.ReopenTab(c.Request.Context(), uint(id), userCtx.ID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
-		return
-	}
-
-	tab, _ := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
-	label := ""
-	if tab != nil {
-		label = tab.Label
-	}
-
-	c.JSON(http.StatusOK, gin.H{"reopened": true, "id": id, "label": label})
 }
 
 func (h *Handler) HardDeleteTab(c *gin.Context) {

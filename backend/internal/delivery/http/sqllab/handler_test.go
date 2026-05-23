@@ -95,18 +95,6 @@ func (m *mockSQLLabRepo) CloseAllTabs(_ context.Context, userID uint, exceptID *
 	}
 	return closed, nil
 }
-func (m *mockSQLLabRepo) ReopenTab(_ context.Context, id uint, userID uint) error {
-	if m.err != nil {
-		return m.err
-	}
-	t, ok := m.tabs[id]
-	if !ok || t.UserID != userID || t.Active {
-		return fmt.Errorf("not found")
-	}
-	t.Active = true
-	t.ChangedOn = time.Now()
-	return nil
-}
 func (m *mockSQLLabRepo) HardDelete(_ context.Context, id uint, userID uint) error {
 	if m.err != nil {
 		return m.err
@@ -161,8 +149,7 @@ func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	sqllab := r.Group("/api/v1/sqllab")
 	sqllab.PUT("/tabs/:id", h.UpdateTab)
 	sqllab.PUT("/tabs/:id/close", h.CloseTab)
-	sqllab.POST("/tabs/close-all", h.CloseAllTabs)
-	sqllab.PUT("/tabs/:id/reopen", h.ReopenTab)
+	sqllab.DELETE("/tabs", h.CloseAllTabs)
 	sqllab.DELETE("/tabs/:id", h.HardDeleteTab)
 	sqllab.GET("/tabs", h.ListTabs)
 	return r
@@ -340,8 +327,7 @@ func TestCloseAllTabs_ClosesMultiple_ReturnsCount(t *testing.T) {
 	router := newSQLLabRouter(repo)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString("{}"))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs", nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -366,10 +352,8 @@ func TestCloseAllTabs_ExceptID_ExcludesActive(t *testing.T) {
 	repo := &mockSQLLabRepo{tabs: tabs}
 	router := newSQLLabRouter(repo)
 
-	body := `{"except_id":2}`
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs?except_id=2", nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -394,8 +378,7 @@ func TestCloseAllTabs_NoneOpen_ReturnsZero(t *testing.T) {
 	router := newSQLLabRouter(repo)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString("{}"))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs", nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -403,55 +386,6 @@ func TestCloseAllTabs_NoneOpen_ReturnsZero(t *testing.T) {
 	}
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed":0`)) {
 		t.Fatalf("expected closed:0, got %s", w.Body.String())
-	}
-}
-
-// ---- ReopenTab tests ----
-
-func TestReopenTab_ClosedTab_Returns200(t *testing.T) {
-	tab := &domainquery.TabState{ID: 1, UserID: 1, DbID: 1, Label: "test", Active: false}
-	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
-	router := newSQLLabRouter(repo)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/reopen", nil)
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if !bytes.Contains(w.Body.Bytes(), []byte(`"reopened":true`)) {
-		t.Fatalf("expected reopened:true, got %s", w.Body.String())
-	}
-	if !repo.tabs[1].Active {
-		t.Fatal("tab should be active after reopen")
-	}
-}
-
-func TestReopenTab_NotOwner_Returns404(t *testing.T) {
-	tab := &domainquery.TabState{ID: 1, UserID: 999, DbID: 1, Label: "other", Active: false}
-	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
-	router := newSQLLabRouter(repo)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/reopen", nil)
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestReopenTab_NotFound_Returns404(t *testing.T) {
-	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
-	router := newSQLLabRouter(repo)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/999/reopen", nil)
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

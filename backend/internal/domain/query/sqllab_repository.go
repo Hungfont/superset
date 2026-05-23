@@ -10,7 +10,6 @@ type SQLLabRepository interface {
 	Update(ctx context.Context, tab *TabState) error
 	CloseTab(ctx context.Context, id uint, userID uint) error
 	CloseAllTabs(ctx context.Context, userID uint, exceptID *uint) (int64, error)
-	ReopenTab(ctx context.Context, id uint, userID uint) error
 	HardDelete(ctx context.Context, id uint, userID uint) error
 }
 

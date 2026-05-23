@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"gorm.io/gorm"
 	query "superset/auth-service/internal/domain/query"
@@ -98,23 +97,6 @@ func (r *sqllabRepo) CloseAllTabs(ctx context.Context, userID uint, exceptID *ui
 		return 0, fmt.Errorf("close all tabs: %w", result.Error)
 	}
 	return result.RowsAffected, nil
-}
-
-func (r *sqllabRepo) ReopenTab(ctx context.Context, id uint, userID uint) error {
-	result := r.db.WithContext(ctx).
-		Model(&query.TabState{}).
-		Where("id = ? AND user_id = ? AND active = ?", id, userID, false).
-		Updates(map[string]interface{}{
-			"active":     true,
-			"changed_on": time.Now(),
-		})
-	if result.Error != nil {
-		return fmt.Errorf("reopen tab: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("not found")
-	}
-	return nil
 }
 
 func (r *sqllabRepo) HardDelete(ctx context.Context, id uint, userID uint) error {

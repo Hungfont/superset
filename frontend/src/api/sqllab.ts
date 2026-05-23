@@ -93,16 +93,9 @@ export async function closeTab(id: number): Promise<{ closed: boolean }> {
 }
 
 export async function closeAllTabs(exceptId?: number): Promise<{ closed: number }> {
-  return request<{ closed: number }>("/api/v1/sqllab/tabs/close-all", {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(exceptId !== undefined ? { except_id: exceptId } : {}),
-  });
-}
-
-export async function reopenTab(id: number): Promise<{ reopened: boolean; id: number; label: string }> {
-  return request<{ reopened: boolean; id: number; label: string }>(`/api/v1/sqllab/tabs/${id}/reopen`, {
-    method: "PUT",
+  const qs = exceptId !== undefined ? `?except_id=${exceptId}` : "";
+  return request<{ closed: number }>(`/api/v1/sqllab/tabs${qs}`, {
+    method: "DELETE",
     headers: getAuthHeaders(),
   });
 }

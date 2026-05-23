@@ -67,7 +67,7 @@ import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
-import { fetchTabs, createTab as createTabApi, closeTab, closeAllTabs, reopenTab } from "@/api/sqllab";
+import { fetchTabs, createTab as createTabApi, closeTab, closeAllTabs } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
 import { useAutoSaveTab } from "@/hooks/useAutoSaveTab";
 
@@ -747,18 +747,6 @@ export default function SQLLabPage() {
     },
   });
 
-  const reopenTabMutation = useMutation({
-    mutationFn: reopenTab,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
-      setIsClosedSheetOpen(false);
-      toast("Tab reopened");
-    },
-    onError: () => {
-      toast("Failed to reopen tab");
-    },
-  });
-
   useEffect(() => {
     if (!tabsData) return;
     if (tabsData.length === 0) {
@@ -1252,8 +1240,17 @@ export default function SQLLabPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => reopenTabMutation.mutate(tab.id)}
-                  disabled={reopenTabMutation.isPending}
+                  onClick={() => {
+                    createTabMutation.mutate({
+                      db_id: tab.db_id,
+                      schema: tab.schema,
+                      catalog: tab.catalog,
+                      sql: tab.sql,
+                      query_limit: tab.query_limit,
+                    });
+                    setIsClosedSheetOpen(false);
+                  }}
+                  disabled={createTabMutation.isPending}
                 >
                   Reopen
                 </Button>

@@ -1003,42 +1003,8 @@ With:
 import { fetchTabs, createTab as createTabApi, closeTab, closeAllTabs, reopenTab } from "@/api/sqllab";
 ```
 
-Add new shadcn/ui imports. Add `Sheet`, `AlertDialog`, and `ScrollArea` to existing imports. The `DropdownMenu` import is already present (line 24-28 adds context-menu). Add these lines after the existing shadcn/ui import block matching where similar components are imported:
+Add new shadcn/ui imports after the existing ContextMenu import block (after line 29). Only AlertDialog, Sheet, and ScrollArea are needed — ContextMenu is already imported and handles right-click menus:
 
-Add after the ContextMenu import block (after line 29):
-```ts
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { toast } from "sonner";
-```
-
-Wait — `useToast` is already imported on line 30. toast from sonner can be used directly alongside it. But let me keep it simple and use the existing `useToast` hook pattern instead. Skip the sonner import.
-
-Remove the sonner import — we'll use the existing `useToast` hook. Add only:
 ```ts
 import {
   AlertDialog,
@@ -1059,10 +1025,6 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 ```
-
-This ensures shadcn/ui only. Reading further: I see we need to also import `ContextMenu` parts since they already exist. Looks like `ContextMenu` imports are already present. We don't need DropdownMenu separately — the existing ContextMenu handles right-click. Let me re-read the code to confirm context menu usage...
-
-OK, looking at the code again (lines 810-888), the existing code uses `<ContextMenu>`, `<ContextMenuTrigger>`, `<ContextMenuContent>`, `<ContextMenuItem>`, `<ContextMenuSeparator>`. These are already imported from `@/components/ui/context-menu`. The spec says to add "Close Others" and "Reopen Closed Tab" to the context menu, so we just use the same ContextMenu components — no DropdownMenu import needed.
 
 - [ ] **Step 2: Destructure renamed store actions and add new state**
 
@@ -1236,12 +1198,15 @@ With:
 - [ ] **Step 8: Update the context menu "Close All" item and add "Close Others" + "Reopen Closed Tab"**
 
 Replace lines 884-886:
+
 ```tsx
                   <ContextMenuItem onClick={() => closeAllTabs()}>
                     Close All
                   </ContextMenuItem>
 ```
-With:
+
+With (also add `confirmCloseAll` state in the Step 4 block):
+
 ```tsx
                   <ContextMenuItem
                     onClick={() => closeAllTabsMutation.mutate(activeTabId ? Number(activeTabId) : undefined)}
@@ -1249,27 +1214,12 @@ With:
                   >
                     Close Others
                   </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => setConfirmClose({ tabId: "__all__", reason: "dirty" })}
-                  >
+                  <ContextMenuItem onClick={() => setConfirmCloseAll(true)}>
                     Close All
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem onClick={() => setIsClosedSheetOpen(true)}>
                     Reopen Closed Tab
-                  </ContextMenuItem>
-```
-
-Wait, the "Close All" confirmation needs a different approach since it's not about a single tab. Let me use a separate state for close-all confirmation. Let me adjust:
-
-```ts
-  const [confirmCloseAll, setConfirmCloseAll] = useState(false);
-```
-
-And "Close All" should be:
-```tsx
-                  <ContextMenuItem onClick={() => setConfirmCloseAll(true)}>
-                    Close All
                   </ContextMenuItem>
 ```
 
