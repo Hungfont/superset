@@ -160,6 +160,11 @@ func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	})
 	sqllab := r.Group("/api/v1/sqllab")
 	sqllab.PUT("/tabs/:id", h.UpdateTab)
+	sqllab.PUT("/tabs/:id/close", h.CloseTab)
+	sqllab.POST("/tabs/close-all", h.CloseAllTabs)
+	sqllab.PUT("/tabs/:id/reopen", h.ReopenTab)
+	sqllab.DELETE("/tabs/:id", h.HardDeleteTab)
+	sqllab.GET("/tabs", h.ListTabs)
 	return r
 }
 
@@ -271,6 +276,253 @@ func TestUpdateTab_AllFieldsIncludingNew(t *testing.T) {
 	}
 	if updated.ExtraJSON != `{"key":"val"}` {
 		t.Fatalf("extra_json mismatch: %s", updated.ExtraJSON)
+	}
+}
+
+// ---- CloseTab tests ----
+
+func TestCloseTab_ActiveTab_Returns200(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 1, DbID: 1, Label: "test", Active: true}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/close", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed":true`)) {
+		t.Fatalf("expected closed:true, got %s", w.Body.String())
+	}
+	if repo.tabs[1].Active {
+		t.Fatal("tab should be inactive after close")
+	}
+}
+
+func TestCloseTab_NotOwner_Returns403(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 999, DbID: 1, Label: "other", Active: true}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/close", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCloseTab_NotFound_Returns404(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/999/close", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---- CloseAllTabs tests ----
+
+func TestCloseAllTabs_ClosesMultiple_ReturnsCount(t *testing.T) {
+	tabs := map[uint]*domainquery.TabState{
+		1: {ID: 1, UserID: 1, DbID: 1, Label: "a", Active: true},
+		2: {ID: 2, UserID: 1, DbID: 1, Label: "b", Active: true},
+		3: {ID: 3, UserID: 1, DbID: 1, Label: "c", Active: true},
+	}
+	repo := &mockSQLLabRepo{tabs: tabs}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed":3`)) {
+		t.Fatalf("expected closed:3, got %s", w.Body.String())
+	}
+	for _, tab := range tabs {
+		if tab.Active {
+			t.Fatalf("tab %d should be inactive", tab.ID)
+		}
+	}
+}
+
+func TestCloseAllTabs_ExceptID_ExcludesActive(t *testing.T) {
+	tabs := map[uint]*domainquery.TabState{
+		1: {ID: 1, UserID: 1, DbID: 1, Label: "a", Active: true},
+		2: {ID: 2, UserID: 1, DbID: 1, Label: "b", Active: true},
+		3: {ID: 3, UserID: 1, DbID: 1, Label: "c", Active: true},
+	}
+	repo := &mockSQLLabRepo{tabs: tabs}
+	router := newSQLLabRouter(repo)
+
+	body := `{"except_id":2}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed":2`)) {
+		t.Fatalf("expected closed:2, got %s", w.Body.String())
+	}
+	if !tabs[2].Active {
+		t.Fatal("tab 2 should remain active (excluded)")
+	}
+	if tabs[1].Active || tabs[3].Active {
+		t.Fatal("tabs 1 and 3 should be inactive")
+	}
+}
+
+func TestCloseAllTabs_NoneOpen_ReturnsZero(t *testing.T) {
+	tabs := map[uint]*domainquery.TabState{
+		1: {ID: 1, UserID: 1, DbID: 1, Label: "a", Active: false},
+	}
+	repo := &mockSQLLabRepo{tabs: tabs}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/tabs/close-all", bytes.NewBufferString("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed":0`)) {
+		t.Fatalf("expected closed:0, got %s", w.Body.String())
+	}
+}
+
+// ---- ReopenTab tests ----
+
+func TestReopenTab_ClosedTab_Returns200(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 1, DbID: 1, Label: "test", Active: false}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/reopen", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"reopened":true`)) {
+		t.Fatalf("expected reopened:true, got %s", w.Body.String())
+	}
+	if !repo.tabs[1].Active {
+		t.Fatal("tab should be active after reopen")
+	}
+}
+
+func TestReopenTab_NotOwner_Returns404(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 999, DbID: 1, Label: "other", Active: false}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/1/reopen", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReopenTab_NotFound_Returns404(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/tabs/999/reopen", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---- HardDeleteTab tests ----
+
+func TestHardDeleteTab_OwnTab_Returns204(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 1, DbID: 1, Label: "test", Active: true}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs/1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, exists := repo.tabs[1]; exists {
+		t.Fatal("tab should be deleted from repo")
+	}
+}
+
+func TestHardDeleteTab_NotOwner_Returns404(t *testing.T) {
+	tab := &domainquery.TabState{ID: 1, UserID: 999, DbID: 1, Label: "other", Active: true}
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs/1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHardDeleteTab_NotFound_Returns404(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/tabs/999", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---- ListTabs include_closed test ----
+
+func TestListTabs_IncludeClosed_ReturnsAll(t *testing.T) {
+	tabs := map[uint]*domainquery.TabState{
+		1: {ID: 1, UserID: 1, DbID: 1, Label: "active", Active: true, CreatedOn: time.Now()},
+		2: {ID: 2, UserID: 1, DbID: 1, Label: "closed", Active: false, CreatedOn: time.Now()},
+	}
+	repo := &mockSQLLabRepo{tabs: tabs}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/sqllab/tabs?include_closed=true", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"active"`)) {
+		t.Fatal("should include active tab")
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"closed"`)) {
+		t.Fatal("should include closed tab")
 	}
 }
 
