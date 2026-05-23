@@ -174,6 +174,10 @@ func NewRouter(
 				sqlLab.GET("/tabs", sqllabHandler.ListTabs)
 				sqlLab.GET("/tabs/:id", sqllabHandler.GetTab)
 				sqlLab.PUT("/tabs/:id", sqllabHandler.UpdateTab)
+				sqlLab.PUT("/tabs/:id/close", sqllabHandler.CloseTab)
+				sqlLab.POST("/tabs/close-all", sqllabHandler.CloseAllTabs)
+				sqlLab.PUT("/tabs/:id/reopen", sqllabHandler.ReopenTab)
+				sqlLab.DELETE("/tabs/:id", sqllabHandler.HardDeleteTab)
 			}
 		}
 	}
