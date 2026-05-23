@@ -3,9 +3,11 @@ package sqllab
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	domain "superset/auth-service/internal/domain/auth"
 	domdb "superset/auth-service/internal/domain/db"
@@ -29,12 +31,18 @@ func (m *mockSQLLabRepo) Create(_ context.Context, tab *domainquery.TabState) er
 	m.tabs[tab.ID] = tab
 	return nil
 }
-func (m *mockSQLLabRepo) ListByUser(_ context.Context, _ uint) ([]*domainquery.TabState, error) {
+func (m *mockSQLLabRepo) ListByUser(_ context.Context, userID uint, includeClosed bool) ([]*domainquery.TabState, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	var out []*domainquery.TabState
 	for _, t := range m.tabs {
+		if t.UserID != userID {
+			continue
+		}
+		if !includeClosed && !t.Active {
+			continue
+		}
 		out = append(out, t)
 	}
 	return out, nil
@@ -57,6 +65,57 @@ func (m *mockSQLLabRepo) Update(_ context.Context, tab *domainquery.TabState) er
 		return m.err
 	}
 	m.tabs[tab.ID] = tab
+	return nil
+}
+func (m *mockSQLLabRepo) CloseTab(_ context.Context, id uint, userID uint) error {
+	if m.err != nil {
+		return m.err
+	}
+	t, ok := m.tabs[id]
+	if !ok || t.UserID != userID || !t.Active {
+		return fmt.Errorf("not found")
+	}
+	t.Active = false
+	return nil
+}
+func (m *mockSQLLabRepo) CloseAllTabs(_ context.Context, userID uint, exceptID *uint) (int64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	var closed int64
+	for _, t := range m.tabs {
+		if t.UserID != userID || !t.Active {
+			continue
+		}
+		if exceptID != nil && t.ID == *exceptID {
+			continue
+		}
+		t.Active = false
+		closed++
+	}
+	return closed, nil
+}
+func (m *mockSQLLabRepo) ReopenTab(_ context.Context, id uint, userID uint) error {
+	if m.err != nil {
+		return m.err
+	}
+	t, ok := m.tabs[id]
+	if !ok || t.UserID != userID || t.Active {
+		return fmt.Errorf("not found")
+	}
+	t.Active = true
+	t.ChangedOn = time.Now()
+	return nil
+}
+func (m *mockSQLLabRepo) HardDelete(_ context.Context, id uint, userID uint) error {
+	if m.err != nil {
+		return m.err
+	}
+	t, ok := m.tabs[id]
+	if !ok || t.UserID != userID {
+		return fmt.Errorf("not found")
+	}
+	delete(m.tabs, id)
 	return nil
 }
 
