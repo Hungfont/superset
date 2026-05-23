@@ -173,7 +173,7 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
   updateTabDatabase: (id, databaseId) => {
     set(state => ({
       tabs: state.tabs.map(t =>
-        t.id === id ? { ...t, databaseId } : t
+        t.id === id ? { ...t, databaseId, isDirty: true } : t
       ),
     }));
   },

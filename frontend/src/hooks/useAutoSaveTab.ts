@@ -7,7 +7,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'isDirty'>;
 
 export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAutoSave | undefined) {
-  const { toast } = useToast();
+  const { warning } = useToast();
 
   const debouncedSql = useDebounce(activeTab?.sql, 1000);
   const debouncedLabel = useDebounce(activeTab?.title, 1000);
@@ -37,7 +37,7 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAuto
         }
       })
       .catch(() => {
-        toast("Failed to save tab. Check connection.");
+        warning("Failed to save tab. Check connection.");
       });
   }, [debouncedSql, debouncedLabel, activeTab?.schema, activeTab?.databaseId]);
 

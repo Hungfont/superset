@@ -364,6 +364,10 @@ export default function SQLLabPage() {
         });
         store.setTabStatus(tabId, "success");
 
+        if (data.query_id) {
+          linkLatestQueryRef.current(data.query_id);
+        }
+
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
         }
@@ -397,6 +401,9 @@ export default function SQLLabPage() {
           ),
         });
         store.setDownloadUrl(tabId, data.download_url);
+        if (data.query_id) {
+          linkLatestQueryRef.current(data.query_id);
+        }
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
         }
