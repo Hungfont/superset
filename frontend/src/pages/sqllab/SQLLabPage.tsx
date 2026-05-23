@@ -49,9 +49,9 @@ import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
-import { fetchTabs, createTab as createTabApi, updateTab } from "@/api/sqllab";
+import { fetchTabs, createTab as createTabApi } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useAutoSaveTab } from "@/hooks/useAutoSaveTab";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
@@ -169,6 +169,10 @@ export default function SQLLabPage() {
 
         if (data.query.start_time && data.query.end_time) {
           lastQueryDurationRef.current = calculateDurationMs(data.query.start_time, data.query.end_time);
+        }
+
+        if (data.query?.id || data.query?.client_id) {
+          linkLatestQueryRef.current(data.query.id || data.query.client_id || "");
         }
       }
     },
@@ -288,6 +292,11 @@ export default function SQLLabPage() {
             showSystemNotification("Query Complete", "Your async query has finished processing.");
           } catch {
             useSqlLabStore.getState().setTabStatus(tabId, "success");
+          }
+
+          const tabIdNum = Number(tabId);
+          if (!isNaN(tabIdNum) && (status.query_id || queryId)) {
+            linkLatestQueryRef.current(status.query_id || queryId);
           }
         } else if (status.status === "failed") {
           useSqlLabStore.getState().setTabError(tabId, status.error || "Query failed");
@@ -693,21 +702,10 @@ export default function SQLLabPage() {
     }
   }, [tabsData]);
 
-  const debouncedSql = useDebounce(activeTab?.sql, 1000);
-  const debouncedLabel = useDebounce(activeTab?.title, 1000);
+  const { linkLatestQuery } = useAutoSaveTab(activeTabId, activeTab);
 
-  useEffect(() => {
-    if (!activeTabId || !activeTab) return;
-    const tabId = Number(activeTabId);
-    if (isNaN(tabId)) return;
-    updateTab(tabId, {
-      sql: activeTab.sql,
-      schema: activeTab.schema,
-      label: activeTab.title,
-    }).catch(() => {
-      // Silently ignore auto-save failures
-    });
-  }, [debouncedSql, debouncedLabel, activeTab?.schema]);
+  const linkLatestQueryRef = useRef(linkLatestQuery);
+  linkLatestQueryRef.current = linkLatestQuery;
 
   const columns = useMemo(() => {
     if (!activeTab?.result?.columns) return [];
@@ -825,7 +823,10 @@ export default function SQLLabPage() {
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="mr-2">{tab.title}</span>
+                    <>
+                      {tab.isDirty && <span className="text-amber-500 mr-1" aria-label="Unsaved changes">•</span>}
+                      <span className="mr-2">{tab.title}</span>
+                    </>
                   )}
                   {(!renamingTabId || renamingTabId !== tab.id) && (
                     <>
