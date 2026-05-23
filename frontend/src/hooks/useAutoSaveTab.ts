@@ -1,10 +1,10 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { updateTab, type UpdateTabRequest } from "@/api/sqllab";
+import { updateTab } from "@/api/sqllab";
 import { useSqlLabStore, type SqlLabTab } from "@/stores/sqlLabStore";
 import { useDebounce } from "@/hooks/useDebounce";
 
-type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'catalog' | 'isDirty'>;
+type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'isDirty'>;
 
 export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAutoSave | undefined) {
   const { toast } = useToast();
@@ -17,13 +17,20 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAuto
 
   const mountedRef = useRef(false);
 
-  const doSave = useCallback((changes: UpdateTabRequest) => {
+  // Auto-save: single atomic write of all fields to prevent race conditions
+  useEffect(() => {
+    if (!activeTabId || !activeTab || !mountedRef.current) return;
     const tabId = activeTabIdRef.current;
     if (!tabId) return;
     const numericId = Number(tabId);
     if (isNaN(numericId)) return;
 
-    updateTab(numericId, changes)
+    updateTab(numericId, {
+      sql: activeTab.sql,
+      label: activeTab.title,
+      schema: activeTab.schema,
+      db_id: activeTab.databaseId ?? undefined,
+    })
       .then(() => {
         if (activeTabIdRef.current === tabId) {
           useSqlLabStore.getState().clearTabDirty(tabId);
@@ -32,37 +39,7 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAuto
       .catch(() => {
         toast("Failed to save tab. Check connection.");
       });
-  }, [toast]);
-
-  // Auto-save SQL (debounced)
-  useEffect(() => {
-    if (!activeTabId || !activeTab) return;
-    if (!mountedRef.current) return;
-    doSave({ sql: activeTab.sql });
-  }, [debouncedSql]);
-
-  // Auto-save label (debounced)
-  useEffect(() => {
-    if (!activeTabId || !activeTab) return;
-    if (!mountedRef.current) return;
-    doSave({ label: activeTab.title });
-  }, [debouncedLabel]);
-
-  // Auto-save schema (immediate)
-  useEffect(() => {
-    if (!activeTabId || !activeTab) return;
-    if (!mountedRef.current) return;
-    doSave({ schema: activeTab.schema });
-  }, [activeTab?.schema]);
-
-  // Auto-save database_id (immediate, when changed)
-  useEffect(() => {
-    if (!activeTabId || !activeTab) return;
-    if (!mountedRef.current) return;
-    const dbId = activeTab.databaseId;
-    if (dbId == null) return;
-    doSave({ db_id: dbId });
-  }, [activeTab?.databaseId]);
+  }, [debouncedSql, debouncedLabel, activeTab?.schema, activeTab?.databaseId]);
 
   useEffect(() => {
     mountedRef.current = true;
