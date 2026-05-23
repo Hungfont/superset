@@ -301,7 +301,7 @@ func TestCloseTab_ActiveTab_Returns200(t *testing.T) {
 	}
 }
 
-func TestCloseTab_NotOwner_Returns403(t *testing.T) {
+func TestCloseTab_NotOwner_Returns404(t *testing.T) {
 	tab := &domainquery.TabState{ID: 1, UserID: 999, DbID: 1, Label: "other", Active: true}
 	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{1: tab}}
 	router := newSQLLabRouter(repo)

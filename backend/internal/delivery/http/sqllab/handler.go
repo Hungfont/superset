@@ -210,12 +210,7 @@ func (h *Handler) CloseTab(c *gin.Context) {
 
 	err = h.sqllabRepo.CloseTab(c.Request.Context(), uint(id), userCtx.ID)
 	if err != nil {
-		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
-		if getErr != nil || tab == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to close this tab"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
 		return
 	}
 
@@ -256,12 +251,7 @@ func (h *Handler) ReopenTab(c *gin.Context) {
 
 	err = h.sqllabRepo.ReopenTab(c.Request.Context(), uint(id), userCtx.ID)
 	if err != nil {
-		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
-		if getErr != nil || tab == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to reopen this tab"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
 		return
 	}
 
@@ -288,12 +278,7 @@ func (h *Handler) HardDeleteTab(c *gin.Context) {
 
 	err = h.sqllabRepo.HardDelete(c.Request.Context(), uint(id), userCtx.ID)
 	if err != nil {
-		tab, getErr := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
-		if getErr != nil || tab == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to delete this tab"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
 		return
 	}
 

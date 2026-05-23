@@ -742,6 +742,7 @@ export default function SQLLabPage() {
       toast(`Closed ${result.closed} tab${result.closed !== 1 ? "s" : ""}`);
     },
     onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
       toast("Failed to close tabs");
     },
   });
