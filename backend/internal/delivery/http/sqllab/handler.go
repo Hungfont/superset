@@ -139,13 +139,19 @@ func (h *Handler) UpdateTab(c *gin.Context) {
 		return
 	}
 	if tab == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Tab not found"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to update this tab"})
 		return
 	}
 
 	var req domainquery.UpdateTabRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	const maxSQLBytes = 64 * 1024
+	if req.SQL != nil && len(*req.SQL) > maxSQLBytes {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "sql_too_large", "message": "SQL exceeds 64KB limit"})
 		return
 	}
 
@@ -163,6 +169,18 @@ func (h *Handler) UpdateTab(c *gin.Context) {
 	}
 	if req.QueryLimit != nil {
 		tab.QueryLimit = *req.QueryLimit
+	}
+	if req.DbID != nil {
+		tab.DbID = *req.DbID
+	}
+	if req.LatestQueryID != nil {
+		tab.LatestQueryID = req.LatestQueryID
+	}
+	if req.HideLeftBar != nil {
+		tab.HideLeftBar = *req.HideLeftBar
+	}
+	if req.ExtraJSON != nil {
+		tab.ExtraJSON = *req.ExtraJSON
 	}
 
 	tab.ChangedOn = time.Now()
