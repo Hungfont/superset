@@ -23,6 +23,8 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: SqlLabTab 
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
 
+  const mountedRef = useRef(false);
+
   const doSave = useCallback((changes: UpdateTabRequest) => {
     const tabId = activeTabIdRef.current;
     if (!tabId) return;
@@ -47,28 +49,36 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: SqlLabTab 
   // Auto-save SQL (debounced)
   useEffect(() => {
     if (!activeTabId || !activeTab) return;
+    if (!mountedRef.current) return;
     doSave({ sql: activeTab.sql });
   }, [debouncedSql]);
 
   // Auto-save label (debounced)
   useEffect(() => {
     if (!activeTabId || !activeTab) return;
+    if (!mountedRef.current) return;
     doSave({ label: activeTab.title });
   }, [debouncedLabel]);
 
   // Auto-save schema (immediate)
   useEffect(() => {
     if (!activeTabId || !activeTab) return;
+    if (!mountedRef.current) return;
     doSave({ schema: activeTab.schema });
   }, [activeTab?.schema]);
 
   // Auto-save database_id (immediate, when changed)
   useEffect(() => {
     if (!activeTabId || !activeTab) return;
+    if (!mountedRef.current) return;
     const dbId = activeTab.databaseId;
     if (dbId == null) return;
     doSave({ db_id: dbId });
   }, [activeTab?.databaseId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
 
   const linkLatestQuery = useCallback((queryId: string) => {
     if (!activeTabIdRef.current) return;
