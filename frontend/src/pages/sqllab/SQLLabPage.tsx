@@ -27,6 +27,24 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
   CacheBadge,
@@ -49,7 +67,7 @@ import { useSqlLabStore } from "@/stores/sqlLabStore";
 import { useWsStore } from "@/stores/wsStore";
 import { queriesApi, type ExecuteQueryResponse, type SubmitQueryResponse, type WsEvent } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
-import { fetchTabs, createTab as createTabApi } from "@/api/sqllab";
+import { fetchTabs, createTab as createTabApi, closeTab, closeAllTabs, reopenTab } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
 import { useAutoSaveTab } from "@/hooks/useAutoSaveTab";
 
@@ -102,7 +120,7 @@ export default function SQLLabPage() {
     tabs,
     activeTabId,
     databaseId,
-    removeTab,
+    removeTabFromState,
     setActiveTab,
     updateTabSql,
     updateTabDatabase,
@@ -113,7 +131,7 @@ export default function SQLLabPage() {
     setDatabaseId,
     setAsyncState,
     initTabs,
-    closeAllTabs,
+    clearTabsState,
   } = useSqlLabStore();
 
   const wsSubscribe = useWsStore(s => s.subscribe);
@@ -689,13 +707,55 @@ export default function SQLLabPage() {
   // SQL-001: Restore tabs from API on mount
   const { data: tabsData, isLoading: tabsLoading } = useQuery({
     queryKey: ["sqllab-tabs"],
-    queryFn: fetchTabs,
+    queryFn: () => fetchTabs(),
     staleTime: 0,
   });
 
   const createTabMutation = useMutation({
     mutationFn: createTabApi,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] }),
+  });
+
+  const [isClosedSheetOpen, setIsClosedSheetOpen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState<{
+    tabId: string;
+    reason: "dirty" | "running" | "both";
+  } | null>(null);
+  const [confirmCloseAll, setConfirmCloseAll] = useState(false);
+
+  const closeTabMutation = useMutation({
+    mutationFn: closeTab,
+    onSuccess: (_, id) => {
+      removeTabFromState(String(id));
+      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
+      toast("Tab closed");
+    },
+    onError: () => {
+      toast("Failed to close tab");
+    },
+  });
+
+  const closeAllTabsMutation = useMutation({
+    mutationFn: closeAllTabs,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
+      toast(`Closed ${result.closed} tab${result.closed !== 1 ? "s" : ""}`);
+    },
+    onError: () => {
+      toast("Failed to close tabs");
+    },
+  });
+
+  const reopenTabMutation = useMutation({
+    mutationFn: reopenTab,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sqllab-tabs"] });
+      setIsClosedSheetOpen(false);
+      toast("Tab reopened");
+    },
+    onError: () => {
+      toast("Failed to reopen tab");
+    },
   });
 
   useEffect(() => {
@@ -708,6 +768,25 @@ export default function SQLLabPage() {
       initTabs(tabsData);
     }
   }, [tabsData]);
+
+  const { data: closedTabsData } = useQuery({
+    queryKey: ["sqllab-tabs", "closed"],
+    queryFn: () => fetchTabs({ include_closed: true }),
+    enabled: isClosedSheetOpen,
+  });
+
+  const closedTabs = (closedTabsData ?? []).filter(t => !t.active);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "T") {
+        e.preventDefault();
+        setIsClosedSheetOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const { linkLatestQuery } = useAutoSaveTab(activeTabId, activeTab);
 
@@ -843,12 +922,28 @@ export default function SQLLabPage() {
                           tabIndex={0}
                           onClick={e => {
                             e.stopPropagation();
-                            removeTab(tab.id);
+                            if (tab.status === "running" || tab.isDirty) {
+                              const reason =
+                                tab.status === "running" && tab.isDirty ? "both"
+                                : tab.status === "running" ? "running"
+                                : "dirty";
+                              setConfirmClose({ tabId: tab.id, reason });
+                            } else {
+                              closeTabMutation.mutate(Number(tab.id));
+                            }
                           }}
                           onKeyDown={e => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.stopPropagation();
-                              removeTab(tab.id);
+                              if (tab.status === "running" || tab.isDirty) {
+                                const reason =
+                                  tab.status === "running" && tab.isDirty ? "both"
+                                  : tab.status === "running" ? "running"
+                                  : "dirty";
+                                setConfirmClose({ tabId: tab.id, reason });
+                              } else {
+                                closeTabMutation.mutate(Number(tab.id));
+                              }
                             }
                           }}
                           className="ml-1 hover:text-red-500 cursor-pointer"
@@ -876,13 +971,33 @@ export default function SQLLabPage() {
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem
-                    onClick={() => removeTab(tab.id)}
+                    onClick={() => {
+                      if (tab.status === "running" || tab.isDirty) {
+                        const reason =
+                          tab.status === "running" && tab.isDirty ? "both"
+                          : tab.status === "running" ? "running"
+                          : "dirty";
+                        setConfirmClose({ tabId: tab.id, reason });
+                      } else {
+                        closeTabMutation.mutate(Number(tab.id));
+                      }
+                    }}
                     disabled={tabs.length <= 1}
                   >
                     Close
                   </ContextMenuItem>
-                  <ContextMenuItem onClick={() => closeAllTabs()}>
+                  <ContextMenuItem
+                    onClick={() => closeAllTabsMutation.mutate(activeTabId ? Number(activeTabId) : undefined)}
+                    disabled={tabs.length <= 1}
+                  >
+                    Close Others
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => setConfirmCloseAll(true)}>
                     Close All
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => setIsClosedSheetOpen(true)}>
+                    Reopen Closed Tab
                   </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
@@ -1069,6 +1184,83 @@ export default function SQLLabPage() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <AlertDialog open={confirmClose !== null} onOpenChange={(open) => !open && setConfirmClose(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close tab?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmClose?.reason === "running" && "A query is still running on this tab. Closing will not stop the query — it will continue on the server."}
+              {confirmClose?.reason === "dirty" && "This tab has unsaved changes."}
+              {confirmClose?.reason === "both" && "This tab has unsaved changes and a running query."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (confirmClose) closeTabMutation.mutate(Number(confirmClose.tabId));
+              setConfirmClose(null);
+            }}>
+              Close anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmCloseAll} onOpenChange={setConfirmCloseAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close all tabs?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Close all {tabs.length} tabs?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              closeAllTabsMutation.mutate(undefined);
+              clearTabsState();
+              setConfirmCloseAll(false);
+            }}>
+              Close All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Sheet open={isClosedSheetOpen} onOpenChange={setIsClosedSheetOpen}>
+        <SheetContent side="right" className="w-[400px]">
+          <SheetHeader>
+            <SheetTitle>Recently Closed</SheetTitle>
+            <SheetDescription>Tabs closed in the last 30 days</SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-1 mt-4">
+            {closedTabs.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No recently closed tabs
+              </p>
+            )}
+            {closedTabs.map(tab => (
+              <div key={tab.id} className="flex items-center justify-between py-2 border-b">
+                <div>
+                  <p className="font-medium text-sm">{tab.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(tab.created_on).toLocaleDateString()}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => reopenTabMutation.mutate(tab.id)}
+                  disabled={reopenTabMutation.isPending}
+                >
+                  Reopen
+                </Button>
+              </div>
+            ))}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
