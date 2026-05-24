@@ -70,6 +70,8 @@ import { databasesApi } from "@/api/databases";
 import { fetchTabs, createTab as createTabApi, closeTab, closeAllTabs } from "@/api/sqllab";
 import { useEstimate } from "@/hooks/useEstimate";
 import { useAutoSaveTab } from "@/hooks/useAutoSaveTab";
+import { SaveQueryDialog } from "@/components/sqllab/SaveQueryDialog";
+import { SavedQueriesList } from "@/components/sqllab/SavedQueriesList";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
@@ -725,6 +727,7 @@ export default function SQLLabPage() {
     reason: "dirty" | "running" | "both";
   } | null>(null);
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   const closeTabMutation = useMutation({
     mutationFn: closeTab,
@@ -1050,6 +1053,14 @@ export default function SQLLabPage() {
                         ) : null}
                       </>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsSaveDialogOpen(true)}
+                      disabled={!tab.databaseId || !tab.sql}
+                    >
+                      Save
+                    </Button>
                     {tab.result && tab.result.query && (
                       <>
                         <CacheBadge
@@ -1113,6 +1124,7 @@ export default function SQLLabPage() {
                     <TabsList>
                       <TabsTrigger value="results">Results</TabsTrigger>
                       <TabsTrigger value="history">History</TabsTrigger>
+                      <TabsTrigger value="saved">Saved Queries</TabsTrigger>
                     </TabsList>
                     <TabsContent value="results" className="flex-1 min-h-0 space-y-2 mt-2">
                       {tab.result ? (
@@ -1169,6 +1181,16 @@ export default function SQLLabPage() {
                         }}
                       />
                     </TabsContent>
+                    <TabsContent value="saved" className="flex-1 min-h-0 mt-2">
+                      <SavedQueriesList
+                        onLoad={(saved) => {
+                          updateTabSql(tab.id, saved.sql);
+                          updateTabDatabase(tab.id, saved.db_id);
+                          setResultsTabValue("results");
+                        }}
+                        activeDbId={tab.databaseId}
+                      />
+                    </TabsContent>
                   </Tabs>
                 </div>
               </ResizablePanel>
@@ -1179,6 +1201,16 @@ export default function SQLLabPage() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <SaveQueryDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        defaultLabel={activeTab?.title ?? ""}
+        dbId={activeTab?.databaseId ?? null}
+        schema={activeTab?.schema ?? "public"}
+        catalog={activeTab?.catalog}
+        sql={activeTab?.sql ?? ""}
+      />
 
       <AlertDialog open={confirmClose !== null} onOpenChange={(open) => !open && setConfirmClose(null)}>
         <AlertDialogContent>
