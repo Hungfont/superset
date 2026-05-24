@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/xwb1989/sqlparser"
 	"gorm.io/gorm"
 	query "superset/auth-service/internal/domain/query"
 )
@@ -15,6 +17,29 @@ type sqllabRepo struct {
 
 func NewSQLLabRepository(db *gorm.DB) query.SQLLabRepository {
 	return &sqllabRepo{db: db}
+}
+
+func extractSQLTables(sqlText string) string {
+	stmt, err := sqlparser.Parse(sqlText)
+	if err != nil {
+		return ""
+	}
+	tables := make(map[string]bool)
+	_ = sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
+		if tn, ok := node.(*sqlparser.TableName); ok {
+			name := tn.Name.String()
+			if q := tn.Qualifier.String(); q != "" {
+				name = q + "." + name
+			}
+			tables[strings.ToLower(name)] = true
+		}
+		return true, nil
+	}, stmt)
+	names := make([]string, 0, len(tables))
+	for t := range tables {
+		names = append(names, t)
+	}
+	return strings.Join(names, ",")
 }
 
 func (r *sqllabRepo) Create(ctx context.Context, tab *query.TabState) error {
@@ -116,6 +141,69 @@ func (r *sqllabRepo) HardDelete(ctx context.Context, id uint, userID uint) error
 		}
 		return nil
 	})
+}
+
+func (r *sqllabRepo) CreateSavedQuery(ctx context.Context, sq *query.SavedQuery) error {
+	sq.SQLTables = extractSQLTables(sq.SQL)
+	return r.db.WithContext(ctx).Create(sq).Error
+}
+
+func (r *sqllabRepo) LabelExists(ctx context.Context, userID uint, label string) (bool, error) {
+	var existing query.SavedQuery
+	err := r.db.WithContext(ctx).
+		Where("LOWER(label) = LOWER(?) AND created_by_fk = ?", label, userID).
+		First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check label exists: %w", err)
+	}
+	return true, nil
+}
+
+func (r *sqllabRepo) ListSavedQueries(ctx context.Context, userID uint, params query.SavedQueryListParams) ([]*query.SavedQuery, int64, error) {
+	q := r.db.WithContext(ctx).Model(&query.SavedQuery{}).Where("created_by_fk = ?", userID)
+
+	if params.Search != "" {
+		like := "%" + strings.ToLower(params.Search) + "%"
+		q = q.Where("LOWER(label) LIKE ?", like)
+	}
+
+	if params.Published != nil {
+		q = q.Where("published = ?", *params.Published)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count saved queries: %w", err)
+	}
+
+	if params.Limit <= 0 {
+		params.Limit = 20
+	}
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	offset := (params.Page - 1) * params.Limit
+
+	var rows []*query.SavedQuery
+	if err := q.Order("changed_on DESC").Limit(params.Limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, fmt.Errorf("list saved queries: %w", err)
+	}
+	return rows, total, nil
+}
+
+func (r *sqllabRepo) GetSavedQuery(ctx context.Context, id uint, userID uint) (*query.SavedQuery, error) {
+	var sq query.SavedQuery
+	err := r.db.WithContext(ctx).Where("id = ? AND created_by_fk = ?", id, userID).First(&sq).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get saved query: %w", err)
+	}
+	return &sq, nil
 }
 
 var _ query.SQLLabRepository = (*sqllabRepo)(nil)
