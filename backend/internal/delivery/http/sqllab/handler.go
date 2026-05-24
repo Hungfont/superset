@@ -264,6 +264,101 @@ func (h *Handler) HardDeleteTab(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
+func (h *Handler) CreateSavedQuery(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	var req domainquery.CreateSavedQueryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	scope, err := h.resolveVisibilityScope(c.Request.Context(), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to resolve visibility"})
+		return
+	}
+
+	if _, err := h.databaseRepo.GetVisibleDatabaseByID(c.Request.Context(), req.DbID, scope, userCtx.ID); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "db_not_visible", "message": "Database not accessible"})
+		return
+	}
+
+	// Atomically check case-insensitive label uniqueness per spec
+	exists, err := h.sqllabRepo.LabelExists(c.Request.Context(), userCtx.ID, req.Label)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to check label uniqueness"})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "duplicate_label", "message": "A saved query with this label already exists"})
+		return
+	}
+
+	published := false
+	if req.Published != nil {
+		published = *req.Published
+	}
+
+	now := time.Now()
+	sq := &domainquery.SavedQuery{
+		DbID:        req.DbID,
+		UserID:      userCtx.ID,
+		Label:       req.Label,
+		Schema:      req.Schema,
+		Catalog:     req.Catalog,
+		SQL:         req.SQL,
+		Description: req.Description,
+		Published:   published,
+		CreatedByFK: userCtx.ID,
+		ChangedByFK: userCtx.ID,
+		CreatedOn:   now,
+		ChangedOn:   now,
+	}
+
+	if err := h.sqllabRepo.CreateSavedQuery(c.Request.Context(), sq); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "create_failed", "message": "Failed to save query"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": sq.ID, "label": sq.Label, "sql_tables": sq.SQLTables})
+}
+
+func (h *Handler) ListSavedQueries(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	var params domainquery.SavedQueryListParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		params = domainquery.SavedQueryListParams{}
+	}
+
+	rows, total, err := h.sqllabRepo.ListSavedQueries(c.Request.Context(), userCtx.ID, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to list saved queries"})
+		return
+	}
+
+	resp := make([]domainquery.SavedQueryResponse, 0, len(rows))
+	for _, sq := range rows {
+		resp = append(resp, savedQueryToResponse(sq))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items": resp,
+		"meta": gin.H{
+			"total": total,
+			"page":  params.Page,
+			"limit": params.Limit,
+		},
+	})
+}
+
 func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
 	roleNames, err := h.databaseRepo.GetRoleNamesByUser(ctx, userID)
 	if err != nil {
@@ -314,6 +409,22 @@ func getUserContext(c *gin.Context) (domain.UserContext, bool) {
 		return domain.UserContext{}, false
 	}
 	return userCtx, true
+}
+
+func savedQueryToResponse(sq *domainquery.SavedQuery) domainquery.SavedQueryResponse {
+	return domainquery.SavedQueryResponse{
+		ID:          sq.ID,
+		Label:       sq.Label,
+		DbID:        sq.DbID,
+		Schema:      sq.Schema,
+		Catalog:     sq.Catalog,
+		SQL:         sq.SQL,
+		Description: sq.Description,
+		SQLTables:   sq.SQLTables,
+		Published:   sq.Published,
+		CreatedOn:   sq.CreatedOn.Format("2006-01-02T15:04:05Z07:00"),
+		ChangedOn:   sq.ChangedOn.Format("2006-01-02T15:04:05Z07:00"),
+	}
 }
 
 func tabToResponse(t *domainquery.TabState) domainquery.TabResponse {
