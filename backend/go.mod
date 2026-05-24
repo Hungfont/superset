@@ -14,6 +14,7 @@ require (
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/snowflakedb/gosnowflake v1.19.1
 	github.com/stretchr/testify v1.11.1
+	github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2
 	golang.org/x/crypto v0.48.0
 	golang.org/x/sync v0.20.0
 	gorm.io/driver/postgres v1.5.7
@@ -64,7 +65,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
