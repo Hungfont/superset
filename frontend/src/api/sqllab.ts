@@ -77,6 +77,46 @@ export interface UpdateTabRequest {
   extra_json?: string;
 }
 
+export interface SavedQueryResponse {
+  id: number;
+  label: string;
+  db_id: number;
+  schema: string;
+  catalog: string;
+  sql: string;
+  description: string;
+  sql_tables: string;
+  published: boolean;
+  created_on: string;
+  changed_on: string;
+}
+
+export interface SaveQueryRequest {
+  db_id: number;
+  label: string;
+  schema?: string;
+  catalog?: string;
+  sql: string;
+  description?: string;
+  published?: boolean;
+}
+
+export interface SavedQueryListParams {
+  q?: string;
+  published?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface SavedQueryListResponse {
+  items: SavedQueryResponse[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
+
 export async function updateTab(id: number, data: UpdateTabRequest): Promise<TabStateResponse> {
   return request<TabStateResponse>(`/api/v1/sqllab/tabs/${id}`, {
     method: "PUT",
@@ -96,6 +136,27 @@ export async function closeAllTabs(exceptId?: number): Promise<{ closed: number 
   const qs = exceptId !== undefined ? `?except_id=${exceptId}` : "";
   return request<{ closed: number }>(`/api/v1/sqllab/tabs${qs}`, {
     method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function saveQuery(data: SaveQueryRequest): Promise<{ id: number; label: string; sql_tables: string }> {
+  return request<{ id: number; label: string; sql_tables: string }>("/api/v1/sqllab/saved-queries", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchSavedQueries(params?: SavedQueryListParams): Promise<SavedQueryListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.published !== undefined) qs.set("published", String(params.published));
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const queryString = qs.toString();
+  return request<SavedQueryListResponse>(`/api/v1/sqllab/saved-queries${queryString ? "?" + queryString : ""}`, {
+    method: "GET",
     headers: getAuthHeaders(),
   });
 }
