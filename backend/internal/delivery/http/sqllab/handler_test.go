@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -19,8 +20,9 @@ import (
 // ---- mock SQLLab repo ----
 
 type mockSQLLabRepo struct {
-	tabs map[uint]*domainquery.TabState
-	err  error
+	tabs         map[uint]*domainquery.TabState
+	savedQueries []*domainquery.SavedQuery
+	err          error
 }
 
 func (m *mockSQLLabRepo) Create(_ context.Context, tab *domainquery.TabState) error {
@@ -107,6 +109,40 @@ func (m *mockSQLLabRepo) HardDelete(_ context.Context, id uint, userID uint) err
 	return nil
 }
 
+func (m *mockSQLLabRepo) CreateSavedQuery(_ context.Context, sq *domainquery.SavedQuery) error {
+	if m.err != nil {
+		return m.err
+	}
+	sq.ID = uint(len(m.savedQueries) + 1)
+	m.savedQueries = append(m.savedQueries, sq)
+	return nil
+}
+func (m *mockSQLLabRepo) LabelExists(_ context.Context, userID uint, label string) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	for _, sq := range m.savedQueries {
+		if strings.EqualFold(sq.Label, label) && sq.UserID == userID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *mockSQLLabRepo) ListSavedQueries(_ context.Context, _ uint, _ domainquery.SavedQueryListParams) ([]*domainquery.SavedQuery, int64, error) {
+	if m.err != nil {
+		return nil, 0, m.err
+	}
+	return m.savedQueries, int64(len(m.savedQueries)), nil
+}
+func (m *mockSQLLabRepo) GetSavedQuery(_ context.Context, id uint, userID uint) (*domainquery.SavedQuery, error) {
+	for _, sq := range m.savedQueries {
+		if sq.ID == id && sq.UserID == userID {
+			return sq, nil
+		}
+	}
+	return nil, nil
+}
+
 // ---- mock Database repo (must satisfy full DatabaseRepository interface) ----
 
 type mockDatabaseRepo struct{}
@@ -152,6 +188,8 @@ func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	sqllab.DELETE("/tabs", h.CloseAllTabs)
 	sqllab.DELETE("/tabs/:id", h.HardDeleteTab)
 	sqllab.GET("/tabs", h.ListTabs)
+	sqllab.POST("/saved-queries", h.CreateSavedQuery)
+	sqllab.GET("/saved-queries", h.ListSavedQueries)
 	return r
 }
 
@@ -477,5 +515,80 @@ func TestUpdateTab_64KB_SQL_Allowed(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for exactly 64KB SQL, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---- SavedQuery tests ----
+
+func TestCreateSavedQuery_ValidRequest_Returns201(t *testing.T) {
+	repo := &mockSQLLabRepo{
+		tabs: map[uint]*domainquery.TabState{},
+	}
+	router := newSQLLabRouter(repo)
+
+	body := `{"db_id":1,"label":"My Query","sql":"SELECT * FROM users"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/saved-queries", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"label":"My Query"`)) {
+		t.Fatalf("expected label in response, got %s", w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"sql_tables"`)) {
+		t.Fatalf("expected sql_tables in response, got %s", w.Body.String())
+	}
+}
+
+func TestCreateSavedQuery_DuplicateLabel_Returns409(t *testing.T) {
+	dupe := &domainquery.SavedQuery{ID: 1, Label: "My Query", DbID: 1, UserID: 1}
+	repo := &mockSQLLabRepo{
+		tabs:         map[uint]*domainquery.TabState{},
+		savedQueries: []*domainquery.SavedQuery{dupe},
+	}
+	router := newSQLLabRouter(repo)
+
+	body := `{"db_id":1,"label":"My Query","sql":"SELECT 1"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/saved-queries", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateSavedQuery_MissingDbID_Returns400(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"label":"X","sql":"SELECT 1"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/saved-queries", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListSavedQueries_EmptyList_Returns200(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/sqllab/saved-queries", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"items"`)) {
+		t.Fatalf("expected items array, got %s", w.Body.String())
 	}
 }
