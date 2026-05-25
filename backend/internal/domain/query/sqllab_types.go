@@ -65,6 +65,18 @@ type SavedQueryResponse struct {
 	ChangedOn   string `json:"changed_on"`
 }
 
+// UpdateSavedQueryRequest is the request body for updating a saved query.
+// All fields are optional — only non-nil fields are applied.
+type UpdateSavedQueryRequest struct {
+	Label       *string `json:"label"`
+	SQL         *string `json:"sql"`
+	Schema      *string `json:"schema"`
+	Catalog     *string `json:"catalog"`
+	Description *string `json:"description"`
+	Published   *bool   `json:"published"`
+	ExtraJSON   *string `json:"extra_json"`
+}
+
 // SavedQueryListParams holds query parameters for listing saved queries.
 type SavedQueryListParams struct {
 	Search    string `form:"q"`

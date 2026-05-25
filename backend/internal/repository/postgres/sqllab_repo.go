@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/xwb1989/sqlparser"
 	"gorm.io/gorm"
@@ -204,6 +205,56 @@ func (r *sqllabRepo) GetSavedQuery(ctx context.Context, id uint, userID uint) (*
 		return nil, fmt.Errorf("get saved query: %w", err)
 	}
 	return &sq, nil
+}
+
+func (r *sqllabRepo) UpdateSavedQuery(ctx context.Context, sq *query.SavedQuery) error {
+	if sq.SQL != "" {
+		sq.SQLTables = extractSQLTables(sq.SQL)
+	}
+	return r.db.WithContext(ctx).Save(sq).Error
+}
+
+func (r *sqllabRepo) DeleteSavedQuery(ctx context.Context, id uint, userID uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var sq query.SavedQuery
+		if err := tx.Where("id = ? AND created_by_fk = ?", id, userID).First(&sq).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("not found")
+			}
+			return fmt.Errorf("delete saved query: find: %w", err)
+		}
+		if err := tx.Model(&query.TabState{}).Where("saved_query_id = ?", id).Update("saved_query_id", gorm.Expr("NULL")).Error; err != nil {
+			return fmt.Errorf("delete saved query: null tab refs: %w", err)
+		}
+		if err := tx.Delete(&sq).Error; err != nil {
+			return fmt.Errorf("delete saved query: %w", err)
+		}
+		return nil
+	})
+}
+
+func (r *sqllabRepo) ForkSavedQuery(ctx context.Context, id uint, userID uint) (*query.SavedQuery, error) {
+	var original query.SavedQuery
+	err := r.db.WithContext(ctx).Where("id = ? AND created_by_fk = ?", id, userID).First(&original).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("not found")
+		}
+		return nil, fmt.Errorf("fork saved query: find: %w", err)
+	}
+
+	now := time.Now()
+	fork := original
+	fork.ID = 0
+	fork.Label = "Copy of " + original.Label
+	fork.CreatedOn = now
+	fork.ChangedOn = now
+	fork.SQLTables = original.SQLTables
+
+	if err := r.db.WithContext(ctx).Create(&fork).Error; err != nil {
+		return nil, fmt.Errorf("fork saved query: create: %w", err)
+	}
+	return &fork, nil
 }
 
 var _ query.SQLLabRepository = (*sqllabRepo)(nil)

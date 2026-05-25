@@ -359,6 +359,133 @@ func (h *Handler) ListSavedQueries(c *gin.Context) {
 	})
 }
 
+func (h *Handler) UpdateSavedQuery(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid saved query id"})
+		return
+	}
+
+	sq, err := h.sqllabRepo.GetSavedQuery(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve saved query"})
+		return
+	}
+	if sq == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to update this saved query"})
+		return
+	}
+
+	var req domainquery.UpdateSavedQueryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	if req.Label != nil {
+		if !strings.EqualFold(*req.Label, sq.Label) {
+			exists, checkErr := h.sqllabRepo.LabelExists(c.Request.Context(), userCtx.ID, *req.Label)
+			if checkErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to check label uniqueness"})
+				return
+			}
+			if exists {
+				c.JSON(http.StatusConflict, gin.H{"error": "duplicate_label", "message": "A saved query with this label already exists"})
+				return
+			}
+		}
+		sq.Label = *req.Label
+	}
+	if req.SQL != nil {
+		sq.SQL = *req.SQL
+	}
+	if req.Schema != nil {
+		sq.Schema = *req.Schema
+	}
+	if req.Catalog != nil {
+		sq.Catalog = *req.Catalog
+	}
+	if req.Description != nil {
+		sq.Description = *req.Description
+	}
+	if req.Published != nil {
+		sq.Published = *req.Published
+	}
+	if req.ExtraJSON != nil {
+		sq.ExtraJSON = *req.ExtraJSON
+	}
+
+	sq.ChangedOn = time.Now()
+	sq.ChangedByFK = userCtx.ID
+
+	if err := h.sqllabRepo.UpdateSavedQuery(c.Request.Context(), sq); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update_failed", "message": "Failed to update saved query"})
+		return
+	}
+
+	c.JSON(http.StatusOK, savedQueryToResponse(sq))
+}
+
+func (h *Handler) DeleteSavedQuery(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid saved query id"})
+		return
+	}
+
+	sq, err := h.sqllabRepo.GetSavedQuery(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve saved query"})
+		return
+	}
+	if sq == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to delete this saved query"})
+		return
+	}
+
+	if err := h.sqllabRepo.DeleteSavedQuery(c.Request.Context(), uint(id), userCtx.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete_failed", "message": "Failed to delete saved query"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h *Handler) ForkSavedQuery(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid saved query id"})
+		return
+	}
+
+	fork, err := h.sqllabRepo.ForkSavedQuery(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		if err.Error() == "not found" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to fork this saved query"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "fork_failed", "message": "Failed to fork saved query"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, savedQueryToResponse(fork))
+}
+
 func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
 	roleNames, err := h.databaseRepo.GetRoleNamesByUser(ctx, userID)
 	if err != nil {

@@ -16,6 +16,9 @@ type SQLLabRepository interface {
 	LabelExists(ctx context.Context, userID uint, label string) (bool, error)
 	ListSavedQueries(ctx context.Context, userID uint, params SavedQueryListParams) ([]*SavedQuery, int64, error)
 	GetSavedQuery(ctx context.Context, id uint, userID uint) (*SavedQuery, error)
+	UpdateSavedQuery(ctx context.Context, sq *SavedQuery) error
+	DeleteSavedQuery(ctx context.Context, id uint, userID uint) error
+	ForkSavedQuery(ctx context.Context, id uint, userID uint) (*SavedQuery, error)
 }
 
 // TabWithQueryStatus is a join result for tabs with their latest query status.

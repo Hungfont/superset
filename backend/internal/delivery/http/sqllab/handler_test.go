@@ -142,6 +142,45 @@ func (m *mockSQLLabRepo) GetSavedQuery(_ context.Context, id uint, userID uint) 
 	}
 	return nil, nil
 }
+func (m *mockSQLLabRepo) UpdateSavedQuery(_ context.Context, sq *domainquery.SavedQuery) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i, existing := range m.savedQueries {
+		if existing.ID == sq.ID && existing.UserID == sq.UserID {
+			m.savedQueries[i] = sq
+			return nil
+		}
+	}
+	return fmt.Errorf("not found")
+}
+func (m *mockSQLLabRepo) DeleteSavedQuery(_ context.Context, id uint, userID uint) error {
+	if m.err != nil {
+		return m.err
+	}
+	for i, sq := range m.savedQueries {
+		if sq.ID == id && sq.UserID == userID {
+			m.savedQueries = append(m.savedQueries[:i], m.savedQueries[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("not found")
+}
+func (m *mockSQLLabRepo) ForkSavedQuery(_ context.Context, id uint, userID uint) (*domainquery.SavedQuery, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for _, sq := range m.savedQueries {
+		if sq.ID == id && sq.UserID == userID {
+			copy_ := *sq
+			copy_.ID = uint(len(m.savedQueries) + 1)
+			copy_.Label = "Copy of " + sq.Label
+			m.savedQueries = append(m.savedQueries, &copy_)
+			return &copy_, nil
+		}
+	}
+	return nil, fmt.Errorf("not found")
+}
 
 // ---- mock Database repo (must satisfy full DatabaseRepository interface) ----
 
@@ -190,6 +229,9 @@ func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	sqllab.GET("/tabs", h.ListTabs)
 	sqllab.POST("/saved-queries", h.CreateSavedQuery)
 	sqllab.GET("/saved-queries", h.ListSavedQueries)
+	sqllab.PUT("/saved-queries/:id", h.UpdateSavedQuery)
+	sqllab.DELETE("/saved-queries/:id", h.DeleteSavedQuery)
+	sqllab.POST("/saved-queries/:id/fork", h.ForkSavedQuery)
 	return r
 }
 
@@ -590,5 +632,124 @@ func TestListSavedQueries_EmptyList_Returns200(t *testing.T) {
 	}
 	if !bytes.Contains(w.Body.Bytes(), []byte(`"items"`)) {
 		t.Fatalf("expected items array, got %s", w.Body.String())
+	}
+}
+
+// ---- SavedQuery update/delete/fork tests ----
+
+func TestUpdateSavedQuery_OwnQuery_Returns200(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Original", DbID: 1, UserID: 1, SQL: "SELECT 1", CreatedByFK: 1, ChangedByFK: 1}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"label":"Updated"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/saved-queries/1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"label":"Updated"`)) {
+		t.Fatalf("expected updated label, got %s", w.Body.String())
+	}
+}
+
+func TestUpdateSavedQuery_NotOwner_Returns403(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Other", DbID: 1, UserID: 999, CreatedByFK: 999}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"label":"Hacked"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/saved-queries/1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateSavedQuery_DuplicateLabel_Returns409(t *testing.T) {
+	sq1 := &domainquery.SavedQuery{ID: 1, Label: "First", DbID: 1, UserID: 1, CreatedByFK: 1}
+	sq2 := &domainquery.SavedQuery{ID: 2, Label: "Second", DbID: 1, UserID: 1, CreatedByFK: 1}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq1, sq2}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"label":"Second"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/api/v1/sqllab/saved-queries/1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteSavedQuery_OwnQuery_Returns200(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Delete Me", DbID: 1, UserID: 1, CreatedByFK: 1}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/saved-queries/1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.savedQueries) != 0 {
+		t.Fatal("saved query should be deleted")
+	}
+}
+
+func TestDeleteSavedQuery_NotOwner_Returns403(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Other", DbID: 1, UserID: 999, CreatedByFK: 999}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodDelete, "/api/v1/sqllab/saved-queries/1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestForkSavedQuery_OwnQuery_Returns201(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Original", DbID: 1, UserID: 1, SQL: "SELECT * FROM users", CreatedByFK: 1, ChangedByFK: 1}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/saved-queries/1/fork", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"label":"Copy of Original"`)) {
+		t.Fatalf("expected forked label, got %s", w.Body.String())
+	}
+	if len(repo.savedQueries) != 2 {
+		t.Fatalf("expected 2 saved queries, got %d", len(repo.savedQueries))
+	}
+}
+
+func TestForkSavedQuery_NotOwner_Returns403(t *testing.T) {
+	sq := &domainquery.SavedQuery{ID: 1, Label: "Other", DbID: 1, UserID: 999, CreatedByFK: 999}
+	repo := &mockSQLLabRepo{savedQueries: []*domainquery.SavedQuery{sq}, tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/saved-queries/1/fork", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
 	}
 }
