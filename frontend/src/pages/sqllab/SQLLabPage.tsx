@@ -1013,7 +1013,7 @@ export default function SQLLabPage() {
                       <>
                         <span aria-label="Run Query (Ctrl+Enter)">
                           <RunButton
-                            onClick={handleRun}
+                            onClick={() => handleRun()}
                             disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
                             isRunning={isRunning}
                           />

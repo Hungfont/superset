@@ -299,14 +299,16 @@ Error handling: wrap all page-level components with React Error Boundary. API er
 1. Ownership → label uniqueness → sql table re-extract → GORM.Updates. Delete: null tab_state.saved_query_id → GORM.Delete
 **⚙️ Go Implementation**
 1. GORM.Model(&tab_state{}).Where("saved_query_id=?",id).Update("saved_query_id",gorm.Expr("NULL"))
-2. Fork: GORM.First → new struct → GORM.Create | **✅ Acceptance Criteria**
+2. Fork: GORM.First → new struct → GORM.Create | 
+**✅ Acceptance Criteria**
 - 200 updated.
 - Fork → 201 new query.
 - Delete → tab FK nulled.
 - Non-owner → 403.
 **⚠️ Error Responses**
 - 403 - Not owner.
-- 409 - Duplicate label. | **🖥️ Frontend Specification**
+- 409 - Duplicate label. | 
+**🖥️ Frontend Specification**
 **📍 Route & Page**
 /sqllab/saved-queries (edit via Sheet or dedicated page /sqllab/saved-queries/:id/edit)
 **🧩 shadcn/ui Components**
