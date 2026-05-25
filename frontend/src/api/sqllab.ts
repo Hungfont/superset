@@ -160,3 +160,35 @@ export async function fetchSavedQueries(params?: SavedQueryListParams): Promise<
     headers: getAuthHeaders(),
   });
 }
+
+export interface UpdateSavedQueryRequest {
+  label?: string;
+  sql?: string;
+  schema?: string;
+  catalog?: string;
+  description?: string;
+  published?: boolean;
+  extra_json?: string;
+}
+
+export async function updateSavedQuery(id: number, data: UpdateSavedQueryRequest): Promise<SavedQueryResponse> {
+  return request<SavedQueryResponse>(`/api/v1/sqllab/saved-queries/${id}`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSavedQuery(id: number): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/api/v1/sqllab/saved-queries/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function forkSavedQuery(id: number): Promise<SavedQueryResponse> {
+  return request<SavedQueryResponse>(`/api/v1/sqllab/saved-queries/${id}/fork`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+}

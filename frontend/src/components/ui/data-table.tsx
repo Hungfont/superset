@@ -10,12 +10,13 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 interface DataTableProps<TData> {
   data: TData[];
   columns: ColumnDef<TData, unknown>[];
+  onRowClick?: (row: TData) => void;
 }
 
 const ROW_HEIGHT = 40;
 const VISIBLE_ROWS = 15;
 
-export function DataTable<TData>({ data, columns }: DataTableProps<TData>) {
+export function DataTable<TData>({ data, columns, onRowClick }: DataTableProps<TData>) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const table = useReactTable({
@@ -86,7 +87,8 @@ export function DataTable<TData>({ data, columns }: DataTableProps<TData>) {
                     width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
-                  className="border-b hover:bg-muted/30"
+                  className="border-b hover:bg-muted/30 cursor-pointer"
+                  onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map(cell => (
                     <td
@@ -106,7 +108,14 @@ export function DataTable<TData>({ data, columns }: DataTableProps<TData>) {
         ) : (
           <tbody>
             {rows.map(row => (
-              <tr key={row.id} className="border-b hover:bg-muted/30">
+              <tr
+                key={row.id}
+                className="border-b hover:bg-muted/30"
+                onClick={() => onRowClick?.(row.original)}
+                role={onRowClick ? "button" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row.original); } : undefined}
+              >
                 {row.getVisibleCells().map(cell => (
                   <td
                     key={cell.id}
