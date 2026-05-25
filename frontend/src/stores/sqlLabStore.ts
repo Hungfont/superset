@@ -91,6 +91,23 @@ interface SqlLabState {
   clearTabDirty: (id: string) => void;
 }
 
+function normalizeRows(
+  rawData: unknown,
+  columns: { name: string; type: string }[],
+): Record<string, unknown>[] {
+  const arr = rawData as unknown[];
+  if (arr.length === 0 || !Array.isArray(arr[0])) {
+    return arr as Record<string, unknown>[];
+  }
+  return (arr as unknown[][]).map(row => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col.name] = row[i];
+    });
+    return obj;
+  });
+}
+
 let tabCounter = 0;
 
 export const useSqlLabStore = create<SqlLabState>(set => ({
@@ -187,12 +204,13 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
   },
 
   setTabResult: (id, result) => {
+    const data = normalizeRows(result.data, result.columns);
     set(state => ({
       tabs: state.tabs.map(t =>
         t.id === id ? {
           ...t,
           result: {
-            data: result.data,
+            data,
             columns: result.columns,
             from_cache: result.from_cache,
             results_truncated: result.results_truncated,
@@ -246,12 +264,13 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
   },
 
   setAsyncResult: (id, result) => {
+    const data = normalizeRows(result.data, result.columns);
     set(state => ({
       tabs: state.tabs.map(t =>
         t.id === id ? {
           ...t,
           result: {
-            data: result.data,
+            data,
             columns: result.columns,
             from_cache: result.from_cache,
             results_truncated: result.results_truncated,
