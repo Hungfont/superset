@@ -120,3 +120,27 @@ type GetSchemaResponse struct {
 	Schemas []string          `json:"schemas"`
 	Tables  []SchemaTableItem `json:"tables"`
 }
+
+// ── Autocomplete (SQL-007) ──
+
+// AutocompleteRequest is the body for POST /api/v1/sqllab/autocomplete.
+type AutocompleteRequest struct {
+	Word   string `json:"word" binding:"required"`
+	Prefix string `json:"prefix"`
+	DbID   uint   `json:"db_id"`
+	Schema string `json:"schema"`
+}
+
+// AutocompleteSuggestion is a single suggestion item.
+type AutocompleteSuggestion struct {
+	Text   string `json:"text"`
+	Type   string `json:"type"` // "keyword"|"schema"|"table"|"column"|"function"
+	Score  int    `json:"score"`
+	Detail string `json:"detail"`
+}
+
+// AutocompleteResponse is the API response for autocomplete.
+type AutocompleteResponse struct {
+	Suggestions []AutocompleteSuggestion `json:"suggestions"`
+	CacheMiss   bool                     `json:"cache_miss"`
+}
