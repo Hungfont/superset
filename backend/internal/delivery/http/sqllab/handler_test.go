@@ -3,6 +3,7 @@ package sqllab
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -245,6 +246,7 @@ func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	sqllab.PUT("/saved-queries/:id", h.UpdateSavedQuery)
 	sqllab.DELETE("/saved-queries/:id", h.DeleteSavedQuery)
 	sqllab.POST("/saved-queries/:id/fork", h.ForkSavedQuery)
+	sqllab.POST("/autocomplete", h.Autocomplete)
 	return r
 }
 
@@ -764,5 +766,115 @@ func TestForkSavedQuery_NotOwner_Returns403(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── Autocomplete tests ──
+
+func TestAutocomplete_KeywordsOnly_NoDbID(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"word":"sel"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"cache_miss":false`)) {
+		t.Fatalf("expected cache_miss:false, got %s", w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"SELECT"`)) {
+		t.Fatalf("expected SELECT keyword suggestion, got %s", w.Body.String())
+	}
+}
+
+func TestAutocomplete_EmptyWord_Returns400(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"word":""}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAutocomplete_Top20_Ensured(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"word":"s"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp domainquery.AutocompleteResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Suggestions) > 20 {
+		t.Fatalf("expected at most 20 suggestions, got %d", len(resp.Suggestions))
+	}
+}
+
+func TestAutocomplete_MissingBody_Returns400(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAutocomplete_KeywordsReturned_WhenNoDb(t *testing.T) {
+	repo := &mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}
+	router := newSQLLabRouter(repo)
+
+	body := `{"word":"ins","db_id":0,"schema":""}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"INSERT"`)) {
+		t.Fatalf("expected INSERT suggestion, got %s", w.Body.String())
+	}
+}
+
+func TestAutocomplete_Unauthorized_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(&mockSQLLabRepo{tabs: map[uint]*domainquery.TabState{}}, &mockDatabaseRepo{}, nil)
+	r := gin.New()
+	r.POST("/api/v1/sqllab/autocomplete", h.Autocomplete)
+
+	body := `{"word":"sel"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sqllab/autocomplete", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
 	}
 }
