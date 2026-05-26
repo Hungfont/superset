@@ -182,6 +182,19 @@ func (m *mockSQLLabRepo) ForkSavedQuery(_ context.Context, id uint, userID uint)
 	return nil, fmt.Errorf("not found")
 }
 
+func (m *mockSQLLabRepo) FindSchemaState(_ context.Context, _ uint) ([]domainquery.TableSchema, error) {
+	return nil, nil
+}
+func (m *mockSQLLabRepo) UpsertSchemaState(_ context.Context, _ *domainquery.TableSchema) error {
+	return nil
+}
+func (m *mockSQLLabRepo) UpdateSchemaStateCollapsed(_ context.Context, _ uint, _ string) error {
+	return nil
+}
+func (m *mockSQLLabRepo) DeleteSchemaStateByTab(_ context.Context, _ uint) error {
+	return nil
+}
+
 // ---- mock Database repo (must satisfy full DatabaseRepository interface) ----
 
 type mockDatabaseRepo struct{}
@@ -215,7 +228,7 @@ func (m *mockDatabaseRepo) ListDatasetsByDatabaseID(_ context.Context, _ uint) (
 
 func newSQLLabRouter(repo *mockSQLLabRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(repo, &mockDatabaseRepo{})
+	h := NewHandler(repo, &mockDatabaseRepo{}, nil)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		c.Set("user", domain.UserContext{ID: 1, Active: true})

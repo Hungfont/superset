@@ -155,7 +155,8 @@ type ListDatabaseColumnsRequest struct {
 
 // DatabaseTable is one table item discovered from database metadata.
 type DatabaseTable struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	TableType string `json:"table_type"`
 }
 
 // DatabaseTableListResponse represents paginated introspection table output.

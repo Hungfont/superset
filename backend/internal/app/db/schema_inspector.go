@@ -107,7 +107,7 @@ func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = $1" + typeFilter + " ORDER BY table_name LIMIT $2 OFFSET $3"
+	dataQuery := "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = $1" + typeFilter + " ORDER BY table_name LIMIT $2 OFFSET $3"
 	dataArgs := append(typeArgs, normalizedPageSize, offset)
 	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
@@ -117,11 +117,11 @@ func (postgresSchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 
 	tables := make([]domain.DatabaseTable, 0)
 	for rows.Next() {
-		var name string
-		if scanErr := rows.Scan(&name); scanErr != nil {
+		var name, tableType string
+		if scanErr := rows.Scan(&name, &tableType); scanErr != nil {
 			return nil, 0, fmt.Errorf("scanning table row: %w", scanErr)
 		}
-		tables = append(tables, domain.DatabaseTable{Name: name})
+		tables = append(tables, domain.DatabaseTable{Name: name, TableType: tableType})
 	}
 
 	if rowsErr := rows.Err(); rowsErr != nil {
@@ -244,7 +244,7 @@ func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, 
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
+	dataQuery := "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
 	dataArgs := append(typeArgs, normalizedPageSize, offset)
 	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
@@ -254,11 +254,11 @@ func (mysqlSchemaInspector) ListTables(ctx context.Context, conn SQLConnection, 
 
 	tables := make([]domain.DatabaseTable, 0)
 	for rows.Next() {
-		var name string
-		if scanErr := rows.Scan(&name); scanErr != nil {
+		var name, tableType string
+		if scanErr := rows.Scan(&name, &tableType); scanErr != nil {
 			return nil, 0, fmt.Errorf("scanning table row: %w", scanErr)
 		}
-		tables = append(tables, domain.DatabaseTable{Name: name})
+		tables = append(tables, domain.DatabaseTable{Name: name, TableType: tableType})
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
 		return nil, 0, fmt.Errorf("iterating table rows: %w", rowsErr)
@@ -372,7 +372,7 @@ func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	dataQuery := "SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema" + typeFilter + " ORDER BY table_name LIMIT @limit OFFSET @offset"
+	dataQuery := "SELECT table_name, table_type FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema" + typeFilter + " ORDER BY table_name LIMIT @limit OFFSET @offset"
 	dataArgs := append(typeArgs, normalizedPageSize, offset)
 	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
@@ -382,11 +382,11 @@ func (bigquerySchemaInspector) ListTables(ctx context.Context, conn SQLConnectio
 
 	tables := make([]domain.DatabaseTable, 0)
 	for rows.Next() {
-		var name string
-		if scanErr := rows.Scan(&name); scanErr != nil {
+		var name, tableType string
+		if scanErr := rows.Scan(&name, &tableType); scanErr != nil {
 			return nil, 0, fmt.Errorf("scanning table row: %w", scanErr)
 		}
-		tables = append(tables, domain.DatabaseTable{Name: name})
+		tables = append(tables, domain.DatabaseTable{Name: name, TableType: tableType})
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
 		return nil, 0, fmt.Errorf("iterating table rows: %w", rowsErr)
@@ -487,7 +487,7 @@ func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnecti
 		return nil, 0, fmt.Errorf("iterating table count rows: %w", countRowsErr)
 	}
 
-	dataQuery := "SELECT table_name FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
+	dataQuery := "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = ?" + typeFilter + " ORDER BY table_name LIMIT ? OFFSET ?"
 	dataArgs := append(typeArgs, normalizedPageSize, offset)
 	rows, err := conn.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
@@ -496,11 +496,11 @@ func (snowflakeSchemaInspector) ListTables(ctx context.Context, conn SQLConnecti
 	defer rows.Close()
 	tables := make([]domain.DatabaseTable, 0)
 	for rows.Next() {
-		var name string
-		if scanErr := rows.Scan(&name); scanErr != nil {
+		var name, tableType string
+		if scanErr := rows.Scan(&name, &tableType); scanErr != nil {
 			return nil, 0, fmt.Errorf("scanning table row: %w", scanErr)
 		}
-		tables = append(tables, domain.DatabaseTable{Name: name})
+		tables = append(tables, domain.DatabaseTable{Name: name, TableType: tableType})
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
 		return nil, 0, fmt.Errorf("iterating table rows: %w", rowsErr)

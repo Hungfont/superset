@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	svcdb "superset/auth-service/internal/app/db"
 	domain "superset/auth-service/internal/domain/auth"
 	domdb "superset/auth-service/internal/domain/db"
 	domainquery "superset/auth-service/internal/domain/query"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,10 +20,11 @@ import (
 type Handler struct {
 	sqllabRepo   domainquery.SQLLabRepository
 	databaseRepo domdb.DatabaseRepository
+	dbSvc        *svcdb.DatabaseService
 }
 
-func NewHandler(sqllabRepo domainquery.SQLLabRepository, databaseRepo domdb.DatabaseRepository) *Handler {
-	return &Handler{sqllabRepo: sqllabRepo, databaseRepo: databaseRepo}
+func NewHandler(sqllabRepo domainquery.SQLLabRepository, databaseRepo domdb.DatabaseRepository, dbSvc *svcdb.DatabaseService) *Handler {
+	return &Handler{sqllabRepo: sqllabRepo, databaseRepo: databaseRepo, dbSvc: dbSvc}
 }
 
 func (h *Handler) CreateTab(c *gin.Context) {
@@ -484,6 +487,196 @@ func (h *Handler) ForkSavedQuery(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, savedQueryToResponse(fork))
+}
+
+func (h *Handler) GetSchema(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to access this tab"})
+		return
+	}
+
+	forceRefresh := c.Query("force_refresh") == "true"
+	rateLimitKey := fmt.Sprintf("sqllab:schema:tab:%d:user:%d", uint(id), userCtx.ID)
+
+	if tab.Schema == "" {
+		c.JSON(http.StatusOK, domainquery.GetSchemaResponse{Schemas: []string{}, Tables: []domainquery.SchemaTableItem{}})
+		return
+	}
+
+	schemas, err := h.dbSvc.ListSchemas(c.Request.Context(), userCtx.ID, tab.DbID, forceRefresh, rateLimitKey)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "db_unreachable", "message": err.Error()})
+		return
+	}
+
+	tableReq := domdb.ListDatabaseTablesRequest{Schema: tab.Schema, Page: 1, PageSize: 500}
+	tablesResp, err := h.dbSvc.ListTables(c.Request.Context(), userCtx.ID, tab.DbID, tableReq, forceRefresh, rateLimitKey)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "db_unreachable", "message": err.Error()})
+		return
+	}
+
+	schemaState, _ := h.sqllabRepo.FindSchemaState(c.Request.Context(), uint(id))
+	stateMap := make(map[string]bool)
+	for _, s := range schemaState {
+		stateMap[s.Table] = s.Expanded
+	}
+
+	items := make([]domainquery.SchemaTableItem, 0, len(tablesResp.Items))
+	for _, t := range tablesResp.Items {
+		items = append(items, domainquery.SchemaTableItem{
+			TableName: t.Name,
+			TableType: t.TableType,
+			Expanded:  stateMap[t.Name],
+		})
+	}
+
+	c.JSON(http.StatusOK, domainquery.GetSchemaResponse{
+		Schemas: schemas,
+		Tables:  items,
+	})
+}
+
+func (h *Handler) ExpandTable(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to access this tab"})
+		return
+	}
+
+	var req domainquery.ExpandTableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	if tab.Schema == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "no_schema", "message": "Tab has no schema selected"})
+		return
+	}
+
+	colReq := domdb.ListDatabaseColumnsRequest{Schema: tab.Schema, Table: req.TableName}
+	columns, err := h.dbSvc.ListColumns(c.Request.Context(), userCtx.ID, tab.DbID, colReq, false, "")
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "db_unreachable", "message": err.Error()})
+		return
+	}
+
+	now := time.Now()
+	_ = h.sqllabRepo.UpsertSchemaState(c.Request.Context(), &domainquery.TableSchema{
+		TabStateID: uint(id),
+		DbID:       tab.DbID,
+		Schema:     tab.Schema,
+		Table:      req.TableName,
+		Expanded:   true,
+		CreatedOn:  now,
+		ChangedOn:  now,
+	})
+
+	colItems := make([]domainquery.SchemaColumnItem, 0, len(columns))
+	for _, col := range columns {
+		colItems = append(colItems, domainquery.SchemaColumnItem{
+			Name:         col.Name,
+			DataType:     col.DataType,
+			IsNullable:   col.IsNullable,
+			DefaultValue: col.DefaultValue,
+			IsDttm:       col.IsDttm,
+		})
+	}
+
+	c.JSON(http.StatusOK, domainquery.ExpandTableResponse{
+		TableName: req.TableName,
+		Columns:   colItems,
+	})
+}
+
+func (h *Handler) CollapseTable(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to access this tab"})
+		return
+	}
+
+	tableName := c.Param("table")
+	if tableName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "missing table name"})
+		return
+	}
+
+	_ = h.sqllabRepo.UpdateSchemaStateCollapsed(c.Request.Context(), uint(id), tableName)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ClearSchema(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid tab id"})
+		return
+	}
+
+	tab, err := h.sqllabRepo.GetByID(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve tab"})
+		return
+	}
+	if tab == nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to access this tab"})
+		return
+	}
+
+	_ = h.sqllabRepo.DeleteSchemaStateByTab(c.Request.Context(), uint(id))
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) resolveVisibilityScope(ctx context.Context, userID uint) (domdb.DatabaseVisibilityScope, error) {
