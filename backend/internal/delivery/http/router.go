@@ -186,6 +186,7 @@ func NewRouter(
 				sqlLab.POST("/tabs/:id/schema", sqllabHandler.ExpandTable)
 				sqlLab.DELETE("/tabs/:id/schema/:table", sqllabHandler.CollapseTable)
 				sqlLab.DELETE("/tabs/:id/schema", sqllabHandler.ClearSchema)
+				sqlLab.POST("/autocomplete", sqllabHandler.Autocomplete)
 			}
 		}
 	}
