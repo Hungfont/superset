@@ -161,6 +161,7 @@ func NewRouter(
 				protected.POST("/query/submit", queryHandler.Submit)
 				protected.GET("/query/:id/status", queryHandler.GetStatus)
 				protected.GET("/query/:id/result", queryHandler.GetResult)
+				protected.GET("/query/:id/download", queryHandler.Download)
 				protected.DELETE("/query/:id", queryHandler.Cancel)
 				protected.POST("/query/estimate", queryHandler.Estimate)
 
