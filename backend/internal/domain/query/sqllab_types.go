@@ -84,3 +84,63 @@ type SavedQueryListParams struct {
 	Page      int    `form:"page"`
 	Limit     int    `form:"limit"`
 }
+
+// ── Schema Browser (SQL-006) ──
+
+// ExpandTableRequest is the body for POST /api/v1/sqllab/tabs/:id/schema
+type ExpandTableRequest struct {
+	TableName string `json:"table_name" binding:"required"`
+}
+
+// SchemaColumnItem is a column in the schema browser response.
+type SchemaColumnItem struct {
+	Name         string `json:"name"`
+	DataType     string `json:"data_type"`
+	IsNullable   bool   `json:"is_nullable"`
+	DefaultValue string `json:"default_value,omitempty"`
+	IsDttm       bool   `json:"is_dttm"`
+}
+
+// SchemaTableItem is one table row in the GET schema response.
+type SchemaTableItem struct {
+	TableName string             `json:"table_name"`
+	TableType string             `json:"table_type"`
+	Expanded  bool               `json:"expanded"`
+	Columns   []SchemaColumnItem `json:"columns,omitempty"`
+}
+
+// ExpandTableResponse is returned by POST expand.
+type ExpandTableResponse struct {
+	TableName string             `json:"table_name"`
+	Columns   []SchemaColumnItem `json:"columns"`
+}
+
+// GetSchemaResponse is returned by GET /api/v1/sqllab/tabs/:id/schema
+type GetSchemaResponse struct {
+	Schemas []string          `json:"schemas"`
+	Tables  []SchemaTableItem `json:"tables"`
+}
+
+// ── Autocomplete (SQL-007) ──
+
+// AutocompleteRequest is the body for POST /api/v1/sqllab/autocomplete.
+type AutocompleteRequest struct {
+	Word   string `json:"word" binding:"required"`
+	Prefix string `json:"prefix"`
+	DbID   uint   `json:"db_id"`
+	Schema string `json:"schema"`
+}
+
+// AutocompleteSuggestion is a single suggestion item.
+type AutocompleteSuggestion struct {
+	Text   string `json:"text"`
+	Type   string `json:"type"` // "keyword"|"schema"|"table"|"column"|"function"
+	Score  int    `json:"score"`
+	Detail string `json:"detail"`
+}
+
+// AutocompleteResponse is the API response for autocomplete.
+type AutocompleteResponse struct {
+	Suggestions []AutocompleteSuggestion `json:"suggestions"`
+	CacheMiss   bool                     `json:"cache_miss"`
+}

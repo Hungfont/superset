@@ -170,7 +170,7 @@ func main() {
 	wsHandler := httpquery.NewWSHandler(pubKey, jwtRepo, userRepo, rlsFilterRepo, queryRepo, redisClient)
 
 	sqllabRepo := repopostgres.NewSQLLabRepository(db)
-	sqllabHandler := httpsqllab.NewHandler(sqllabRepo, databaseRepo)
+	sqllabHandler := httpsqllab.NewHandler(sqllabRepo, databaseRepo, databaseSvc)
 
 	// Start query worker for async query processing
 	queryWorker := worker.NewQueryWorker(redisClient, queryExecutor, asyncQueryExecutor, worker.DefaultQueryWorkerConfig())

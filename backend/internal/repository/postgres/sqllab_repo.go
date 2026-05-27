@@ -9,6 +9,7 @@ import (
 
 	"github.com/xwb1989/sqlparser"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	query "superset/auth-service/internal/domain/query"
 )
 
@@ -255,6 +256,59 @@ func (r *sqllabRepo) ForkSavedQuery(ctx context.Context, id uint, userID uint) (
 		return nil, fmt.Errorf("fork saved query: create: %w", err)
 	}
 	return &fork, nil
+}
+
+func (r *sqllabRepo) FindSchemaState(ctx context.Context, tabStateID uint) ([]query.TableSchema, error) {
+	var rows []query.TableSchema
+	err := r.db.WithContext(ctx).
+		Where("tab_state_id = ?", tabStateID).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("find schema state: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *sqllabRepo) UpsertSchemaState(ctx context.Context, ts *query.TableSchema) error {
+	ts.ChangedOn = time.Now()
+	if ts.CreatedOn.IsZero() {
+		ts.CreatedOn = ts.ChangedOn
+	}
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "tab_state_id"},
+				{Name: "db_id"},
+				{Name: "schema"},
+				{Name: "table"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{"expanded", "changed_on"}),
+		}).
+		Create(ts).Error
+}
+
+func (r *sqllabRepo) UpdateSchemaStateCollapsed(ctx context.Context, tabStateID uint, table string) error {
+	result := r.db.WithContext(ctx).
+		Model(&query.TableSchema{}).
+		Where("tab_state_id = ? AND \"table\" = ?", tabStateID, table).
+		Updates(map[string]any{
+			"expanded":   false,
+			"changed_on": time.Now(),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("update schema state collapsed: %w", result.Error)
+	}
+	return nil
+}
+
+func (r *sqllabRepo) DeleteSchemaStateByTab(ctx context.Context, tabStateID uint) error {
+	err := r.db.WithContext(ctx).
+		Where("tab_state_id = ?", tabStateID).
+		Delete(&query.TableSchema{}).Error
+	if err != nil {
+		return fmt.Errorf("delete schema state by tab: %w", err)
+	}
+	return nil
 }
 
 var _ query.SQLLabRepository = (*sqllabRepo)(nil)

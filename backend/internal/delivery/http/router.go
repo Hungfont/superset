@@ -182,6 +182,11 @@ func NewRouter(
 				sqlLab.PUT("/saved-queries/:id", sqllabHandler.UpdateSavedQuery)
 				sqlLab.DELETE("/saved-queries/:id", sqllabHandler.DeleteSavedQuery)
 				sqlLab.POST("/saved-queries/:id/fork", sqllabHandler.ForkSavedQuery)
+				sqlLab.GET("/tabs/:id/schema", sqllabHandler.GetSchema)
+				sqlLab.POST("/tabs/:id/schema", sqllabHandler.ExpandTable)
+				sqlLab.DELETE("/tabs/:id/schema/:table", sqllabHandler.CollapseTable)
+				sqlLab.DELETE("/tabs/:id/schema", sqllabHandler.ClearSchema)
+				sqlLab.POST("/autocomplete", sqllabHandler.Autocomplete)
 			}
 		}
 	}

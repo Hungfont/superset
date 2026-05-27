@@ -72,6 +72,7 @@ import { useEstimate } from "@/hooks/useEstimate";
 import { useAutoSaveTab } from "@/hooks/useAutoSaveTab";
 import { SaveQueryDialog } from "@/components/sqllab/SaveQueryDialog";
 import { SavedQueriesList } from "@/components/sqllab/SavedQueriesList";
+import { SchemaBrowser } from "@/components/sqllab/SchemaBrowser";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
@@ -813,16 +814,30 @@ export default function SQLLabPage() {
   return (
     <div className="h-screen">
       <ResizablePanelGroup orientation="horizontal" className="h-full">
-        {/* Left: Schema Browser (placeholder for SQL-006) */}
+        {/* Left: Schema Browser */}
         <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
-          <div className="h-full border-r p-3">
-            <h3 className="text-sm font-semibold mb-2">Schema Browser</h3>
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-3/4 mb-2" />
-            <Skeleton className="h-4 w-5/6 mb-2" />
-            <Skeleton className="h-4 w-2/3 mb-2" />
-            <Skeleton className="h-4 w-4/5" />
-          </div>
+          <SchemaBrowser
+            tabId={Number(activeTab?.id) || 0}
+            currentSchema={activeTab?.schema ?? ""}
+            onColumnClick={(columnName: string) => {
+              const editor = editorRef.current;
+              if (!editor) return;
+              const position = editor.getPosition();
+              if (!position) return;
+              editor.executeEdits("schema-browser", [
+                {
+                  range: {
+                    startLineNumber: position.lineNumber,
+                    startColumn: position.column,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column,
+                  },
+                  text: columnName,
+                },
+              ]);
+              editor.focus();
+            }}
+          />
         </ResizablePanel>
 
         <ResizableHandle withHandle />

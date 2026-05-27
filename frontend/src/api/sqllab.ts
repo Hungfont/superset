@@ -192,3 +192,60 @@ export async function forkSavedQuery(id: number): Promise<SavedQueryResponse> {
     headers: getAuthHeaders(),
   });
 }
+
+// ── Schema Browser (SQL-006) ──
+
+export interface SchemaColumnItem {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  default_value?: string;
+  is_dttm: boolean;
+}
+
+export interface SchemaTableItem {
+  table_name: string;
+  table_type: string;
+  expanded: boolean;
+  columns?: SchemaColumnItem[] | null;
+}
+
+export interface GetSchemaResponse {
+  schemas: string[];
+  tables: SchemaTableItem[];
+}
+
+export interface ExpandTableResponse {
+  table_name: string;
+  columns: SchemaColumnItem[];
+}
+
+export async function getSchemaTables(tabId: number, forceRefresh?: boolean): Promise<GetSchemaResponse> {
+  const qs = forceRefresh ? "?force_refresh=true" : "";
+  return request<GetSchemaResponse>(`/api/v1/sqllab/tabs/${tabId}/schema${qs}`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function expandTable(tabId: number, tableName: string): Promise<ExpandTableResponse> {
+  return request<ExpandTableResponse>(`/api/v1/sqllab/tabs/${tabId}/schema`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ table_name: tableName }),
+  });
+}
+
+export async function collapseTable(tabId: number, tableName: string): Promise<void> {
+  return request<void>(`/api/v1/sqllab/tabs/${tabId}/schema/${encodeURIComponent(tableName)}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+}
+
+export async function clearSchemaState(tabId: number): Promise<void> {
+  return request<void>(`/api/v1/sqllab/tabs/${tabId}/schema`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+}

@@ -256,6 +256,11 @@ ALTER TABLE table_schema
     ADD CONSTRAINT fk_table_schema_tab_state FOREIGN KEY (tab_state_id) REFERENCES tab_state(id),
     ADD CONSTRAINT fk_table_schema_db        FOREIGN KEY (db_id)        REFERENCES dbs(id);
 
+-- SQL-006: upsert target for schema browser expand state
+ALTER TABLE table_schema
+    ADD CONSTRAINT uq_table_schema_tab_db_schema_table
+    UNIQUE (tab_state_id, db_id, schema, "table");
+
 -- ── Alerts & Reports ────────────────────────────────────────────────────────
 
 ALTER TABLE report_schedule

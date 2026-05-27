@@ -19,6 +19,12 @@ type SQLLabRepository interface {
 	UpdateSavedQuery(ctx context.Context, sq *SavedQuery) error
 	DeleteSavedQuery(ctx context.Context, id uint, userID uint) error
 	ForkSavedQuery(ctx context.Context, id uint, userID uint) (*SavedQuery, error)
+
+	// Schema browser (SQL-006)
+	FindSchemaState(ctx context.Context, tabStateID uint) ([]TableSchema, error)
+	UpsertSchemaState(ctx context.Context, ts *TableSchema) error
+	UpdateSchemaStateCollapsed(ctx context.Context, tabStateID uint, table string) error
+	DeleteSchemaStateByTab(ctx context.Context, tabStateID uint) error
 }
 
 // TabWithQueryStatus is a join result for tabs with their latest query status.
