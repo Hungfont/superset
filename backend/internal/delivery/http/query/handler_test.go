@@ -2,11 +2,14 @@ package query
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	svcquery "superset/auth-service/internal/app/query"
 	domainquery "superset/auth-service/internal/domain/query"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -313,4 +316,29 @@ func TestQE008_NewEstimatorDispatchesCorrectly(t *testing.T) {
 			assert.Equal(t, tt.expectUnsupported, isUnsupported)
 		})
 	}
+}
+
+// ── SQL-008 Download handler tests ──
+
+func TestDownload_FormatValidation(t *testing.T) {
+	assert.True(t, svcquery.IsValidFormat("csv"))
+	assert.True(t, svcquery.IsValidFormat("xlsx"))
+	assert.True(t, svcquery.IsValidFormat("json"))
+	assert.False(t, svcquery.IsValidFormat("pdf"))
+	assert.False(t, svcquery.IsValidFormat(""))
+}
+
+func TestDownloadHandler_NoAsyncExecutor_Returns503(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	exec := svcquery.NewQueryExecutor(nil, nil, nil, nil, nil, nil, nil)
+	handler := NewHandler(exec)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/api/v1/query/abc/download?format=csv", nil)
+	c.Params = gin.Params{{Key: "id", Value: "abc"}}
+
+	handler.Download(c)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
