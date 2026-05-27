@@ -1161,7 +1161,15 @@ export default function SQLLabPage() {
                         </div>
                       )}
 
-                      {tab.downloadUrl && <DownloadButton downloadUrl={tab.downloadUrl} />}
+                      {tab.result?.query?.id && tab.result?.query?.status === "success" && (
+  <DownloadButton
+    queryId={tab.result.query.client_id || tab.result.query.id}
+    disabled={!tab.databaseId || !tab.sql}
+  />
+)}
+{tab.downloadUrl && (
+  <DownloadButton queryId={tab.result?.query?.client_id || ("")} />
+)}
 
                       {tab.result && (
                         <div className="space-y-2">
