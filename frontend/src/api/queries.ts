@@ -241,4 +241,47 @@ export const queriesApi = {
       headers: getAuthHeaders(true),
       body: JSON.stringify(data),
     }),
+
+  download: async (queryId: string, format: "csv" | "xlsx" | "json"): Promise<void> => {
+    const accessToken = useAuthStore.getState().accessToken;
+    const res = await fetch(`/api/v1/query/${queryId}/download?format=${format}`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Download failed" }));
+      if (res.status === 410) {
+        throw new Error("Result expired. Re-run query to download.");
+      }
+      if (res.status === 429) {
+        throw new Error("Download limit reached. Try again later.");
+      }
+      if (res.status === 403) {
+        throw new Error("Not authorized to download this query.");
+      }
+      throw new Error(body.error || body.message || "Download failed");
+    }
+
+    const blob = await res.blob();
+
+    const disposition = res.headers.get("Content-Disposition");
+    let filename = `query_${queryId}_${Date.now()}.${format}`;
+    if (disposition) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match) filename = match[1];
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };
