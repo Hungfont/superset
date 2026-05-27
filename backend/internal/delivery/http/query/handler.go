@@ -2,6 +2,7 @@ package query
 
 import (
 	"crypto/rsa"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -518,4 +519,91 @@ func (h *Handler) Estimate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// Download handles GET /api/v1/query/:id/download?format=csv|xlsx|json
+func (h *Handler) Download(c *gin.Context) {
+	if h.asyncExecutor == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "async_not_available"})
+		return
+	}
+
+	queryID := c.Param("id")
+	format := c.Query("format")
+
+	if !svcquery.IsValidFormat(format) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_format", "message": "Format must be csv, xlsx, or json"})
+		return
+	}
+
+	userVal, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userCtx, ok := userVal.(domain.UserContext)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "invalid user context"})
+		return
+	}
+
+	// Rate limit: 10 downloads per hour per user
+	if h.rdb != nil {
+		rateKey := fmt.Sprintf("rate:download:%d", userCtx.ID)
+		count, err := h.rdb.Incr(c.Request.Context(), rateKey).Result()
+		if err == nil {
+			if count == 1 {
+				h.rdb.Expire(c.Request.Context(), rateKey, 1*time.Hour)
+			}
+			if count > 10 {
+				c.JSON(http.StatusTooManyRequests, gin.H{"error": "rate_limited", "message": "Download limit reached. Try again later."})
+				return
+			}
+		}
+	}
+
+	resp, err := h.asyncExecutor.GetResultForUser(c.Request.Context(), queryID, userCtx)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Not authorized to download this query"})
+		case "query not found":
+			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Query not found"})
+		case "query not completed":
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "not_ready", "message": "Query has not completed"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "download_error", "message": err.Error()})
+		}
+		return
+	}
+
+	// 410: query record has ResultsKey set but Redis data expired.
+	if resp.Columns == nil || len(resp.Columns) == 0 {
+		if h.queryRepo != nil {
+			q, qErr := h.queryRepo.GetByID(c.Request.Context(), queryID)
+			if qErr == nil && q != nil && q.ResultsKey != "" {
+				c.JSON(http.StatusGone, gin.H{"error": "expired", "message": "Result expired. Re-run the query to download."})
+				return
+			}
+		}
+	}
+
+	ext := format
+	mime := "application/octet-stream"
+	switch format {
+	case "csv":
+		mime = "text/csv; charset=utf-8"
+	case "json":
+		mime = "application/json; charset=utf-8"
+	case "xlsx":
+		mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		ext = "xlsx"
+	}
+
+	filename := fmt.Sprintf("query_%s_%d.%s", queryID, time.Now().Unix(), ext)
+	c.Header("Content-Type", mime)
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Status(http.StatusOK)
+
+	_ = svcquery.Export(c.Writer, format, resp)
 }
