@@ -15,11 +15,13 @@ import (
 
 	"superset/auth-service/configs"
 	svcauth "superset/auth-service/internal/app/auth"
+	svcchart "superset/auth-service/internal/app/chart"
 	svcdataset "superset/auth-service/internal/app/dataset"
 	svcdb "superset/auth-service/internal/app/db"
 	svcquery "superset/auth-service/internal/app/query"
 	delivery "superset/auth-service/internal/delivery/http"
 	httpauth "superset/auth-service/internal/delivery/http/auth"
+	httpchart "superset/auth-service/internal/delivery/http/chart"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	httpsrls "superset/auth-service/internal/delivery/http/rls"
@@ -102,6 +104,7 @@ func main() {
 	permissionRepo := repopostgres.NewPermissionRepository(db)
 	databaseRepo := repopostgres.NewDatabaseRepository(db)
 	datasetRepo := repopostgres.NewDatasetRepository(db)
+	chartRepo := repopostgres.NewChartRepository(db)
 	rlsFilterRepo := repopostgres.NewRLSFilterRepository(db, redisClient)
 	queryRepo := repopostgres.NewQueryRepository(db)
 	schemaCacheRepo := reporedis.NewDatabaseSchemaCacheRepository(redisClient)
@@ -135,6 +138,9 @@ func main() {
 	roleSvc := svcauth.NewRoleService(roleRepo, roleCacheRepo)
 	userRoleSvc := svcauth.NewUserRoleService(userRoleRepo, roleCacheRepo)
 	permissionSvc := svcauth.NewPermissionService(permissionRepo, roleCacheRepo)
+	permChecker := svcauth.NewDatasetPermChecker(databaseRepo.GetRoleNamesByUser)
+	chartSvc := svcchart.NewService(chartRepo, datasetRepo, permChecker)
+	chartHandler := httpchart.NewHandler(chartSvc)
 	databaseSvc, err := svcdb.NewDatabaseService(databaseRepo, nil, nil, cfg.DB.CredentialsEncryptionKey)
 	if err != nil {
 		log.Fatalf("failed to initialize database service: %v", err)
@@ -199,6 +205,7 @@ func main() {
 		rlsHandler,
 		queryHandler,
 		wsHandler,
+		chartHandler,
 		sqllabHandler,
 		pubKey,
 		jwtRepo,

@@ -5,6 +5,7 @@ import "context"
 // Repository defines the interface for chart and dashboard storage.
 type Repository interface {
 	CreateSlice(ctx context.Context, slice *Slice) error
+	CreateSliceUser(ctx context.Context, su *SliceUser) error
 	GetSliceByID(ctx context.Context, id uint) (*Slice, error)
 	UpdateSlice(ctx context.Context, slice *Slice) error
 	DeleteSlice(ctx context.Context, id uint) error

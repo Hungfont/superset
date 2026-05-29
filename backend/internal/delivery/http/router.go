@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	httpauth "superset/auth-service/internal/delivery/http/auth"
+	httpchart "superset/auth-service/internal/delivery/http/chart"
 	httpdataset "superset/auth-service/internal/delivery/http/dataset"
 	httpdb "superset/auth-service/internal/delivery/http/db"
 	"superset/auth-service/internal/delivery/http/middleware"
@@ -32,6 +33,7 @@ func NewRouter(
 	rlsHandler *httpsrls.Handler,
 	queryHandler *httpquery.Handler,
 	wsHandler *httpquery.WSHandler,
+	chartHandler *httpchart.Handler,
 	sqllabHandler *httpsqllab.Handler,
 	pubKey *rsa.PublicKey,
 	jwtRepo domain.JWTRepository,
@@ -168,6 +170,8 @@ func NewRouter(
 				// QE-007: Delete query history (admin only)
 				protected.DELETE("/query/history", middleware.AuthorizeAdminRole(roleRepo), queryHandler.DeleteHistory)
 			}
+
+			protected.POST("/charts", chartHandler.Create)
 
 			sqlLab := protected.Group("/sqllab")
 			{
