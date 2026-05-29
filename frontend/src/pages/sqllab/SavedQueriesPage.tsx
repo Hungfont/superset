@@ -42,6 +42,7 @@ import {
   updateSavedQuery,
   deleteSavedQuery,
   forkSavedQuery,
+  getSavedQueryUsage,
   type SavedQueryResponse,
 } from "@/api/sqllab";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -60,6 +61,7 @@ export default function SavedQueriesPage() {
   const [editPublished, setEditPublished] = useState(false);
 
   const [deletingQuery, setDeletingQuery] = useState<SavedQueryResponse | null>(null);
+  const [inUseCount, setInUseCount] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["saved-queries", { q: search }],
@@ -295,12 +297,24 @@ export default function SavedQueriesPage() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={deletingQuery !== null} onOpenChange={(open) => { if (!open) setDeletingQuery(null); }}>
+      <AlertDialog open={deletingQuery !== null} onOpenChange={(open) => {
+        if (!open) { setDeletingQuery(null); setInUseCount(null); }
+        if (open && deletingQuery?.id) {
+          getSavedQueryUsage(deletingQuery.id)
+            .then(r => setInUseCount(r.tab_count))
+            .catch(() => setInUseCount(null));
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deletingQuery?.label}?</AlertDialogTitle>
             <AlertDialogDescription>
               This cannot be undone. Any tabs referencing this saved query will be updated.
+              {inUseCount !== null && inUseCount > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  In use by {inUseCount} tab{inUseCount !== 1 ? "s" : ""}
+                </Badge>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

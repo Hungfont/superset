@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -44,6 +45,31 @@ func extractSQLTables(sqlText string) string {
 	return strings.Join(names, ",")
 }
 
+func packLatestQueryExtra(id, status *string, rows *int, errMsg *string) string {
+	r := 0
+	if rows != nil {
+		r = *rows
+	}
+	em := ""
+	if errMsg != nil {
+		em = *errMsg
+	}
+	s := ""
+	if status != nil {
+		s = *status
+	}
+	j, err := json.Marshal(map[string]interface{}{
+		"query_id":            id,
+		"query_status":        s,
+		"query_rows":          r,
+		"query_error_message": em,
+	})
+	if err != nil {
+		return "{}"
+	}
+	return string(j)
+}
+
 func (r *sqllabRepo) Create(ctx context.Context, tab *query.TabState) error {
 	return r.db.WithContext(ctx).Create(tab).Error
 }
@@ -51,7 +77,7 @@ func (r *sqllabRepo) Create(ctx context.Context, tab *query.TabState) error {
 func (r *sqllabRepo) ListByUser(ctx context.Context, userID uint, includeClosed bool) ([]*query.TabState, error) {
 	q := r.db.WithContext(ctx).
 		Table("tab_state").
-		Select("tab_state.*, query.status AS latest_query_status").
+		Select("tab_state.*, query.id AS query_id, query.status AS query_status, query.rows AS query_rows, query.error_message AS query_error_message").
 		Joins("LEFT JOIN query ON query.id = tab_state.latest_query_id").
 		Where("tab_state.user_id = ?", userID)
 	if !includeClosed {
@@ -65,8 +91,8 @@ func (r *sqllabRepo) ListByUser(ctx context.Context, userID uint, includeClosed 
 	tabs := make([]*query.TabState, 0, len(rows))
 	for _, r := range rows {
 		t := r.TabState
-		if r.LatestQueryStatus != nil {
-			t.ExtraJSON = `{"latest_query_status":"` + *r.LatestQueryStatus + `"}`
+		if r.QueryID != nil {
+			t.ExtraJSON = packLatestQueryExtra(r.QueryID, r.QueryStatus, r.QueryRows, r.QueryErrorMessage)
 		}
 		tabs = append(tabs, &t)
 	}
@@ -77,7 +103,7 @@ func (r *sqllabRepo) GetByID(ctx context.Context, id uint, userID uint) (*query.
 	var row query.TabWithQueryStatus
 	err := r.db.WithContext(ctx).
 		Table("tab_state").
-		Select("tab_state.*, query.status AS latest_query_status").
+		Select("tab_state.*, query.id AS query_id, query.status AS query_status, query.rows AS query_rows, query.error_message AS query_error_message").
 		Joins("LEFT JOIN query ON query.id = tab_state.latest_query_id").
 		Where("tab_state.id = ? AND tab_state.user_id = ?", id, userID).
 		First(&row).Error
@@ -88,8 +114,8 @@ func (r *sqllabRepo) GetByID(ctx context.Context, id uint, userID uint) (*query.
 		return nil, fmt.Errorf("getting tab by id: %w", err)
 	}
 	t := row.TabState
-	if row.LatestQueryStatus != nil {
-		t.ExtraJSON = `{"latest_query_status":"` + *row.LatestQueryStatus + `"}`
+	if row.QueryID != nil {
+		t.ExtraJSON = packLatestQueryExtra(row.QueryID, row.QueryStatus, row.QueryRows, row.QueryErrorMessage)
 	}
 	return &t, nil
 }
@@ -165,7 +191,7 @@ func (r *sqllabRepo) LabelExists(ctx context.Context, userID uint, label string)
 }
 
 func (r *sqllabRepo) ListSavedQueries(ctx context.Context, userID uint, params query.SavedQueryListParams) ([]*query.SavedQuery, int64, error) {
-	q := r.db.WithContext(ctx).Model(&query.SavedQuery{}).Where("created_by_fk = ?", userID)
+	q := r.db.WithContext(ctx).Model(&query.SavedQuery{}).Where("created_by_fk = ? OR published = true", userID)
 
 	if params.Search != "" {
 		like := "%" + strings.ToLower(params.Search) + "%"
@@ -198,7 +224,7 @@ func (r *sqllabRepo) ListSavedQueries(ctx context.Context, userID uint, params q
 
 func (r *sqllabRepo) GetSavedQuery(ctx context.Context, id uint, userID uint) (*query.SavedQuery, error) {
 	var sq query.SavedQuery
-	err := r.db.WithContext(ctx).Where("id = ? AND created_by_fk = ?", id, userID).First(&sq).Error
+	err := r.db.WithContext(ctx).Where("id = ? AND (created_by_fk = ? OR published = true)", id, userID).First(&sq).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -236,7 +262,7 @@ func (r *sqllabRepo) DeleteSavedQuery(ctx context.Context, id uint, userID uint)
 
 func (r *sqllabRepo) ForkSavedQuery(ctx context.Context, id uint, userID uint) (*query.SavedQuery, error) {
 	var original query.SavedQuery
-	err := r.db.WithContext(ctx).Where("id = ? AND created_by_fk = ?", id, userID).First(&original).Error
+	err := r.db.WithContext(ctx).Where("id = ? AND (created_by_fk = ? OR published = true)", id, userID).First(&original).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("not found")
@@ -256,6 +282,18 @@ func (r *sqllabRepo) ForkSavedQuery(ctx context.Context, id uint, userID uint) (
 		return nil, fmt.Errorf("fork saved query: create: %w", err)
 	}
 	return &fork, nil
+}
+
+func (r *sqllabRepo) CountTabReferences(ctx context.Context, savedQueryID uint) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&query.TabState{}).
+		Where("saved_query_id = ? AND active = true", savedQueryID).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("count tab references: %w", err)
+	}
+	return count, nil
 }
 
 func (r *sqllabRepo) FindSchemaState(ctx context.Context, tabStateID uint) ([]query.TableSchema, error) {

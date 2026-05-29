@@ -489,6 +489,38 @@ func (h *Handler) ForkSavedQuery(c *gin.Context) {
 	c.JSON(http.StatusCreated, savedQueryToResponse(fork))
 }
 
+func (h *Handler) GetSavedQueryUsage(c *gin.Context) {
+	userCtx, ok := getUserContext(c)
+	if !ok {
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "invalid saved query id"})
+		return
+	}
+
+	// Check visibility (owner or published)
+	sq, err := h.sqllabRepo.GetSavedQuery(c.Request.Context(), uint(id), userCtx.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to retrieve saved query"})
+		return
+	}
+	if sq == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Saved query not found"})
+		return
+	}
+
+	count, err := h.sqllabRepo.CountTabReferences(c.Request.Context(), uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "Failed to count tab references"})
+		return
+	}
+
+	c.JSON(http.StatusOK, domainquery.SavedQueryUsageResponse{TabCount: int(count)})
+}
+
 func (h *Handler) GetSchema(c *gin.Context) {
 	userCtx, ok := getUserContext(c)
 	if !ok {
@@ -763,10 +795,18 @@ func tabToResponse(t *domainquery.TabState) domainquery.TabResponse {
 	}
 	if t.ExtraJSON != "" {
 		var extra struct {
-			LatestQueryStatus string `json:"latest_query_status"`
+			QueryID           *string `json:"query_id"`
+			QueryStatus       string  `json:"query_status"`
+			QueryRows         int     `json:"query_rows"`
+			QueryErrorMessage string  `json:"query_error_message"`
 		}
-		if json.Unmarshal([]byte(t.ExtraJSON), &extra) == nil && extra.LatestQueryStatus != "" {
-			resp.LatestQueryStatus = extra.LatestQueryStatus
+		if json.Unmarshal([]byte(t.ExtraJSON), &extra) == nil && extra.QueryID != nil {
+			resp.LatestQuery = &domainquery.LatestQueryResponse{
+				ID:           *extra.QueryID,
+				Status:       extra.QueryStatus,
+				Rows:         extra.QueryRows,
+				ErrorMessage: extra.QueryErrorMessage,
+			}
 		}
 	}
 	return resp

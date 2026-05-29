@@ -19,6 +19,7 @@ type SQLLabRepository interface {
 	UpdateSavedQuery(ctx context.Context, sq *SavedQuery) error
 	DeleteSavedQuery(ctx context.Context, id uint, userID uint) error
 	ForkSavedQuery(ctx context.Context, id uint, userID uint) (*SavedQuery, error)
+	CountTabReferences(ctx context.Context, savedQueryID uint) (int64, error)
 
 	// Schema browser (SQL-006)
 	FindSchemaState(ctx context.Context, tabStateID uint) ([]TableSchema, error)
@@ -30,5 +31,8 @@ type SQLLabRepository interface {
 // TabWithQueryStatus is a join result for tabs with their latest query status.
 type TabWithQueryStatus struct {
 	TabState
-	LatestQueryStatus *string `gorm:"column:latest_query_status" json:"latest_query_status,omitempty"`
+	QueryID           *string `gorm:"column:query_id" json:"query_id,omitempty"`
+	QueryStatus       *string `gorm:"column:query_status" json:"query_status,omitempty"`
+	QueryRows         *int    `gorm:"column:query_rows" json:"query_rows,omitempty"`
+	QueryErrorMessage *string `gorm:"column:query_error_message" json:"query_error_message,omitempty"`
 }

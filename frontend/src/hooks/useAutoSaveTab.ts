@@ -4,7 +4,7 @@ import { updateTab } from "@/api/sqllab";
 import { useSqlLabStore, type SqlLabTab } from "@/stores/sqlLabStore";
 import { useDebounce } from "@/hooks/useDebounce";
 
-type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'isDirty'>;
+type TabForAutoSave = Pick<SqlLabTab, 'id' | 'sql' | 'title' | 'schema' | 'databaseId' | 'queryLimit' | 'isDirty'>;
 
 export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAutoSave | undefined) {
   const { warning } = useToast();
@@ -30,6 +30,7 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAuto
       label: activeTab.title,
       schema: activeTab.schema,
       db_id: activeTab.databaseId ?? undefined,
+      query_limit: activeTab.queryLimit,
     })
       .then(() => {
         if (activeTabIdRef.current === tabId) {
@@ -39,7 +40,7 @@ export function useAutoSaveTab(activeTabId: string | null, activeTab: TabForAuto
       .catch(() => {
         warning("Failed to save tab. Check connection.");
       });
-  }, [debouncedSql, debouncedLabel, activeTab?.schema, activeTab?.databaseId]);
+  }, [debouncedSql, debouncedLabel, activeTab?.schema, activeTab?.databaseId, activeTab?.queryLimit]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -195,6 +195,9 @@ func (m *mockSQLLabRepo) UpdateSchemaStateCollapsed(_ context.Context, _ uint, _
 func (m *mockSQLLabRepo) DeleteSchemaStateByTab(_ context.Context, _ uint) error {
 	return nil
 }
+func (m *mockSQLLabRepo) CountTabReferences(_ context.Context, _ uint) (int64, error) {
+	return 0, nil
+}
 
 // ---- mock Database repo (must satisfy full DatabaseRepository interface) ----
 

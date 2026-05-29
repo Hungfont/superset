@@ -149,9 +149,10 @@ interface RunButtonProps {
   onClick: () => void;
   disabled: boolean;
   isRunning: boolean;
+  label?: string;
 }
 
-export function RunButton({ onClick, disabled, isRunning }: RunButtonProps) {
+export function RunButton({ onClick, disabled, isRunning, label }: RunButtonProps) {
   if (isRunning) {
     return (
       <Button disabled size="sm" className="gap-2">
@@ -162,9 +163,9 @@ export function RunButton({ onClick, disabled, isRunning }: RunButtonProps) {
   }
 
   return (
-    <Button onClick={onClick} disabled={disabled} size="sm" className="gap-2">
+    <Button onClick={onClick} disabled={disabled} size="sm" variant={label ? "outline" : "default"} className="gap-2">
       <Play className="h-4 w-4" />
-      Run
+      {label ?? "Run"}
     </Button>
   );
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Database, PanelRightOpen, PanelRightClose } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Editor, { type OnMount } from "@monaco-editor/react";
+import type { editor, Position } from "monaco-editor";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -60,7 +62,6 @@ import {
 } from "@/components/query/QueryBadges";
 import { WsStatusBadge } from "@/components/query/WsStatusBadge";
 import { DownloadButton } from "@/components/query/DownloadButton";
-import { QueryHistoryTable } from "@/components/query/QueryHistoryTable";
 import { EstimatePopover } from "@/components/query/EstimatePopover";
 import { DataTable } from "@/components/ui/data-table";
 import { useSqlLabStore } from "@/stores/sqlLabStore";
@@ -76,6 +77,17 @@ import { SchemaBrowser } from "@/components/sqllab/SchemaBrowser";
 
 const AUTO_ASYNC_THRESHOLD_MS = 5000;
 const POLLING_INTERVAL_MS = 2000;
+
+const SQL_KEYWORDS = [
+  "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON",
+  "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "IS", "NULL", "AS", "ORDER",
+  "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "INSERT", "INTO", "VALUES",
+  "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "ALTER", "DROP", "INDEX",
+  "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN", "ELSE", "END",
+  "EXISTS", "WITH", "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "COALESCE",
+  "ASC", "DESC", "TRUE", "FALSE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
+  "CASCADE", "DEFAULT", "CHECK", "UNIQUE", "CONSTRAINT", "TRUNCATE",
+];
 
 function calculateDurationMs(start: string, end: string): number {
   const startTime = new Date(start).getTime();
@@ -135,6 +147,7 @@ export default function SQLLabPage() {
     setAsyncState,
     initTabs,
     clearTabsState,
+    updateTabQueryLimit,
   } = useSqlLabStore();
 
   const wsSubscribe = useWsStore(s => s.subscribe);
@@ -614,6 +627,8 @@ export default function SQLLabPage() {
   });
 
   const [resultsTabValue, setResultsTabValue] = useState("results");
+  const [showDetailPane, setShowDetailPane] = useState(false);
+  const [cacheMissAlert, setCacheMissAlert] = useState(false);
 
   const handleRun = (sql?: string) => {
     const sqlToRun = sql ?? activeTab?.sql;
@@ -630,12 +645,15 @@ export default function SQLLabPage() {
         catalog: activeTab.catalog,
         tab_name: activeTab.title,
         sql_editor_id: activeTab.sqlEditorId,
+        limit: activeTab.queryLimit,
       });
     }
   };
 
-  const handleEditorMount: OnMount = (editor) => {
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    // Ctrl+Enter run shortcut
     editor.addAction({
       id: "run-query",
       label: "Run Query",
@@ -645,6 +663,85 @@ export default function SQLLabPage() {
         const selectedText = selection ? editor.getModel()?.getValueInRange(selection)?.trim() : null;
         const sql = selectedText || activeTab?.sql || "";
         handleRun(sql);
+      },
+    });
+
+    // Autocomplete provider
+    monaco.languages.registerCompletionItemProvider("sql", {
+      triggerCharacters: [".", " ", "\n", "("],
+      provideCompletionItems: async (
+        model: editor.ITextModel,
+        position: Position,
+      ) => {
+        const word = model.getWordUntilPosition(position);
+        const prefix = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        });
+
+        if (!word.word || word.word.length < 1) {
+          return { suggestions: [] };
+        }
+
+        const tab = tabs.find(t => t.id === activeTabId);
+        if (!tab?.databaseId) {
+          return {
+            suggestions: SQL_KEYWORDS.map(k => ({
+              label: k,
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: k,
+              detail: "keyword",
+              sortText: "3" + k,
+            })),
+          };
+        }
+
+        try {
+          const { autocomplete: autocompleteApi } = await import("@/api/sqllab");
+          const resp = await autocompleteApi({
+            word: word.word,
+            prefix,
+            db_id: tab.databaseId,
+            schema: tab.schema || "public",
+          });
+
+          if (resp.cache_miss) {
+            setCacheMissAlert(true);
+          } else {
+            setCacheMissAlert(false);
+          }
+
+          const kindMap: Record<string, typeof monaco.languages.CompletionItemKind.Keyword> = {
+            keyword: monaco.languages.CompletionItemKind.Keyword,
+            schema: monaco.languages.CompletionItemKind.Module,
+            table: monaco.languages.CompletionItemKind.Class,
+            column: monaco.languages.CompletionItemKind.Field,
+            function: monaco.languages.CompletionItemKind.Function,
+          };
+
+          return {
+            suggestions: resp.suggestions.map(s => {
+              const scorePrefix = String(Math.max(0, 99 - s.score)).padStart(2, "0");
+              return {
+                label: s.text,
+                kind: kindMap[s.type] ?? monaco.languages.CompletionItemKind.Text,
+                insertText: s.text,
+                detail: `${s.type} · ${s.detail || ""}`,
+                range: {
+                  startLineNumber: position.lineNumber,
+                  endLineNumber: position.lineNumber,
+                  startColumn: word.startColumn,
+                  endColumn: word.endColumn,
+                },
+                sortText: scorePrefix + s.text,
+              };
+            }),
+          };
+        } catch {
+          return { suggestions: [] };
+        }
       },
     });
   };
@@ -664,6 +761,7 @@ export default function SQLLabPage() {
       catalog: activeTab.catalog,
       tab_name: activeTab.title,
       sql_editor_id: activeTab.sqlEditorId,
+      limit: activeTab.queryLimit,
     });
   };
 
@@ -1033,12 +1131,38 @@ export default function SQLLabPage() {
                             isRunning={isRunning}
                           />
                         </span>
+                        <RunButton
+                          onClick={() => {
+                            const editor = editorRef.current;
+                            if (!editor) return;
+                            const fullSql = editor.getValue();
+                            handleRun(fullSql);
+                          }}
+                          disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
+                          isRunning={isRunning}
+                          label="Run All"
+                        />
                         <RunAsyncButton
                           onClick={() => handleRunAsync(false)}
                           disabled={!tab.databaseId || !tab.sql || isRunning || isAsyncRunning}
                           isRunning={isRunning}
                           isQueued={tab.asyncStatus === "pending" || tab.asyncStatus === "queued"}
                         />
+                        <Select
+                          value={String(tab.queryLimit ?? 1000)}
+                          onValueChange={(v) => {
+                            if (activeTabId) updateTabQueryLimit(activeTabId, Number(v));
+                          }}
+                        >
+                          <SelectTrigger className="w-[90px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="100">100</SelectItem>
+                            <SelectItem value="1000">1000</SelectItem>
+                            <SelectItem value="10000">10000</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {estimateSupported && (
                           <>
                             <EstimatePopover
@@ -1075,6 +1199,22 @@ export default function SQLLabPage() {
                       disabled={!tab.databaseId || !tab.sql}
                     >
                       Save
+                    </Button>
+                    {selectedDb && (
+                      <Badge variant="outline" className="gap-1 text-xs h-8">
+                        <Database className="h-3 w-3" />
+                        {selectedDb.database_name}
+                        {activeTab?.schema && <> / {activeTab.schema}</>}
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowDetailPane(v => !v)}
+                      className="h-8 w-8 p-0"
+                      title={showDetailPane ? "Hide detail pane" : "Show detail pane"}
+                    >
+                      {showDetailPane ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
                     </Button>
                     {tab.result && tab.result.query && (
                       <>
@@ -1135,10 +1275,21 @@ export default function SQLLabPage() {
                     </Alert>
                   )}
 
+                  {cacheMissAlert && (
+                    <Alert variant="default" className="mt-2 bg-blue-50 border-blue-200">
+                      <AlertDescription className="text-blue-800 flex items-center justify-between text-xs">
+                        Schema loading — autocomplete showing SQL keywords only.
+                        <Button variant="ghost" size="sm" onClick={() => setCacheMissAlert(false)} className="h-6 px-2 ml-2">
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <Tabs value={resultsTabValue} onValueChange={setResultsTabValue} className="flex-1 flex flex-col min-h-0 mt-2">
                     <TabsList>
                       <TabsTrigger value="results">Results</TabsTrigger>
-                      <TabsTrigger value="history">History</TabsTrigger>
+                      <TabsTrigger value="details">Query Details</TabsTrigger>
                       <TabsTrigger value="saved">Saved Queries</TabsTrigger>
                     </TabsList>
                     <TabsContent value="results" className="flex-1 min-h-0 space-y-2 mt-2">
@@ -1186,23 +1337,62 @@ export default function SQLLabPage() {
                         </div>
                       )}
                     </TabsContent>
-                    <TabsContent value="history" className="flex-1 min-h-0 mt-2">
-                      <QueryHistoryTable
-                        onRunQuery={(sql, dbId) => {
-                          updateTabSql(tab.id, sql);
-                          updateTabDatabase(tab.id, dbId);
-                          setResultsTabValue("results");
-                          executeMutation.mutate({
-                            database_id: dbId,
-                            sql,
-                            tab_name: tab.title,
-                            sql_editor_id: tab.sqlEditorId,
-                          });
-                        }}
-                        onLoadSql={(sql) => {
-                          updateTabSql(tab.id, sql);
-                        }}
-                      />
+                    <TabsContent value="details" className="flex-1 min-h-0 mt-2 overflow-auto">
+                      {tab.result?.query ? (
+                        <div className="space-y-3 text-sm">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                            {tab.result.query.start_time && (
+                              <>
+                                <span className="text-muted-foreground">Started</span>
+                                <span>{new Date(tab.result.query.start_time).toLocaleString()}</span>
+                              </>
+                            )}
+                            {tab.result.query.end_time && (
+                              <>
+                                <span className="text-muted-foreground">Finished</span>
+                                <span>{new Date(tab.result.query.end_time).toLocaleString()}</span>
+                              </>
+                            )}
+                            {tab.result.query.start_time && tab.result.query.end_time && (
+                              <>
+                                <span className="text-muted-foreground">Duration</span>
+                                <span>{calculateDurationMs(tab.result.query.start_time, tab.result.query.end_time)}ms</span>
+                              </>
+                            )}
+                            <span className="text-muted-foreground">Rows returned</span>
+                            <span>{tab.result.query.rows.toLocaleString()}</span>
+                            <span className="text-muted-foreground">Cache</span>
+                            <span>{tab.result.from_cache ? `Cached` : "Live"}</span>
+                            {tab.result.query.limit > 0 && (
+                              <>
+                                <span className="text-muted-foreground">Row limit</span>
+                                <span>{tab.result.query.limit.toLocaleString()}</span>
+                              </>
+                            )}
+                            {tab.result.query.status && (
+                              <>
+                                <span className="text-muted-foreground">Status</span>
+                                <span>{tab.result.query.status}</span>
+                              </>
+                            )}
+                          </div>
+                          {tab.result.query.executed_sql && tab.result.query.executed_sql !== tab.result.query.sql && (
+                            <div className="text-xs text-orange-600">RLS filters were applied to this query</div>
+                          )}
+                          {tab.result.query.sql && (
+                            <details className="mt-2">
+                              <summary className="text-xs text-muted-foreground cursor-pointer">Executed SQL</summary>
+                              <pre className="text-xs mt-1 p-2 bg-muted rounded whitespace-pre-wrap max-h-48 overflow-auto">
+                                {tab.result.query.executed_sql || tab.result.query.sql}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-12">
+                          Run a query to see details
+                        </p>
+                      )}
                     </TabsContent>
                     <TabsContent value="saved" className="flex-1 min-h-0 mt-2">
                       <SavedQueriesList
@@ -1223,6 +1413,60 @@ export default function SQLLabPage() {
       </Tabs>
           </div>
         </ResizablePanel>
+        {showDetailPane && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={20} minSize={10} maxSize={35}>
+              <div className="flex flex-col h-full p-4 overflow-auto">
+                <h3 className="text-sm font-medium mb-3">Query Details</h3>
+                {activeTab?.result?.query ? (
+                  <div className="space-y-3 text-sm">
+                    {activeTab.result.query.start_time && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Started</span>
+                        <span>{new Date(activeTab.result.query.start_time).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {activeTab.result.query.end_time && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Finished</span>
+                        <span>{new Date(activeTab.result.query.end_time).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {activeTab.result.query.start_time && activeTab.result.query.end_time && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Duration</span>
+                        <span>{calculateDurationMs(activeTab.result.query.start_time, activeTab.result.query.end_time)}ms</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Rows</span>
+                      <span>{activeTab.result.query.rows.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cache</span>
+                      <span>{activeTab.result.from_cache ? "Yes" : "No"}</span>
+                    </div>
+                    {activeTab.result.query.executed_sql && activeTab.result.query.executed_sql !== activeTab.result.query.sql && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">RLS</span>
+                        <span className="text-orange-600">Applied</span>
+                      </div>
+                    )}
+                    {activeTab.result.query.status && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Status</span>
+                        <span>{activeTab.result.query.status}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No query results yet</p>
+                )}
+              </div>
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
 
       <SaveQueryDialog

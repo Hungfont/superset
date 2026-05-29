@@ -23,20 +23,28 @@ type UpdateTabRequest struct {
 	ExtraJSON     *string `json:"extra_json"`
 }
 
+// LatestQueryResponse is a compact view of the linked query for tab badge display.
+type LatestQueryResponse struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	Rows         int    `json:"rows"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
 // TabResponse is the API response for a SQL Lab tab.
 type TabResponse struct {
-	ID                uint   `json:"id"`
-	Label             string `json:"label"`
-	DbID              uint   `json:"db_id"`
-	Schema            string `json:"schema"`
-	Catalog           string `json:"catalog"`
-	SQL               string `json:"sql"`
-	Active            bool   `json:"active"`
-	QueryLimit        int    `json:"query_limit"`
-	LatestQueryID     *string `json:"latest_query_id,omitempty"`
-	LatestQueryStatus string `json:"latest_query_status"`
-	HideLeftBar       bool   `json:"hide_left_bar"`
-	CreatedOn         string `json:"created_on"`
+	ID            uint                 `json:"id"`
+	Label         string               `json:"label"`
+	DbID          uint                 `json:"db_id"`
+	Schema        string               `json:"schema"`
+	Catalog       string               `json:"catalog"`
+	SQL           string               `json:"sql"`
+	Active        bool                 `json:"active"`
+	QueryLimit    int                  `json:"query_limit"`
+	LatestQueryID *string              `json:"latest_query_id,omitempty"`
+	LatestQuery   *LatestQueryResponse `json:"latest_query,omitempty"`
+	HideLeftBar   bool                 `json:"hide_left_bar"`
+	CreatedOn     string               `json:"created_on"`
 }
 
 // CreateSavedQueryRequest is the request body for saving a query.
@@ -143,4 +151,9 @@ type AutocompleteSuggestion struct {
 type AutocompleteResponse struct {
 	Suggestions []AutocompleteSuggestion `json:"suggestions"`
 	CacheMiss   bool                     `json:"cache_miss"`
+}
+
+// SavedQueryUsageResponse is returned by GET /saved-queries/:id/usage.
+type SavedQueryUsageResponse struct {
+	TabCount int `json:"tab_count"`
 }

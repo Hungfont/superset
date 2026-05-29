@@ -19,7 +19,12 @@ export interface TabStateResponse {
   active: boolean;
   query_limit: number;
   latest_query_id: string | null;
-  latest_query_status: string;
+  latest_query?: {
+    id: string;
+    status: string;
+    rows: number;
+    error_message?: string;
+  } | null;
   hide_left_bar: boolean;
   created_on: string;
 }
@@ -190,6 +195,46 @@ export async function forkSavedQuery(id: number): Promise<SavedQueryResponse> {
   return request<SavedQueryResponse>(`/api/v1/sqllab/saved-queries/${id}/fork`, {
     method: "POST",
     headers: getAuthHeaders(),
+  });
+}
+
+export interface SavedQueryUsageResponse {
+  tab_count: number;
+}
+
+export async function getSavedQueryUsage(id: number): Promise<SavedQueryUsageResponse> {
+  return request<SavedQueryUsageResponse>(`/api/v1/sqllab/saved-queries/${id}/usage`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+}
+
+// ── Autocomplete (SQL-010) ──
+
+export interface AutocompleteRequest {
+  word: string;
+  prefix: string;
+  db_id: number;
+  schema: string;
+}
+
+export interface AutocompleteSuggestion {
+  text: string;
+  type: "keyword" | "schema" | "table" | "column" | "function";
+  score: number;
+  detail: string;
+}
+
+export interface AutocompleteResponse {
+  suggestions: AutocompleteSuggestion[];
+  cache_miss: boolean;
+}
+
+export async function autocomplete(data: AutocompleteRequest): Promise<AutocompleteResponse> {
+  return request<AutocompleteResponse>("/api/v1/sqllab/autocomplete", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
   });
 }
 

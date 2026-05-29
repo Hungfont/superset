@@ -9,7 +9,12 @@ interface TabStateFromAPI {
   catalog: string;
   sql: string;
   query_limit: number;
-  latest_query_status: string;
+  latest_query?: {
+    id: string;
+    status: string;
+    rows: number;
+    error_message?: string;
+  } | null;
 }
 
 interface QueryResultQueryMeta {
@@ -64,6 +69,7 @@ export interface SqlLabTab {
   estimate: EstimateResult | null;
   isDirty?: boolean;
   latestQueryStatus?: string;
+  queryLimit: number;
 }
 
 interface SqlLabState {
@@ -89,6 +95,7 @@ interface SqlLabState {
   setEstimate: (id: string, estimate: EstimateResult | null) => void;
   initTabs: (tabs: TabStateFromAPI[]) => void;
   clearTabDirty: (id: string) => void;
+  updateTabQueryLimit: (id: string, limit: number) => void;
 }
 
 function normalizeRows(
@@ -130,6 +137,7 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
           status: "idle",
           error: null,
           estimate: null,
+          queryLimit: 1000,
         },
       ],
       activeTabId: id,
@@ -153,7 +161,8 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
           error: null,
           estimate: null,
           isDirty: false,
-          latestQueryStatus: t.latest_query_status,
+          queryLimit: t.query_limit || 1000,
+          latestQueryStatus: t.latest_query?.status,
         };
       }),
       activeTabId:
@@ -328,4 +337,11 @@ export const useSqlLabStore = create<SqlLabState>(set => ({
       ),
     }));
   },
+
+  updateTabQueryLimit: (id, limit) =>
+    set(state => ({
+      tabs: state.tabs.map(t =>
+        t.id === id ? { ...t, queryLimit: limit, isDirty: true } : t
+      ),
+    })),
 }));
