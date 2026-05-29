@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import ReactECharts from "echarts-for-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -16,6 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { queriesApi } from "@/api/queries";
 import { databasesApi } from "@/api/databases";
+import SaveChartDialog from "@/components/Explore/SaveChartDialog";
+import { useExploreStore } from "@/stores/exploreStore";
 
 type ChartType = "bar" | "line" | "pie" | "area";
 
@@ -36,6 +38,8 @@ export default function ExplorePage() {
     title: "Chart",
   });
   const [error, setError] = useState<string | null>(null);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const exploreStore = useExploreStore();
 
   const { data: databasesData, isLoading: databasesLoading } = useQuery({
     queryKey: ["databases"],
@@ -63,6 +67,29 @@ export default function ExplorePage() {
     if (!databaseId || !sql) return;
     executeMutation.mutate({ database_id: databaseId, sql });
   };
+
+  useEffect(() => {
+    exploreStore.setParams(JSON.stringify(chartConfig));
+  }, [chartConfig, exploreStore]);
+
+  useEffect(() => {
+    if (databaseId) exploreStore.setDatasourceId(String(databaseId));
+  }, [databaseId, exploreStore]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        setSaveDialogOpen(true);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   const chartData = executeMutation.data;
   const isLoading = executeMutation.isPending;
@@ -178,28 +205,38 @@ export default function ExplorePage() {
   return (
     <div className="container mx-auto py-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Explore</h1>
-        <Select
-          onValueChange={(value) => setDatabaseId(parseInt(value, 10))}
-          value={databaseId?.toString() || ""}
-        >
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Select database" />
-          </SelectTrigger>
-          <SelectContent>
-            {databasesLoading ? (
-              <SelectItem value="loading" disabled>
-                Loading...
-              </SelectItem>
-            ) : (
-              databasesData?.items?.map((db) => (
-                <SelectItem key={db.id} value={db.id.toString()}>
-                  {db.database_name}
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold">Explore</h1>
+          {exploreStore.isDirty && (
+            <Badge variant="outline" className="text-amber-600 border-amber-600">
+              ● Unsaved changes
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setSaveDialogOpen(true)}>Save</Button>
+          <Select
+            onValueChange={(value) => setDatabaseId(parseInt(value, 10))}
+            value={databaseId?.toString() || ""}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select database" />
+            </SelectTrigger>
+            <SelectContent>
+              {databasesLoading ? (
+                <SelectItem value="loading" disabled>
+                  Loading...
                 </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+              ) : (
+                databasesData?.items?.map((db) => (
+                  <SelectItem key={db.id} value={db.id.toString()}>
+                    {db.database_name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -386,6 +423,8 @@ export default function ExplorePage() {
           </CardContent>
         </Card>
       )}
+
+      <SaveChartDialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen} />
     </div>
   );
 }
