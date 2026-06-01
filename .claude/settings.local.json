@@ -2,11 +2,14 @@
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:20128/v1",
     "ANTHROPIC_AUTH_TOKEN": "sk-a89291db57c622d5-8epocl-2f592797",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
+    "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-pro[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "ds/deepseek-chat",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "ds/deepseek-v4-flash",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
+    "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace",
+    "MEMPAL_DIR": ""
   },
   "permissions": {
     "allow": [
@@ -31,10 +34,13 @@
       "Skill(mempalace:mempalace)",
       "Bash(mempalace status *)",
       "Bash(mempalace mine *)",
-      "mcp__plugin_mempalace_mempalace__mempalace_search"
+      "mcp__plugin_mempalace_mempalace__mempalace_search",
+      "Bash(C:\\\\Users\\\\hung.hoang\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.1.0\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh *)",
+      "Bash(/c/Users/hung.hoang/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
+      "mcp__plugin_mempalace_mempalace__mempalace_list_wings",
+      "Bash(Select-Object -First 30 Name)"
     ]
   },
-  "model": "sonnet",
   "enabledPlugins": {
     "mempalace@mempalace": true,
     "superpowers@claude-plugins-official": true

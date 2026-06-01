@@ -78,6 +78,10 @@ func (f *fakeChartRepo) ListDashboardSlices(_ context.Context, _ uint) ([]*chart
 	return nil, nil
 }
 
+func (f *fakeChartRepo) GetSliceDetail(_ context.Context, _ uint) (*chartdomain.Slice, error) { return nil, nil }
+
+func (f *fakeChartRepo) DashboardCount(_ context.Context, _ uint) (int64, error) { return 0, nil }
+
 type fakeDatasetRepo struct {
 	dataset *datasetdomain.Dataset
 	err     error
@@ -96,6 +100,46 @@ func (f *fakePermChecker) CanReadDataset(_ context.Context, _ uint, _ *datasetdo
 	return f.allowed, f.err
 }
 
+type fakeRoleRepo struct {
+	roleNames []string
+	err       error
+}
+
+func (f *fakeRoleRepo) IsAdmin(_ context.Context, _ uint) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	for _, r := range f.roleNames {
+		if r == "admin" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeRoleRepo) GetRoleNamesByUser(_ context.Context, _ uint) ([]string, error) {
+	return f.roleNames, f.err
+}
+
+type fakeRBACCacheRepo struct {
+	perms []string
+	err   error
+}
+
+func (f *fakeRBACCacheRepo) GetPermissionSet(_ context.Context, _ uint) ([]string, error) {
+	return f.perms, f.err
+}
+
+func newTestService(repo *fakeChartRepo, dsRepo *fakeDatasetRepo, permChecker *fakePermChecker) *chartsvc.Service {
+	return chartsvc.NewService(
+		repo,
+		dsRepo,
+		permChecker,
+		&fakeRoleRepo{roleNames: []string{"admin"}},
+		&fakeRBACCacheRepo{},
+	)
+}
+
 // --- tests ---
 
 func TestCreateChart_Success(t *testing.T) {
@@ -105,11 +149,7 @@ func TestCreateChart_Success(t *testing.T) {
 		Perm:       "[sales](id:1)",
 		SchemaPerm: "schema_public",
 	}
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: true})
 
 	slice, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Revenue by Month",
@@ -149,11 +189,7 @@ func TestCreateChart_Success(t *testing.T) {
 }
 
 func TestCreateChart_InvalidDatasourceID(t *testing.T) {
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: nil, err: nil},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: nil, err: nil}, &fakePermChecker{allowed: true})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -168,11 +204,7 @@ func TestCreateChart_InvalidDatasourceID(t *testing.T) {
 }
 
 func TestCreateChart_DatasetNotFound(t *testing.T) {
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: nil, err: nil},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: nil, err: nil}, &fakePermChecker{allowed: true})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -188,11 +220,7 @@ func TestCreateChart_DatasetNotFound(t *testing.T) {
 
 func TestCreateChart_DatasetRepoError(t *testing.T) {
 	dbErr := errors.New("database connection lost")
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: nil, err: dbErr},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: nil, err: dbErr}, &fakePermChecker{allowed: true})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -208,11 +236,7 @@ func TestCreateChart_DatasetRepoError(t *testing.T) {
 
 func TestCreateChart_PermissionDenied(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: false},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: false})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -229,11 +253,7 @@ func TestCreateChart_PermissionDenied(t *testing.T) {
 func TestCreateChart_PermCheckerError(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
 	permErr := errors.New("role lookup failed")
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: false, err: permErr},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: false, err: permErr})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -249,11 +269,7 @@ func TestCreateChart_PermCheckerError(t *testing.T) {
 
 func TestCreateChart_InvalidParamsJSON(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: true})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -270,11 +286,7 @@ func TestCreateChart_InvalidParamsJSON(t *testing.T) {
 
 func TestCreateChart_ValidParamsJSON_Accepted(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: true})
 
 	slice, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -294,11 +306,7 @@ func TestCreateChart_ValidParamsJSON_Accepted(t *testing.T) {
 
 func TestCreateChart_EmptyParams_Accepted(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
-	svc := chartsvc.NewService(
-		&fakeChartRepo{},
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(&fakeChartRepo{}, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: true})
 
 	slice, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",
@@ -318,11 +326,7 @@ func TestCreateChart_EmptyParams_Accepted(t *testing.T) {
 func TestCreateChart_CreateSliceRepoError(t *testing.T) {
 	ds := &datasetdomain.Dataset{ID: 3, Name: "sales", Perm: "[sales](id:1)"}
 	repo := &fakeChartRepo{createErr: errors.New("write failed")}
-	svc := chartsvc.NewService(
-		repo,
-		&fakeDatasetRepo{dataset: ds},
-		&fakePermChecker{allowed: true},
-	)
+	svc := newTestService(repo, &fakeDatasetRepo{dataset: ds}, &fakePermChecker{allowed: true})
 
 	_, err := svc.CreateChart(context.Background(), 10, chartsvc.CreateChartInput{
 		SliceName:      "Test",

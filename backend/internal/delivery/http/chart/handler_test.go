@@ -31,8 +31,26 @@ func (f *fakeCreateChartService) CreateChart(_ context.Context, _ uint, _ charts
 	return f.slice, f.err
 }
 
+type fakeListChartsService struct {
+	result *chartsvc.ChartListResult
+	err    error
+}
+
+func (f *fakeListChartsService) ListCharts(_ context.Context, _ uint, _ chartsvc.ListChartsInput) (*chartsvc.ChartListResult, error) {
+	return f.result, f.err
+}
+
+type fakeGetChartService struct {
+	detail *chartsvc.ChartDetail
+	err    error
+}
+
+func (f *fakeGetChartService) GetChart(_ context.Context, _ uint, _ uint) (*chartsvc.ChartDetail, error) {
+	return f.detail, f.err
+}
+
 func newRouter(svc *fakeCreateChartService) *gin.Engine {
-	h := chart.NewHandler(svc)
+	h := chart.NewHandler(svc, &fakeListChartsService{}, &fakeGetChartService{})
 	r := gin.New()
 
 	r.Use(func(c *gin.Context) {
@@ -41,6 +59,22 @@ func newRouter(svc *fakeCreateChartService) *gin.Engine {
 	})
 
 	r.POST("/api/v1/charts", h.Create)
+	r.GET("/api/v1/charts", h.List)
+	r.GET("/api/v1/charts/:id", h.Get)
+	return r
+}
+
+func newListGetRouter(listSvc *fakeListChartsService, getSvc *fakeGetChartService) *gin.Engine {
+	h := chart.NewHandler(&fakeCreateChartService{}, listSvc, getSvc)
+	r := gin.New()
+
+	r.Use(func(c *gin.Context) {
+		c.Set(middleware.UserContextKey, domainauth.UserContext{ID: 10, Active: true})
+		c.Next()
+	})
+
+	r.GET("/api/v1/charts", h.List)
+	r.GET("/api/v1/charts/:id", h.Get)
 	return r
 }
 
@@ -101,7 +135,7 @@ func TestCreateChart_Success_Returns201(t *testing.T) {
 }
 
 func TestCreateChart_Unauthorized_Returns401(t *testing.T) {
-	h := chart.NewHandler(&fakeCreateChartService{})
+	h := chart.NewHandler(&fakeCreateChartService{}, &fakeListChartsService{}, &fakeGetChartService{})
 	r := gin.New()
 	r.POST("/api/v1/charts", h.Create)
 
@@ -198,5 +232,106 @@ func TestCreateChart_UnexpectedError_Returns500(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListCharts_Success(t *testing.T) {
+	now := time.Now()
+	svc := &fakeListChartsService{
+		result: &chartsvc.ChartListResult{
+			Items: []chartsvc.ChartListItem{
+				{
+					ID: 1, SliceName: "Sales Bar", VizType: "bar",
+					DatasourceName: "sales", LastSavedAt: now,
+					CertifiedBy: "", DashboardCount: 2,
+				},
+			},
+			Total: 1, Page: 1, PageSize: 20,
+		},
+	}
+	router := newListGetRouter(svc, &fakeGetChartService{})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/charts", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	data := resp["data"].(map[string]interface{})
+	if data["total"] != float64(1) {
+		t.Errorf("expected total=1, got %v", data["total"])
+	}
+}
+
+func TestListCharts_Unauthorized(t *testing.T) {
+	h := chart.NewHandler(&fakeCreateChartService{}, &fakeListChartsService{}, &fakeGetChartService{})
+	r := gin.New()
+	r.GET("/api/v1/charts", h.List)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/charts", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetChart_Success(t *testing.T) {
+	now := time.Now()
+	svc := &fakeGetChartService{
+		detail: &chartsvc.ChartDetail{
+			ID: 1, SliceName: "Sales Bar", VizType: "bar",
+			DatasourceID: "3", DatasourceType: "table",
+			DatasourceName: "sales", Params: `{"metric":"sum"}`,
+			Description: "Monthly sales", LastSavedAt: now, DashboardCount: 2,
+		},
+	}
+	router := newListGetRouter(&fakeListChartsService{}, svc)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/charts/1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	data := resp["data"].(map[string]interface{})
+	if data["params"] != `{"metric":"sum"}` {
+		t.Errorf("expected params, got %v", data["params"])
+	}
+}
+
+func TestGetChart_NotFound(t *testing.T) {
+	svc := &fakeGetChartService{err: pkgerrors.ErrChartNotFound}
+	router := newListGetRouter(&fakeListChartsService{}, svc)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/charts/999", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetChart_InvalidID(t *testing.T) {
+	router := newListGetRouter(&fakeListChartsService{}, &fakeGetChartService{})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/v1/charts/abc", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }

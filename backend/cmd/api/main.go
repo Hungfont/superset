@@ -139,8 +139,8 @@ func main() {
 	userRoleSvc := svcauth.NewUserRoleService(userRoleRepo, roleCacheRepo)
 	permissionSvc := svcauth.NewPermissionService(permissionRepo, roleCacheRepo)
 	permChecker := svcauth.NewDatasetPermChecker(databaseRepo.GetRoleNamesByUser)
-	chartSvc := svcchart.NewService(chartRepo, datasetRepo, permChecker)
-	chartHandler := httpchart.NewHandler(chartSvc)
+	chartSvc := svcchart.NewService(chartRepo, datasetRepo, permChecker, databaseRepo, rbacPermissionCacheRepo)
+	chartHandler := httpchart.NewHandler(chartSvc, chartSvc, chartSvc)
 	databaseSvc, err := svcdb.NewDatabaseService(databaseRepo, nil, nil, cfg.DB.CredentialsEncryptionKey)
 	if err != nil {
 		log.Fatalf("failed to initialize database service: %v", err)

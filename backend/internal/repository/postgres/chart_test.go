@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"superset/auth-service/internal/domain/chart"
 	"superset/auth-service/internal/repository/postgres"
@@ -90,4 +91,63 @@ func TestChartRepository_ImplementsInterface(t *testing.T) {
 	repo := postgres.NewChartRepository(gormDB)
 	var _ chart.Repository = repo
 	assert.NotNil(t, repo)
+}
+
+func TestGetSliceDetail_Success(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := postgres.NewChartRepository(gormDB)
+
+	mock.ExpectQuery(`SELECT.*FROM "slices"`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "slice_name", "viz_type", "datasource_id", "datasource_type",
+			"datasource_name", "perm", "last_saved_at",
+		}).AddRow(1, "Test", "bar", "3", "table", "sales", "[sales](id:1)", time.Now()))
+
+	slice, err := repo.GetSliceDetail(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, slice)
+	assert.Equal(t, uint(1), slice.ID)
+}
+
+func TestGetSliceDetail_NotFound(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := postgres.NewChartRepository(gormDB)
+
+	mock.ExpectQuery(`SELECT.*FROM "slices"`).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	slice, err := repo.GetSliceDetail(context.Background(), 999)
+	assert.NoError(t, err)
+	assert.Nil(t, slice)
+}
+
+func TestDashboardCount_Success(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := postgres.NewChartRepository(gormDB)
+
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "dashboard_slices"`).
+		WithArgs(uint(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+
+	count, err := repo.DashboardCount(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), count)
+}
+
+func TestListSlices_AdminVisibility(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := postgres.NewChartRepository(gormDB)
+
+	mock.ExpectQuery(`SELECT count\(\*\).*FROM "slices"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
+	mock.ExpectQuery(`SELECT.*FROM "slices".*ORDER BY.*last_saved_at DESC`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "slice_name", "viz_type", "perm", "last_saved_at"}).
+			AddRow(1, "Test", "bar", "[sales](id:1)", time.Now()))
+
+	slices, total, err := repo.ListSlices(context.Background(), &chart.SliceListFilter{
+		VisibilityAll: true, Page: 1, PageSize: 20,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+	assert.Len(t, slices, 1)
 }

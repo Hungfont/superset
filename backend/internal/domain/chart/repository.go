@@ -10,6 +10,8 @@ type Repository interface {
 	UpdateSlice(ctx context.Context, slice *Slice) error
 	DeleteSlice(ctx context.Context, id uint) error
 	ListSlices(ctx context.Context, filter *SliceListFilter) ([]*Slice, int64, error)
+	GetSliceDetail(ctx context.Context, id uint) (*Slice, error)
+	DashboardCount(ctx context.Context, sliceID uint) (int64, error)
 
 	CreateDashboard(ctx context.Context, dashboard *Dashboard) error
 	GetDashboardByID(ctx context.Context, id uint) (*Dashboard, error)
@@ -25,11 +27,17 @@ type Repository interface {
 
 // SliceListFilter defines filters for listing slices.
 type SliceListFilter struct {
-	DatasourceID   uint
-	DatasourceType string
-	VizType        string
-	Page           int
-	PageSize       int
+	DatasourceID     uint
+	DatasourceType   string
+	VizType          string
+	OwnerID          uint
+	Certified        *bool
+	Q                string
+	Page             int
+	PageSize         int
+	VisibilityAll    bool
+	VisibilityUserID uint
+	PermissionNames  []string
 }
 
 // DashboardListFilter defines filters for listing dashboards.

@@ -42,24 +42,83 @@ func (r *ChartRepository) DeleteSlice(ctx context.Context, id uint) error {
 }
 
 func (r *ChartRepository) ListSlices(ctx context.Context, f *chart.SliceListFilter) ([]*chart.Slice, int64, error) {
-	var slices []*chart.Slice
 	var total int64
-	q := r.db.WithContext(ctx).Model(&chart.Slice{})
+
+	base := r.db.WithContext(ctx).
+		Table("slices").
+		Joins("LEFT JOIN slice_user su ON su.slice_id = slices.id")
+
+	if f.VisibilityAll {
+		// Admin — no restriction
+	} else {
+		base = base.Distinct("slices.*")
+		if len(f.PermissionNames) > 0 {
+			base = base.Where("su.user_id = ? OR slices.perm IN (?)", f.VisibilityUserID, f.PermissionNames)
+		} else {
+			base = base.Where("su.user_id = ?", f.VisibilityUserID)
+		}
+	}
+
 	if f.DatasourceID != 0 {
-		q = q.Where("datasource_id = ?", fmt.Sprintf("%d", f.DatasourceID))
+		base = base.Where("slices.datasource_id = ?", fmt.Sprintf("%d", f.DatasourceID))
 	}
 	if f.DatasourceType != "" {
-		q = q.Where("datasource_type = ?", f.DatasourceType)
+		base = base.Where("slices.datasource_type = ?", f.DatasourceType)
 	}
 	if f.VizType != "" {
-		q = q.Where("viz_type = ?", f.VizType)
+		base = base.Where("slices.viz_type = ?", f.VizType)
 	}
-	q.Count(&total)
+	if f.OwnerID != 0 {
+		base = base.Where("slices.created_by_fk = ?", f.OwnerID)
+	}
+	if f.Certified != nil {
+		if *f.Certified {
+			base = base.Where("slices.certified_by <> ''")
+		} else {
+			base = base.Where("slices.certified_by = ''")
+		}
+	}
+	if f.Q != "" {
+		base = base.Where("(slices.slice_name ILIKE ? OR slices.description ILIKE ?)", "%"+f.Q+"%", "%"+f.Q+"%")
+	}
+
+	countQ := r.db.WithContext(ctx).Table("(?) AS filtered", base)
+	if err := countQ.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("counting slices: %w", err)
+	}
+
 	off := (f.Page - 1) * f.PageSize
-	if err := q.Order("changed_on DESC").Offset(off).Limit(f.PageSize).Find(&slices).Error; err != nil {
-		return nil, 0, err
+	var slices []*chart.Slice
+	if err := base.Order("slices.last_saved_at DESC").
+		Offset(off).Limit(f.PageSize).
+		Find(&slices).Error; err != nil {
+		return nil, 0, fmt.Errorf("listing slices: %w", err)
 	}
+
 	return slices, total, nil
+}
+
+func (r *ChartRepository) GetSliceDetail(ctx context.Context, id uint) (*chart.Slice, error) {
+	var s chart.Slice
+	if err := r.db.WithContext(ctx).
+		First(&s, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting slice detail: %w", err)
+	}
+	return &s, nil
+}
+
+func (r *ChartRepository) DashboardCount(ctx context.Context, sliceID uint) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&chart.DashboardSlice{}).
+		Where("slice_id = ?", sliceID).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("counting dashboards for slice %d: %w", sliceID, err)
+	}
+	return count, nil
 }
 
 func (r *ChartRepository) CreateDashboard(ctx context.Context, d *chart.Dashboard) error {
