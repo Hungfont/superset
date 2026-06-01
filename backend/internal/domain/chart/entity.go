@@ -1,6 +1,10 @@
 package chart
 
-import "time"
+import (
+	"time"
+
+	domainauth "superset/auth-service/internal/domain/auth"
+)
 
 // Slice maps to slices (chart definitions).
 type Slice struct {
@@ -22,7 +26,9 @@ type Slice struct {
 	ExternalURL          string    `gorm:"column:external_url" json:"external_url"`
 	LastSavedAt          time.Time `gorm:"column:last_saved_at" json:"last_saved_at"`
 	LastSavedByFK        uint      `gorm:"column:last_saved_by_fk;index" json:"last_saved_by_fk"`
+	LastSavedBy          *domainauth.User `gorm:"foreignKey:LastSavedByFK" json:"last_saved_by,omitempty"`
 	CreatedByFK          uint      `gorm:"column:created_by_fk;index" json:"-"`
+	CreatedBy            *domainauth.User `gorm:"foreignKey:CreatedByFK" json:"created_by,omitempty"`
 	ChangedByFK          uint      `gorm:"column:changed_by_fk;index" json:"-"`
 	CreatedOn            time.Time `gorm:"column:created_on;autoCreateTime" json:"created_on"`
 	ChangedOn            time.Time `gorm:"column:changed_on;autoUpdateTime" json:"changed_on"`
