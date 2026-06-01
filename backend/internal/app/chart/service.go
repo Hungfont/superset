@@ -44,10 +44,14 @@ type UserInfo struct {
 	LastName  string `json:"last_name"`
 }
 
-// toUserInfo returns nil for now — Slice model has only FK fields, not GORM relationship fields.
-// When Slice gains LastSavedBy *domainauth.User relationship fields, this will map them.
-func toUserInfo(_ any) *UserInfo {
-	return nil
+// toUserInfo creates a minimal UserInfo from a user ID.
+// When Slice gains GORM relationship fields (LastSavedBy/CreatedBy), this should
+// be changed to accept *domainauth.User and map the full object.
+func toUserInfo(userID uint) *UserInfo {
+	if userID == 0 {
+		return nil
+	}
+	return &UserInfo{ID: userID}
 }
 
 type CreateChartInput struct {
@@ -245,7 +249,7 @@ func (s *Service) ListCharts(ctx context.Context, actorID uint, input ListCharts
 			VizType:        sl.VizType,
 			DatasourceName: sl.DatasourceName,
 			LastSavedAt:    sl.LastSavedAt,
-			LastSavedBy:    toUserInfo(nil),
+			LastSavedBy:    toUserInfo(sl.LastSavedByFK),
 			CertifiedBy:    sl.CertifiedBy,
 			DashboardCount: dashCount,
 		}
@@ -315,8 +319,8 @@ func (s *Service) GetChart(ctx context.Context, actorID uint, id uint) (*ChartDe
 		CertifiedBy:          slice.CertifiedBy,
 		CertificationDetails: slice.CertificationDetails,
 		LastSavedAt:          slice.LastSavedAt,
-		LastSavedBy:          toUserInfo(nil),
-		CreatedBy:            toUserInfo(nil),
+		LastSavedBy:          toUserInfo(slice.LastSavedByFK),
+		CreatedBy:            toUserInfo(slice.CreatedByFK),
 		DashboardCount:       dashCount,
 	}, nil
 }

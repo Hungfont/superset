@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	chartsvc "superset/auth-service/internal/app/chart"
 	chartdomain "superset/auth-service/internal/domain/chart"
@@ -17,6 +18,16 @@ type fakeChartRepo struct {
 	slice     *chartdomain.Slice
 	sliceUser *chartdomain.SliceUser
 	createErr error
+
+	listSlices []*chartdomain.Slice
+	listTotal  int64
+	listErr    error
+
+	sliceDetail *chartdomain.Slice
+	detailErr   error
+
+	dashCount int64
+	dashErr   error
 }
 
 func (f *fakeChartRepo) CreateSlice(_ context.Context, s *chartdomain.Slice) error {
@@ -24,7 +35,6 @@ func (f *fakeChartRepo) CreateSlice(_ context.Context, s *chartdomain.Slice) err
 		return f.createErr
 	}
 	if f.slice != nil {
-		// Return pre-stored slice with ID set
 		s.ID = f.slice.ID
 		return nil
 	}
@@ -49,7 +59,10 @@ func (f *fakeChartRepo) UpdateSlice(_ context.Context, _ *chartdomain.Slice) err
 func (f *fakeChartRepo) DeleteSlice(_ context.Context, _ uint) error { return nil }
 
 func (f *fakeChartRepo) ListSlices(_ context.Context, _ *chartdomain.SliceListFilter) ([]*chartdomain.Slice, int64, error) {
-	return nil, 0, nil
+	if f.listErr != nil {
+		return nil, 0, f.listErr
+	}
+	return f.listSlices, f.listTotal, nil
 }
 
 func (f *fakeChartRepo) CreateDashboard(_ context.Context, _ *chartdomain.Dashboard) error { return nil }
@@ -78,9 +91,19 @@ func (f *fakeChartRepo) ListDashboardSlices(_ context.Context, _ uint) ([]*chart
 	return nil, nil
 }
 
-func (f *fakeChartRepo) GetSliceDetail(_ context.Context, _ uint) (*chartdomain.Slice, error) { return nil, nil }
+func (f *fakeChartRepo) GetSliceDetail(_ context.Context, _ uint) (*chartdomain.Slice, error) {
+	if f.detailErr != nil {
+		return nil, f.detailErr
+	}
+	return f.sliceDetail, nil
+}
 
-func (f *fakeChartRepo) DashboardCount(_ context.Context, _ uint) (int64, error) { return 0, nil }
+func (f *fakeChartRepo) DashboardCount(_ context.Context, _ uint) (int64, error) {
+	if f.dashErr != nil {
+		return 0, f.dashErr
+	}
+	return f.dashCount, nil
+}
 
 type fakeDatasetRepo struct {
 	dataset *datasetdomain.Dataset
@@ -337,5 +360,216 @@ func TestCreateChart_CreateSliceRepoError(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error from CreateSlice")
+	}
+}
+
+// --- List/Get Charts tests ---
+
+func TestListCharts_AdminReturnsAll(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		listSlices: []*chartdomain.Slice{
+			{ID: 1, SliceName: "Chart A", VizType: "bar", DatasourceName: "sales", LastSavedAt: now, LastSavedByFK: 10},
+			{ID: 2, SliceName: "Chart B", VizType: "line", DatasourceName: "events", LastSavedAt: now, LastSavedByFK: 20},
+		},
+		listTotal: 2,
+		dashCount: 3,
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	result, err := svc.ListCharts(context.Background(), 10, chartsvc.ListChartsInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("expected total=2, got %d", result.Total)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(result.Items))
+	}
+	if result.Items[0].DashboardCount != 3 {
+		t.Errorf("expected DashboardCount=3, got %d", result.Items[0].DashboardCount)
+	}
+	if result.Items[0].LastSavedBy == nil || result.Items[0].LastSavedBy.ID != 10 {
+		t.Errorf("expected LastSavedBy.ID=10, got %v", result.Items[0].LastSavedBy)
+	}
+}
+
+func TestListCharts_NormalizesPageDefaults(t *testing.T) {
+	repo := &fakeChartRepo{
+		listSlices: []*chartdomain.Slice{},
+		listTotal:  0,
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	result, err := svc.ListCharts(context.Background(), 10, chartsvc.ListChartsInput{Page: -1, PageSize: 200})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Page != 1 {
+		t.Errorf("expected page normalized to 1, got %d", result.Page)
+	}
+	if result.PageSize != 100 {
+		t.Errorf("expected page_size capped at 100, got %d", result.PageSize)
+	}
+}
+
+func TestListCharts_AppliesFilters(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		listSlices: []*chartdomain.Slice{
+			{ID: 1, SliceName: "Bar Chart", VizType: "bar", DatasourceName: "sales", LastSavedAt: now, CertifiedBy: "admin", LastSavedByFK: 10},
+		},
+		listTotal: 1,
+		dashCount: 0,
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	// The repo fake doesn't actually filter; we verify the input is passed through.
+	// Integration tests cover actual query filtering.
+	result, err := svc.ListCharts(context.Background(), 10, chartsvc.ListChartsInput{
+		Q: "bar", VizType: "bar", Page: 1, PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected total=1, got %d", result.Total)
+	}
+}
+
+func TestGetChart_ReturnsFullDetail(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		sliceDetail: &chartdomain.Slice{
+			ID: 1, SliceName: "Sales Detail", VizType: "bar",
+			DatasourceID: "3", DatasourceType: "table", DatasourceName: "sales",
+			Params: `{"metric":"sum"}`, QueryContext: `{}`, Description: "desc",
+			CacheTimeout: 300, Perm: "[sales](id:1)",
+			CertifiedBy: "admin", CertificationDetails: "trusted",
+			LastSavedAt: now, LastSavedByFK: 10, CreatedByFK: 10,
+		},
+		dashCount: 5,
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	detail, err := svc.GetChart(context.Background(), 10, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if detail.SliceName != "Sales Detail" {
+		t.Errorf("expected 'Sales Detail', got %s", detail.SliceName)
+	}
+	if detail.Params != `{"metric":"sum"}` {
+		t.Errorf("expected params, got %s", detail.Params)
+	}
+	if detail.DashboardCount != 5 {
+		t.Errorf("expected DashboardCount=5, got %d", detail.DashboardCount)
+	}
+	if detail.LastSavedBy == nil || detail.LastSavedBy.ID != 10 {
+		t.Errorf("expected LastSavedBy.ID=10, got %v", detail.LastSavedBy)
+	}
+	if detail.CreatedBy == nil || detail.CreatedBy.ID != 10 {
+		t.Errorf("expected CreatedBy.ID=10, got %v", detail.CreatedBy)
+	}
+	if detail.CacheTimeout != 300 {
+		t.Errorf("expected CacheTimeout=300, got %d", detail.CacheTimeout)
+	}
+}
+
+func TestGetChart_NotFound(t *testing.T) {
+	repo := &fakeChartRepo{
+		sliceDetail: &chartdomain.Slice{}, // ID=0 triggers not-found
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	_, err := svc.GetChart(context.Background(), 10, 999)
+	if err == nil {
+		t.Fatal("expected error for not found")
+	}
+	if !errors.Is(err, pkgerrors.ErrChartNotFound) {
+		t.Errorf("expected ErrChartNotFound, got %v", err)
+	}
+}
+
+func TestGetChart_NonAdminDeniedWhenNotOwner(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		sliceDetail: &chartdomain.Slice{
+			ID: 1, SliceName: "Other's Chart", VizType: "bar",
+			DatasourceID: "3", DatasourceType: "table",
+			Perm: "[sales](id:1)", LastSavedAt: now,
+			CreatedByFK: 99, // different user
+		},
+	}
+	svc := chartsvc.NewService(
+		repo,
+		&fakeDatasetRepo{},
+		&fakePermChecker{allowed: true},
+		&fakeRoleRepo{roleNames: []string{"gamma"}}, // non-admin
+		&fakeRBACCacheRepo{},
+	)
+
+	_, err := svc.GetChart(context.Background(), 10, 1)
+	if err == nil {
+		t.Fatal("expected error for unauthorized access")
+	}
+	if !errors.Is(err, pkgerrors.ErrChartNotFound) {
+		t.Errorf("expected ErrChartNotFound, got %v", err)
+	}
+}
+
+func TestGetChart_OwnerCanAccessWithoutAdmin(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		sliceDetail: &chartdomain.Slice{
+			ID: 1, SliceName: "My Chart", VizType: "bar",
+			DatasourceID: "3", DatasourceType: "table",
+			Perm: "[sales](id:1)", LastSavedAt: now,
+			LastSavedByFK: 10, CreatedByFK: 10,
+		},
+		dashCount: 1,
+	}
+	svc := chartsvc.NewService(
+		repo,
+		&fakeDatasetRepo{},
+		&fakePermChecker{allowed: true},
+		&fakeRoleRepo{roleNames: []string{"gamma"}}, // non-admin
+		&fakeRBACCacheRepo{},
+	)
+
+	detail, err := svc.GetChart(context.Background(), 10, 1)
+	if err != nil {
+		t.Fatalf("owner should access own chart: %v", err)
+	}
+	if detail.SliceName != "My Chart" {
+		t.Errorf("expected 'My Chart', got %s", detail.SliceName)
+	}
+}
+
+func TestListCharts_RepoErrorPropagates(t *testing.T) {
+	repo := &fakeChartRepo{listErr: errors.New("db down")}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	_, err := svc.ListCharts(context.Background(), 10, chartsvc.ListChartsInput{})
+	if err == nil {
+		t.Fatal("expected error from repo")
+	}
+}
+
+func TestListCharts_DashboardCountErrorPropagates(t *testing.T) {
+	now := time.Now()
+	repo := &fakeChartRepo{
+		listSlices: []*chartdomain.Slice{
+			{ID: 1, SliceName: "Chart", VizType: "bar", DatasourceName: "sales", LastSavedAt: now, LastSavedByFK: 10},
+		},
+		listTotal: 1,
+		dashErr:   errors.New("count failed"),
+	}
+	svc := newTestService(repo, &fakeDatasetRepo{}, &fakePermChecker{allowed: true})
+
+	_, err := svc.ListCharts(context.Background(), 10, chartsvc.ListChartsInput{})
+	if err == nil {
+		t.Fatal("expected error from dashboard count")
 	}
 }

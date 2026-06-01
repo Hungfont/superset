@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Search, Plus, BarChart2, ShieldCheck, MoreHorizontal } from "lucide-react";
 import { chartsApi, type ChartListItem, type ChartListParams } from "@/api/charts";
+import { useAuthStore } from "@/stores/authStore";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,7 @@ function formatDate(iso: string): string {
 
 export default function ChartsPage() {
   const navigate = useNavigate();
+  const currentUser = useAuthStore((s) => s.user);
   const [q, setQ] = useState("");
   const [vizType, setVizType] = useState("");
   const [owner, setOwner] = useState("");
@@ -75,7 +77,7 @@ export default function ChartsPage() {
   const filters: ChartListParams = {
     ...(q ? { q } : {}),
     ...(vizType && vizType !== "all" ? { viz_type: vizType } : {}),
-    ...(owner === "mine" ? { owner: 0 } : {}),
+    ...(owner === "mine" && currentUser ? { owner: currentUser.id } : {}),
     ...(certified ? { certified: true } : {}),
     page,
     page_size: 20,
