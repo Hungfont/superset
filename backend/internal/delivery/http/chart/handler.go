@@ -2,6 +2,7 @@ package chart
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -17,9 +18,23 @@ type createChartService interface {
 	CreateChart(ctx context.Context, actorID uint, input chartsvc.CreateChartInput) (*chartdomain.Slice, error)
 }
 
-type Handler struct{ svcCreate createChartService }
+type listChartsService interface {
+	ListCharts(ctx context.Context, actorID uint, input chartsvc.ListChartsInput) (*chartsvc.ChartListResult, error)
+}
 
-func NewHandler(svcCreate createChartService) *Handler { return &Handler{svcCreate: svcCreate} }
+type getChartService interface {
+	GetChart(ctx context.Context, actorID uint, id uint) (*chartsvc.ChartDetail, error)
+}
+
+type Handler struct {
+	svcCreate createChartService
+	svcList   listChartsService
+	svcGet    getChartService
+}
+
+func NewHandler(svcCreate createChartService, svcList listChartsService, svcGet getChartService) *Handler {
+	return &Handler{svcCreate: svcCreate, svcList: svcList, svcGet: svcGet}
+}
 
 func (h *Handler) Create(c *gin.Context) {
 	actor, ok := getActor(c)
@@ -53,6 +68,63 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": slice})
 }
 
+func (h *Handler) List(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var query ChartListQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.svcList.ListCharts(c.Request.Context(), actor.ID, chartsvc.ListChartsInput{
+		Q:            query.Q,
+		VizType:      query.VizType,
+		DatasourceID: query.DatasourceID,
+		Owner:        query.Owner,
+		Certified:    query.Certified,
+		Page:         query.Page,
+		PageSize:     query.PageSize,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+func (h *Handler) Get(c *gin.Context) {
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	idParam := c.Param("id")
+	var id uint
+	if _, err := fmt.Sscanf(idParam, "%d", &id); err != nil || id == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	detail, err := h.svcGet.GetChart(c.Request.Context(), actor.ID, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": detail})
+}
+
 func (h *Handler) handleError(c *gin.Context, err error) {
 	msg := err.Error()
 	switch {
@@ -62,6 +134,8 @@ func (h *Handler) handleError(c *gin.Context, err error) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid datasource_id"})
 	case strings.Contains(msg, "invalid params JSON"):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid params JSON"})
+	case strings.Contains(msg, "chart not found"):
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 	}

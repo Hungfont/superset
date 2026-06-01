@@ -21,6 +21,7 @@ import RLSFiltersPage from "@/pages/security/RLSFiltersPage";
 import SQLLabPage from "@/pages/sqllab/SQLLabPage";
 import SavedQueriesPage from "@/pages/sqllab/SavedQueriesPage";
 import ExplorePage from "@/pages/explore/ExplorePage";
+import ChartsPage from "@/pages/charts/ChartsPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/sqllab" element={<SQLLabPage />} />
           <Route path="/sqllab/saved-queries" element={<SavedQueriesPage />} />
           <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/charts" element={<ChartsPage />} />
         </Route>
 
         {/* Admin routes (authorization enforced by backend APIs) */}

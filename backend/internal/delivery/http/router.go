@@ -172,6 +172,8 @@ func NewRouter(
 			}
 
 			protected.POST("/charts", chartHandler.Create)
+			protected.GET("/charts", chartHandler.List)
+			protected.GET("/charts/:id", chartHandler.Get)
 
 			sqlLab := protected.Group("/sqllab")
 			{

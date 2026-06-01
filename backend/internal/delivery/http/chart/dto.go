@@ -12,3 +12,13 @@ type CreateChartRequest struct {
 	CertifiedBy          string `json:"certified_by"`
 	CertificationDetails string `json:"certification_details"`
 }
+
+type ChartListQuery struct {
+	Q            string `form:"q"`
+	VizType      string `form:"viz_type"`
+	DatasourceID uint   `form:"datasource_id"`
+	Owner        uint   `form:"owner"`
+	Certified    *bool  `form:"certified"`
+	Page         int    `form:"page"`
+	PageSize     int    `form:"page_size"`
+}
