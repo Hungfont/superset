@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,10 +11,10 @@ import {
   useReactTable,
   type SortingState,
 } from "@tanstack/react-table";
-import { Pencil, Plus, Shield, Trash2, Users, Table, Search, Loader2 } from "lucide-react";
+import { Pencil, Plus, Shield, ShieldCheck, ShieldOff, Trash2, Users, Table, Search, Loader2 } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
-import { rlsFiltersApi, type RLSFilter, type CreateRLSFilterRequest } from "@/api/rlsFilters";
+import { rlsFiltersApi, type RLSFilter, type CreateRLSFilterRequest, type ValidateRequest, type ValidateResult } from "@/api/rlsFilters";
 import { rolesApi, type Role } from "@/api/roles";
 import { datasetsApi, type DatasetListResponse, type DatasetWithCounts } from "@/api/datasets";
 import { useRLSStore } from "@/stores/rlsStore";
@@ -148,6 +149,14 @@ export default function RLSFiltersPage() {
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [rowFlashId, setRowFlashId] = useState<number | null>(null);
 
+  // RLS-002: Validation state
+  const [validationResult, setValidationResult] = useState<ValidateResult | null>(null);
+  const [testUserID, setTestUserID] = useState<number | null>(null);
+  const [testTableID, setTestTableID] = useState<number | null>(null);
+  const [testTableName, setTestTableName] = useState("");
+  const [testSchema, setTestSchema] = useState("");
+  const [testUsername, setTestUsername] = useState("");
+
   const form = useForm<RLSFilterFormValues>({
     resolver: zodResolver(rlsFilterSchema),
     defaultValues: DEFAULT_FORM_VALUES,
@@ -242,6 +251,26 @@ export default function RLSFiltersPage() {
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
     };
   }, [deleteFilterId]);
+
+  const validateMutation = useMutation({
+    mutationFn: (body: ValidateRequest) => rlsFiltersApi.validateClause(body),
+    onSuccess: (r) => setValidationResult(r),
+    onError: () => {
+      sonnerToast("Validation request failed", {
+        style: { backgroundColor: "var(--destructive)", color: "var(--destructive-foreground)" },
+      });
+    },
+  });
+
+  const clauseValue = form.watch("clause");
+  const debouncedClause = useDebounce(clauseValue, 1500);
+
+  useEffect(() => {
+    if (debouncedClause && !validateMutation.isPending) {
+      setValidationResult(null);
+      validateMutation.mutate({ clause: debouncedClause });
+    }
+  }, [debouncedClause]);
 
   const allGroupKeysEmpty = useMemo(() => {
     const data = filtersData?.data || [];
@@ -757,8 +786,21 @@ export default function RLSFiltersPage() {
                       <FormControl>
                         <Textarea
                           placeholder="e.g. org_id = {{current_user_id}}"
-                          className="font-mono min-h-[120px]"
+                          className={`font-mono min-h-[120px] ${
+                            validationResult && validationResult.is_valid
+                              ? "ring-2 ring-green-500"
+                              : validationResult && !validationResult.is_valid
+                                ? "ring-2 ring-destructive"
+                                : ""
+                          }`}
+                          aria-label="SQL WHERE clause"
+                          aria-invalid={validationResult ? !validationResult.is_valid : undefined}
+                          aria-describedby="clause-validation-message"
                           {...field}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            setValidationResult(null);
+                          }}
                         />
                       </FormControl>
                       <div className="flex gap-2 mt-2">
@@ -783,10 +825,160 @@ export default function RLSFiltersPage() {
                           {"{{current_username}}"}
                         </Badge>
                       </div>
-                      <FormMessage />
+                      {validationResult && !validationResult.is_valid && validationResult.phase === "syntax" && (
+                        <FormMessage id="clause-validation-message">
+                          {validationResult.error}
+                        </FormMessage>
+                      )}
                     </FormItem>
                   )}
                 />
+
+                {/* RLS-002: Validation UI */}
+                <div className="space-y-3">
+                  {/* Phase 2 selectors row */}
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <Select
+                        value={testUserID ? String(testUserID) : ""}
+                        onValueChange={(v) => {
+                          const id = Number(v);
+                          setTestUserID(id);
+                          setTestUsername(rolesData?.find((r) => r.id === id)?.name || "");
+                        }}
+                      >
+                        <SelectTrigger aria-label="Test as user">
+                          <SelectValue placeholder="Select user to test template vars..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Admin</SelectItem>
+                          <SelectItem value="2">User</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1">
+                      <Select
+                        value={testTableID ? String(testTableID) : ""}
+                        onValueChange={(v) => {
+                          const id = Number(v);
+                          setTestTableID(id);
+                          const ds = datasetsData?.items.find((d) => d.id === id);
+                          if (ds) {
+                            setTestTableName(ds.table_name);
+                            setTestSchema(ds.schema || "public");
+                          }
+                        }}
+                      >
+                        <SelectTrigger aria-label="Test against table">
+                          <SelectValue placeholder="Select table for runtime probe..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(datasetsData?.items || []).map((ds) => (
+                            <SelectItem key={ds.id} value={String(ds.id)}>
+                              {ds.table_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Validate button + status badge row */}
+                  <div className="flex items-center gap-3">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          aria-label="Validate SQL clause syntax and runtime"
+                          disabled={validateMutation.isPending || !testUserID || !testTableID}
+                          onClick={() => {
+                            if (!testUserID || !testTableID) return;
+                            validateMutation.mutate({
+                              clause: clauseValue,
+                              database_id: testTableID,
+                              table_name: testTableName,
+                              schema: testSchema,
+                              test_user_id: testUserID,
+                              test_username: testUsername,
+                            });
+                          }}
+                        >
+                          {validateMutation.isPending ? (
+                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="mr-1 h-4 w-4" />
+                          )}
+                          Validate Clause
+                        </Button>
+                      </TooltipTrigger>
+                      {(!testUserID || !testTableID) && (
+                        <TooltipContent>
+                          Select a test user and target table to enable runtime validation.
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+
+                    {validateMutation.isPending ? (
+                      <Skeleton className="h-5 w-20" />
+                    ) : validationResult ? (
+                      <Badge
+                        variant={validationResult.is_valid ? "default" : "destructive"}
+                        className={validationResult.is_valid ? "bg-green-100 text-green-800 border-green-300" : ""}
+                      >
+                        {validationResult.is_valid ? (
+                          <ShieldCheck className="mr-1 h-3 w-3" />
+                        ) : (
+                          <ShieldOff className="mr-1 h-3 w-3" />
+                        )}
+                        {validationResult.phase === "syntax"
+                          ? validationResult.is_valid
+                            ? "Syntax OK"
+                            : "Syntax Error"
+                          : validationResult.is_valid
+                            ? "Runtime OK"
+                            : "Runtime Error"}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  {/* Result alert */}
+                  {validationResult && (
+                    <Alert
+                      variant={validationResult.is_valid ? "default" : "destructive"}
+                      className={`transition-opacity duration-300 ${
+                        validationResult.is_valid
+                          ? "border-green-500 bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+                          : ""
+                      }`}
+                      role="alert"
+                    >
+                      {validationResult.is_valid ? (
+                        <ShieldCheck className="h-4 w-4" />
+                      ) : (
+                        <ShieldOff className="h-4 w-4" />
+                      )}
+                      <AlertDescription>
+                        {validationResult.is_valid ? (
+                          <>
+                            Clause is valid · Rendered as:{" "}
+                            <code className="font-mono text-xs bg-black/5 dark:bg-white/10 px-1 rounded">
+                              {validationResult.rendered_clause}
+                            </code>
+                          </>
+                        ) : (
+                          <>
+                            <strong>
+                              {validationResult.phase === "syntax" ? "Syntax error" : "Runtime error"}
+                            </strong>
+                            : {validationResult.error}
+                          </>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
 
                 <FormField
                   control={form.control}
