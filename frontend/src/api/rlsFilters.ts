@@ -47,6 +47,23 @@ export interface UpdateRLSFilterRequest {
   table_ids?: number[];
 }
 
+export interface ValidateRequest {
+  clause: string;
+  database_id?: number;
+  table_name?: string;
+  schema?: string;
+  test_user_id?: number;
+  test_username?: string;
+}
+
+export interface ValidateResult {
+  is_valid: boolean;
+  phase: "syntax" | "runtime";
+  rendered_clause?: string;
+  error?: string;
+  error_position?: number;
+}
+
 export interface RLSFilterListParams {
   page?: number;
   page_size?: number;
@@ -132,5 +149,15 @@ export const rlsFiltersApi = {
       credentials: "include",
       headers: getAuthHeaders(),
     });
+  },
+
+  async validateClause(payload: ValidateRequest): Promise<ValidateResult> {
+    const body = await request<ValidateResult>("/api/v1/rls/validate", {
+      method: "POST",
+      credentials: "include",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+    return body;
   },
 };
