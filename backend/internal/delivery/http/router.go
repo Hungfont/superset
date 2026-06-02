@@ -108,6 +108,9 @@ func NewRouter(
 			protected.POST("/datasets/:id/refresh", datasetHandler.RefreshDataset)
 			protected.POST("/datasets/:id/cache/flush", datasetHandler.FlushCache)
 
+			// RLS-002: Clause validation — JWT required, not Admin-only
+			protected.POST("/rls/validate", rlsHandler.Validate)
+
 			admin := protected.Group("/admin")
 			{
 				admin.POST("/databases", databaseHandler.Create)
