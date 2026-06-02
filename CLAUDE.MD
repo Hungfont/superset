@@ -4,7 +4,8 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 > DO NOT ADD NEW ATTRIBUTES OR FIELDS FOR MODELS.
-> NEVER RECOMMEND THE MINIMAL PLANS, ENHANCES, SPECS, APPROACH.
+> NEVER RECOMMEND THE MINIMAL PLANS, ENHANCES, SPECS, APPROACH AND ENSURE ALWAYS LOAD THE RELEVANT SKILLS FOR THE TASKS, CODING AND THE REQUIREMENT.
+> IGNORE MULTI TENANT HANDLING.
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
