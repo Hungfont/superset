@@ -30,7 +30,11 @@
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\.claude\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\(\"D:\\\\superset\\\\\", \"\"\\) })",
       "Bash(C:\\\\Users\\\\hung.hoang\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.1.0\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh *)",
       "Bash(/c/Users/hung.hoang/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
-      "Bash(Select-Object -First 30 Name)"
+      "Bash(Select-Object -First 30 Name)",
+      "mcp__codegraph__codegraph_files",
+      "mcp__codegraph__codegraph_explore",
+      "WebSearch",
+      "Skill(shadcn)"
     ]
   },
   "enabledMcpjsonServers": [

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	domain "superset/auth-service/internal/domain/auth"
+
+	"github.com/xwb1989/sqlparser"
 )
 
 type RLSService struct {
@@ -92,6 +94,7 @@ func (s *RLSService) ValidateClause(clause string) error {
 		return fmt.Errorf("clause exceeds maximum length of 5000 characters")
 	}
 
+	// Security: block DML / multi-statement injection patterns
 	injections := []string{
 		`(?i)(;|--|/\*|\*/)`,
 		`(?i)(\bunion\b.*\bselect\b)`,
@@ -102,55 +105,41 @@ func (s *RLSService) ValidateClause(clause string) error {
 	}
 	for _, pattern := range injections {
 		if matched, _ := regexp.MatchString(pattern, clause); matched {
-			return fmt.Errorf("invalid SQL clause: contains disallowed pattern")
+			return fmt.Errorf("Invalid SQL clause: contains disallowed pattern")
 		}
 	}
 
-	openParens := strings.Count(clause, "(")
-	closeParens := strings.Count(clause, ")")
-	if openParens != closeParens {
-		return fmt.Errorf("invalid SQL clause: unbalanced parentheses")
-	}
-
-	openBrackets := strings.Count(clause, "[")
-	closeBrackets := strings.Count(clause, "]")
-	if openBrackets != closeBrackets {
-		return fmt.Errorf("invalid SQL clause: unbalanced brackets")
-	}
-
-	singleQuotes := strings.Count(clause, "'")
-	if singleQuotes%2 != 0 {
-		return fmt.Errorf("invalid SQL clause: unbalanced quotes")
-	}
-
-	words := strings.Fields(clause)
-	if len(words) == 0 {
-		return fmt.Errorf("clause cannot be empty")
+	// Validate by wrapping in a SELECT ... WHERE <clause> so sqlparser can parse
+	// it as a valid expression. sqlparser.Parse is the available API in this version.
+	wrapped := "SELECT 1 WHERE " + clause
+	_, err := sqlparser.Parse(wrapped)
+	if err != nil {
+		return fmt.Errorf("Invalid SQL clause: %s", err.Error())
 	}
 
 	return nil
 }
 
-func (s *RLSService) Create(ctx context.Context, actorUserID uint, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
+func (s *RLSService) Create(ctx context.Context, actorUserID uint, ipAddress string, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
 	if err := s.ValidateClause(req.Clause); err != nil {
 		return nil, err
 	}
 
-	return s.repo.Create(ctx, actorUserID, req)
+	return s.repo.Create(ctx, actorUserID, ipAddress, req)
 }
 
-func (s *RLSService) Update(ctx context.Context, actorUserID uint, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
+func (s *RLSService) Update(ctx context.Context, actorUserID uint, ipAddress string, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
 	if req.Clause != "" {
 		if err := s.ValidateClause(req.Clause); err != nil {
 			return nil, err
 		}
 	}
 
-	return s.repo.Update(ctx, actorUserID, id, req)
+	return s.repo.Update(ctx, actorUserID, ipAddress, id, req)
 }
 
-func (s *RLSService) Delete(ctx context.Context, actorUserID uint, id uint) error {
-	return s.repo.Delete(ctx, actorUserID, id)
+func (s *RLSService) Delete(ctx context.Context, actorUserID uint, ipAddress string, id uint) error {
+	return s.repo.Delete(ctx, actorUserID, ipAddress, id)
 }
 
 func (s *RLSService) GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error) {

@@ -15,9 +15,9 @@ import (
 type service interface {
 	List(ctx context.Context, params domain.RLSFilterListParams) (*domain.RLSFilterListResult, error)
 	GetByID(ctx context.Context, id uint) (*domain.RLSFilterResponse, error)
-	Create(ctx context.Context, actorUserID uint, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error)
-	Update(ctx context.Context, actorUserID uint, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error)
-	Delete(ctx context.Context, actorUserID uint, id uint) error
+	Create(ctx context.Context, actorUserID uint, ipAddress string, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error)
+	Update(ctx context.Context, actorUserID uint, ipAddress string, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error)
+	Delete(ctx context.Context, actorUserID uint, ipAddress string, id uint) error
 }
 
 type Handler struct {
@@ -41,7 +41,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 func (h *Handler) Get(c *gin.Context) {
@@ -62,7 +62,7 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -78,7 +78,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.Create(c.Request.Context(), actor.ID, req)
+	result, err := h.svc.Create(c.Request.Context(), actor.ID, c.ClientIP(), req)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -96,7 +96,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, result)
+	c.JSON(http.StatusCreated, gin.H{"data": result})
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -119,7 +119,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.Update(c.Request.Context(), actor.ID, uint(id), req)
+	result, err := h.svc.Update(c.Request.Context(), actor.ID, c.ClientIP(), uint(id), req)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "filter not found"})
@@ -137,7 +137,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 func (h *Handler) Delete(c *gin.Context) {
@@ -154,7 +154,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.svc.Delete(c.Request.Context(), actor.ID, uint(id))
+	err = h.svc.Delete(c.Request.Context(), actor.ID, c.ClientIP(), uint(id))
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "filter not found"})

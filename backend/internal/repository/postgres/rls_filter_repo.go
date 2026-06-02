@@ -1,4 +1,4 @@
-package postgres
+﻿package postgres
 
 import (
 	"context"
@@ -116,7 +116,7 @@ func (r *rlsFilterRepo) GetByID(ctx context.Context, id uint) (*domain.RLSFilter
 	return &filter, nil
 }
 
-func (r *rlsFilterRepo) Create(ctx context.Context, actorUserID uint, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
+func (r *rlsFilterRepo) Create(ctx context.Context, actorUserID uint, ipAddress string, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
 	tx := r.db.Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("starting transaction: %w", tx.Error)
@@ -186,7 +186,7 @@ func (r *rlsFilterRepo) Create(ctx context.Context, actorUserID uint, req domain
 		OldValue:   oldJSON,
 		NewValue:   string(newJSON),
 		ChangedBy:  actorUserID,
-		IPAddress:  "",
+		IPAddress:  ipAddress,
 	}
 	if err := tx.Create(&audit).Error; err != nil {
 		tx.Rollback()
@@ -205,7 +205,7 @@ func (r *rlsFilterRepo) Create(ctx context.Context, actorUserID uint, req domain
 	return toResponse(&result), nil
 }
 
-func (r *rlsFilterRepo) Update(ctx context.Context, actorUserID uint, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
+func (r *rlsFilterRepo) Update(ctx context.Context, actorUserID uint, ipAddress string, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error) {
 	tx := r.db.Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("starting transaction: %w", tx.Error)
@@ -296,7 +296,7 @@ func (r *rlsFilterRepo) Update(ctx context.Context, actorUserID uint, id uint, r
 		OldValue:   string(oldJSON),
 		NewValue:   string(newJSON),
 		ChangedBy:  actorUserID,
-		IPAddress:  "",
+		IPAddress:  ipAddress,
 	}
 	if err := tx.Create(&audit).Error; err != nil {
 		tx.Rollback()
@@ -315,7 +315,7 @@ func (r *rlsFilterRepo) Update(ctx context.Context, actorUserID uint, id uint, r
 	return toResponse(&result), nil
 }
 
-func (r *rlsFilterRepo) Delete(ctx context.Context, actorUserID uint, id uint) error {
+func (r *rlsFilterRepo) Delete(ctx context.Context, actorUserID uint, ipAddress string, id uint) error {
 	tx := r.db.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("starting transaction: %w", tx.Error)
@@ -338,7 +338,7 @@ func (r *rlsFilterRepo) Delete(ctx context.Context, actorUserID uint, id uint) e
 		OldValue:   string(oldJSON),
 		NewValue:   "null",
 		ChangedBy:  actorUserID,
-		IPAddress:  "",
+		IPAddress:  ipAddress,
 	}
 	if err := tx.Create(&audit).Error; err != nil {
 		tx.Rollback()

@@ -194,9 +194,9 @@ type PermissionRepository interface {
 type RLSFilterRepository interface {
 	List(ctx context.Context, params RLSFilterListParams) ([]RLSFilterResponse, int64, error)
 	GetByID(ctx context.Context, id uint) (*RLSFilter, error)
-	Create(ctx context.Context, actorUserID uint, req CreateRLSFilterRequest) (*RLSFilterResponse, error)
-	Update(ctx context.Context, actorUserID uint, id uint, req UpdateRLSFilterRequest) (*RLSFilterResponse, error)
-	Delete(ctx context.Context, actorUserID uint, id uint) error
+	Create(ctx context.Context, actorUserID uint, ipAddress string, req CreateRLSFilterRequest) (*RLSFilterResponse, error)
+	Update(ctx context.Context, actorUserID uint, ipAddress string, id uint, req UpdateRLSFilterRequest) (*RLSFilterResponse, error)
+	Delete(ctx context.Context, actorUserID uint, ipAddress string, id uint) error
 	GetRoleNamesByUser(ctx context.Context, userID uint) ([]string, error)
 	GetFiltersByDatasourceAndRoles(ctx context.Context, datasourceID uint, roleIDs []uint) ([]RLSFilter, error)
 }
