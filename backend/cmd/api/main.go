@@ -165,7 +165,7 @@ func main() {
 	permissionHandler := httpauth.NewPermissionHandler(permissionSvc)
 	databaseHandler := httpdb.NewDatabaseHandler(databaseSvc)
 
-	rlsSvc := svcauth.NewRLSService(rlsFilterRepo)
+	rlsSvc := svcauth.NewRLSService(rlsFilterRepo, redisClient, databaseRepo, poolManager, cfg.DB.CredentialsEncryptionKey)
 	rlsHandler := httpsrls.NewHandler(rlsSvc)
 
 	queryExecutor := svcquery.NewQueryExecutor(nil, rlsFilterRepo, datasetRepo, databaseRepo, queryRepo, redisClient, poolManager)
