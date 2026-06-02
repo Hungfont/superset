@@ -18,6 +18,7 @@ type service interface {
 	Create(ctx context.Context, actorUserID uint, ipAddress string, req domain.CreateRLSFilterRequest) (*domain.RLSFilterResponse, error)
 	Update(ctx context.Context, actorUserID uint, ipAddress string, id uint, req domain.UpdateRLSFilterRequest) (*domain.RLSFilterResponse, error)
 	Delete(ctx context.Context, actorUserID uint, ipAddress string, id uint) error
+	Validate(ctx context.Context, uc domain.UserContext, req domain.ValidateRequest) (domain.ValidateResult, int, error)
 }
 
 type Handler struct {
@@ -165,6 +166,28 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) Validate(c *gin.Context) {
+	var req domain.ValidateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	actor, ok := getActor(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	result, statusCode, err := h.svc.Validate(c.Request.Context(), *actor, req)
+	if err != nil {
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(statusCode, result)
 }
 
 func getActor(c *gin.Context) (*domain.UserContext, bool) {
