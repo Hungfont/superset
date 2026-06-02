@@ -2,11 +2,13 @@
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:20128/v1",
     "ANTHROPIC_AUTH_TOKEN": "sk-a89291db57c622d5-8epocl-2f592797",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "cmc/deepseek/deepseek-v4-pro[1m]",
+    "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-pro[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "ds/deepseek-chat",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "ds/deepseek-v4-flash",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "MEMPALACE_PALACE_PATH": "D:\\superset\\.mempalace"
+    "MEMPAL_DIR": ""
   },
   "permissions": {
     "allow": [
@@ -18,7 +20,6 @@
       "Bash(Select-Object Name)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\superset\\\\frontend\\\\src\" -Directory -Recurse | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"D:\\\\superset\\\\frontend\\\\src\\\\\", \"\"\\) })",
       "Bash(Get-ChildItem *)",
-      "Skill(mempalace:search)",
       "Bash(npx tsc *)",
       "Bash(dir D:superset *)",
       "Bash(Get-Location *)",
@@ -27,26 +28,18 @@
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\frontend\" -Directory | ForEach-Object { $_.Name })",
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\docs\" -Directory | ForEach-Object { $_.Name })",
       "PowerShell(Get-ChildItem \"D:\\\\superset\\\\.claude\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\(\"D:\\\\superset\\\\\", \"\"\\) })",
-      "Skill(mempalace:mine)",
-      "Skill(mempalace:mempalace)",
-      "Bash(mempalace status *)",
-      "Bash(mempalace mine *)",
-      "mcp__plugin_mempalace_mempalace__mempalace_search"
+      "Bash(C:\\\\Users\\\\hung.hoang\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.1.0\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh *)",
+      "Bash(/c/Users/hung.hoang/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh *)",
+      "Bash(Select-Object -First 30 Name)"
     ]
   },
-  "model": "sonnet",
+  "enabledMcpjsonServers": [
+    "codegraph"
+  ],
   "enabledPlugins": {
-    "mempalace@mempalace": true,
     "superpowers@claude-plugins-official": true
   },
-  "extraKnownMarketplaces": {
-    "mempalace": {
-      "source": {
-        "source": "github",
-        "repo": "MemPalace/mempalace"
-      }
-    }
-  },
+  "extraKnownMarketplaces": {},
   "effortLevel": "xhigh",
   "theme": "dark",
   "hasCompletedOnboarding": true
