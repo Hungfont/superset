@@ -186,8 +186,12 @@ func (s *RLSService) Validate(ctx context.Context, uc domain.UserContext, req do
 		return domain.ValidateResult{}, 429, fmt.Errorf("rate limit exceeded")
 	}
 
-	// Phase 1: Syntax (wrap in SELECT ... WHERE for sqlparser.Parse compat)
-	wrapped := "SELECT 1 WHERE " + req.Clause
+	// Phase 1: Syntax — replace template vars with placeholders first for valid SQL
+	syntaxClause := strings.NewReplacer(
+		"{{current_user_id}}", "1",
+		"{{current_username}}", "'test'",
+	).Replace(req.Clause)
+	wrapped := "SELECT 1 WHERE " + syntaxClause
 	if _, err := sqlparser.Parse(wrapped); err != nil {
 		pos := extractSQLPosition(err)
 		return domain.ValidateResult{
@@ -207,7 +211,7 @@ func (s *RLSService) Validate(ctx context.Context, uc domain.UserContext, req do
 		}, 200, nil
 	}
 
-	// Phase 2: Render template vars
+	// Phase 2: Render template vars with actual values
 	rendered := strings.NewReplacer(
 		"{{current_user_id}}", strconv.Itoa(*req.TestUserID),
 		"{{current_username}}", req.TestUsername,
