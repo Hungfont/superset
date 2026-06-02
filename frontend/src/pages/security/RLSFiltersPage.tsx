@@ -153,6 +153,7 @@ export default function RLSFiltersPage() {
   const [validationResult, setValidationResult] = useState<ValidateResult | null>(null);
   const [testUserID, setTestUserID] = useState<number | null>(null);
   const [testTableID, setTestTableID] = useState<number | null>(null);
+  const [testDatabaseID, setTestDatabaseID] = useState<number | null>(null);
   const [testTableName, setTestTableName] = useState("");
   const [testSchema, setTestSchema] = useState("");
   const [testUsername, setTestUsername] = useState("");
@@ -866,6 +867,7 @@ export default function RLSFiltersPage() {
                           if (ds) {
                             setTestTableName(ds.table_name);
                             setTestSchema(ds.schema || "public");
+                            setTestDatabaseID(ds.database_id);
                           }
                         }}
                       >
@@ -892,12 +894,12 @@ export default function RLSFiltersPage() {
                           variant="outline"
                           size="sm"
                           aria-label="Validate SQL clause syntax and runtime"
-                          disabled={validateMutation.isPending || !testUserID || !testTableID}
+                          disabled={validateMutation.isPending || !testUserID || !testDatabaseID}
                           onClick={() => {
-                            if (!testUserID || !testTableID) return;
+                            if (!testUserID || !testDatabaseID) return;
                             validateMutation.mutate({
                               clause: clauseValue,
-                              database_id: testTableID,
+                              database_id: testDatabaseID,
                               table_name: testTableName,
                               schema: testSchema,
                               test_user_id: testUserID,
@@ -913,7 +915,7 @@ export default function RLSFiltersPage() {
                           Validate Clause
                         </Button>
                       </TooltipTrigger>
-                      {(!testUserID || !testTableID) && (
+                      {(!testUserID || !testDatabaseID) && (
                         <TooltipContent>
                           Select a test user and target table to enable runtime validation.
                         </TooltipContent>
