@@ -258,6 +258,25 @@ const (
 	RLSFilterTypeBase   RLSFilterType = "Base"
 )
 
+// ValidateRequest is the payload for POST /api/v1/rls/validate.
+type ValidateRequest struct {
+	Clause       string `json:"clause" binding:"required"`
+	DatabaseID   *uint  `json:"database_id"`
+	TableName    string `json:"table_name"`
+	Schema       string `json:"schema"`
+	TestUserID   *int   `json:"test_user_id"`
+	TestUsername string `json:"test_username"`
+}
+
+// ValidateResult is the response body for POST /api/v1/rls/validate.
+type ValidateResult struct {
+	IsValid        bool   `json:"is_valid"`
+	Phase          string `json:"phase"`
+	RenderedClause string `json:"rendered_clause,omitempty"`
+	Error          string `json:"error,omitempty"`
+	ErrorPosition  *int   `json:"error_position,omitempty"`
+}
+
 type RLSFilter struct {
 	ID           uint          `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name        string       `gorm:"column:name;uniqueIndex;not null" json:"name"`
