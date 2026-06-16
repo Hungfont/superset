@@ -1,0 +1,64 @@
+---
+# ===================================================================
+# etcd auto-backup via systemd timer
+# ===================================================================
+
+- name: "Create backup directory"
+  ansible.builtin.file:
+    path: "{{ etcd_backup_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: "Deploy etcd snapshot script"
+  ansible.builtin.copy:
+    dest: /usr/local/bin/etcd-snapshot.sh
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      BACKUP_DIR="{{ etcd_backup_dir }}"
+      SNAPSHOT_FILE="${BACKUP_DIR}/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
+      sudo ETCDCTL_API=3 etcdctl \
+        --endpoints=127.0.0.1:2379 \
+        --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+        --cert=/etc/kubernetes/pki/etcd/server.crt \
+        --key=/etc/kubernetes/pki/etcd/server.key \
+        snapshot save "$SNAPSHOT_FILE" 2>/dev/null
+      gzip -f "$SNAPSHOT_FILE"
+      find "$BACKUP_DIR" -name "etcd-snapshot-*.db.gz" -mmin +$(({{ etcd_backup_retention_hours }} * 60)) -delete
+      find "$BACKUP_DIR" -name "etcd-snapshot-*.db.gz.status" -mmin +$(({{ etcd_backup_retention_hours }} * 60)) -delete
+    mode: '0755'
+
+- name: "Deploy etcd snapshot systemd service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/etcd-snapshot.service
+    content: |
+      [Unit]
+      Description=etcd snapshot backup
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/etcd-snapshot.sh
+      ProtectSystem=full
+      ProtectHome=true
+      ReadWritePaths={{ etcd_backup_dir }}
+    mode: '0644'
+
+- name: "Deploy etcd snapshot systemd timer (mỗi {{ etcd_backup_interval_minutes }} phút)"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/etcd-snapshot.timer
+    content: |
+      [Unit]
+      Description=etcd snapshot backup timer
+      [Timer]
+      OnCalendar=*:0/{{ etcd_backup_interval_minutes }}
+      Persistent=true
+      RandomizedDelaySec=60
+      [Install]
+      WantedBy=timers.target
+    mode: '0644'
+
+- name: "Enable and start etcd backup timer"
+  ansible.builtin.systemd:
+    name: etcd-snapshot.timer
+    state: started
+    enabled: true
+    daemon_reload: true

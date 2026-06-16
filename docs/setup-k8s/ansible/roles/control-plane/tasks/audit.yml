@@ -1,0 +1,45 @@
+---
+# ===================================================================
+# Audit Policy for Kubernetes API Server
+# ===================================================================
+
+- name: "Create audit log directory"
+  ansible.builtin.file:
+    path: "{{ audit_log_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: "Deploy audit policy"
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/audit-policy.yaml
+    content: |
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+      - level: RequestResponse
+        resources:
+        - group: ""
+          resources: ["secrets"]
+      - level: RequestResponse
+        resources:
+        - group: ""
+          resources: ["secrets", "configmaps"]
+        verbs: ["create", "update", "patch", "delete"]
+      - level: Request
+        users: ["system:anonymous", "system:unauthenticated"]
+      - level: Metadata
+        resources:
+        - group: ""
+          resources: ["pods", "services", "endpoints", "nodes", "namespaces", "secrets"]
+        verbs: ["create", "update", "patch", "delete"]
+      - level: RequestResponse
+        resources:
+        - group: "rbac.authorization.k8s.io"
+          resources: ["*"]
+        verbs: ["create", "update", "patch", "delete"]
+      - level: Metadata
+        resources:
+        - group: ""
+          resources: ["*"]
+      - level: None
+    mode: '0644'

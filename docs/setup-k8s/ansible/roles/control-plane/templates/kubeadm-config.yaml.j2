@@ -1,0 +1,126 @@
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+metadata:
+  name: kubeadm-init
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+nodeRegistration:
+  name: "{{ node_name }}"
+  criSocket: "unix:///var/run/containerd/containerd.sock"
+  imagePullPolicy: IfNotPresent
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+  kubeletExtraArgs:
+    node-ip: "{{ node_ip }}"
+  ignorePreflightErrors:
+  - "SystemVerification"
+  - "DirAvailable--etc-kubernetes-manifests"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+metadata:
+  name: kubeadm-cluster
+kubernetesVersion: "v{{ kubernetes_version }}"
+controlPlaneEndpoint: "{{ node_ip }}:6443"
+apiServer:
+  certSANs:
+  - "{{ node_ip }}"
+  - "{{ node_name }}"
+  - "localhost"
+  - "127.0.0.1"
+  extraArgs:
+    audit-policy-file: "/etc/kubernetes/audit-policy.yaml"
+    audit-log-path: "{{ audit_log_dir }}/audit.log"
+    audit-log-maxage: "{{ audit_log_maxage }}"
+    audit-log-maxbackup: "{{ audit_log_maxbackup }}"
+    audit-log-maxsize: "{{ audit_log_maxsize }}"
+    anonymous-auth: "false"
+    max-requests-inflight: "500"
+    max-mutating-requests-inflight: "200"
+    request-timeout: "60s"
+  extraVolumes:
+  - name: audit-policy
+    hostPath: "/etc/kubernetes/audit-policy.yaml"
+    mountPath: "/etc/kubernetes/audit-policy.yaml"
+    readOnly: true
+    pathType: File
+  - name: audit-log
+    hostPath: "{{ audit_log_dir }}"
+    mountPath: "{{ audit_log_dir }}"
+    readOnly: false
+    pathType: DirectoryOrCreate
+controllerManager:
+  extraArgs:
+    node-eviction-rate: "0.1"
+    kube-api-qps: "50"
+    kube-api-burst: "100"
+    leader-elect: "true"
+scheduler:
+  extraArgs:
+    leader-elect: "true"
+networking:
+  podSubnet: "{{ pod_network_cidr }}"
+  serviceSubnet: "{{ service_network_cidr }}"
+  dnsDomain: "{{ cluster_domain }}"
+etcd:
+  local:
+    dataDir: "/var/lib/etcd"
+    extraArgs:
+      auto-compaction-mode: "periodic"
+      auto-compaction-retention: "72h"
+      quota-backend-bytes: "8589934592"
+      max-request-bytes: "10485760"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+metadata:
+  name: kubelet-config
+cgroupDriver: "systemd"
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+authorization:
+  mode: Webhook
+kubeReserved:
+  cpu: "500m"
+  memory: "512Mi"
+  ephemeral-storage: "2Gi"
+systemReserved:
+  cpu: "500m"
+  memory: "512Mi"
+  ephemeral-storage: "2Gi"
+evictionHard:
+  memory.available: "500Mi"
+  nodefs.available: "10%"
+  nodefs.inodesFree: "5%"
+  imagefs.available: "15%"
+evictionSoft:
+  memory.available: "1Gi"
+  nodefs.available: "15%"
+  imagefs.available: "20%"
+evictionSoftGracePeriod:
+  memory.available: "1m30s"
+  nodefs.available: "2m"
+  imagefs.available: "2m"
+evictionMaxPodGracePeriod: 120
+maxPods: 110
+podPidsLimit: 4096
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 75
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+mode: iptables
+iptables:
+  masqueradeAll: false
+  syncPeriod: "30s"
+clusterCIDR: "{{ pod_network_cidr }}"

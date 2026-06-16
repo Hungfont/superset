@@ -1,0 +1,128 @@
+---
+# ===================================================================
+# Bootstrap Role — Chuẩn bị node cho Kubernetes
+#
+# Áp dụng: control_plane, workers
+# Idempotent: ✅ — chạy lại không ảnh hưởng
+# ===================================================================
+
+- name: "Set timezone"
+  community.general.timezone:
+    name: "{{ timezone }}"
+  notify: reboot_required
+
+- name: "Disable swap (hard)"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  failed_when: false
+  loop:
+    - swap.target
+    - dev-disk-by\\x2dpartuuid-*.swap
+    - dev-disk-by\\x2duuid-*.swap
+  tags: swap
+
+- name: "Remove swap entries from fstab"
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)'
+    replace: '# \1'
+  tags: swap
+
+- name: "Load kernel modules"
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ kernel_modules }}"
+  tags: kernel
+
+- name: "Persist kernel modules"
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      {% for mod in kernel_modules %}
+      {{ mod }}
+      {% endfor %}
+    mode: '0644'
+  tags: kernel
+
+- name: "Apply sysctl parameters"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-kubernetes-production.conf
+  loop: "{{ kernel_params | dict2items }}"
+  tags: sysctl
+
+- name: "Increase systemd limits"
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-kubernetes.conf
+    content: |
+      *               soft    nofile          1048576
+      *               hard    nofile          1048576
+      *               soft    nproc           unlimited
+      *               hard    nproc           unlimited
+      *               soft    memlock         unlimited
+      *               hard    memlock         unlimited
+    mode: '0644'
+  tags: limits
+
+- name: "Configure journald for persistent logging"
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/99-kubernetes.conf
+    content: |
+      [Journal]
+      Storage=persistent
+      Compress=yes
+      SystemMaxUse=5G
+      SystemMaxFileSize=500M
+      MaxRetentionSec=3month
+      ForwardToSyslog=no
+    mode: '0644'
+  notify: restart journald
+  tags: logging
+
+- name: "Install containerd"
+  ansible.builtin.include_tasks: containerd.yml
+  tags: containerd
+
+- name: "Install Kubernetes packages (kubeadm, kubelet, kubectl)"
+  ansible.builtin.include_tasks: kubernetes.yml
+  tags: kubernetes
+
+- name: "Configure kubelet with node IP"
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    content: |
+      KUBELET_EXTRA_ARGS="--node-ip={{ node_ip }}"
+    mode: '0644'
+  notify: restart kubelet
+  tags: kubelet
+
+- name: "Enable kubelet (not started — will start after init/join)"
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    daemon_reload: true
+  tags: kubelet
+
+- name: "Add kubectl bash completion and aliases"
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    block: |
+      source <(kubectl completion bash 2>/dev/null)
+      alias k='kubectl'
+      alias kg='kubectl get'
+      alias kgp='kubectl get pods'
+      alias kgn='kubectl get nodes'
+      alias kd='kubectl describe'
+      alias kaf='kubectl apply -f'
+      alias kdf='kubectl delete -f'
+      alias klog='kubectl logs'
+      alias kexec='kubectl exec -it'
+    create: true
+    marker: "# {mark} ANSIBLE MANAGED: k8s aliases"
+  tags: aliases

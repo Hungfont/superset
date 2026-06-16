@@ -1,0 +1,14 @@
+---
+# ===================================================================
+# Addons Role — Calico, Helm, Ingress-Nginx, MetalLB
+#
+# Áp dụng: control_plane (chạy từ master, deploy lên cluster)
+# ===================================================================
+
+- name: "Include addon tasks"
+  ansible.builtin.include_tasks: "{{ item }}"
+  loop:
+    - calico.yml
+    - helm.yml
+    - ingress.yml
+    - metallb.yml

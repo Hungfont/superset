@@ -1,0 +1,115 @@
+---
+# ===================================================================
+# MetalLB LoadBalancer Deployment via Helm
+# ===================================================================
+
+- name: "Configure kube-proxy strict ARP"
+  kubernetes.core.k8s:
+    state: patched
+    api_version: v1
+    kind: ConfigMap
+    name: kube-proxy
+    namespace: kube-system
+    definition:
+      data:
+        config.yaml: ""
+  register: kube_proxy_patch
+  failed_when: false
+
+- name: "Enable strict ARP in kube-proxy config"
+  ansible.builtin.shell: |
+    kubectl get configmap kube-proxy -n kube-system -o yaml | \
+      sed 's/strictARP: false/strictARP: true/' | \
+      kubectl apply -f - 2>/dev/null || true
+  changed_when: false
+
+- name: "Restart kube-proxy pods"
+  ansible.builtin.shell: |
+    kubectl -n kube-system delete pods -l k8s-app=kube-proxy --force --grace-period=0 2>/dev/null || true
+    kubectl -n kube-system wait --for=condition=Ready pods -l k8s-app=kube-proxy --timeout=60s 2>/dev/null || true
+  changed_when: false
+
+- name: "Create MetalLB namespace"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: metallb-system
+
+- name: "Generate memberlist secret"
+  ansible.builtin.shell: |
+    kubectl create secret generic metallb-memberlist \
+      --namespace metallb-system \
+      --from-literal=secretkey="$(openssl rand -base64 128)" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  changed_when: false
+
+- name: "Deploy MetalLB via Helm"
+  kubernetes.core.helm:
+    name: metallb
+    chart_ref: metallb/metallb
+    release_namespace: metallb-system
+    create_namespace: false
+    values:
+      controller:
+        replicas: 2
+      speaker:
+        tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      prometheus:
+        enabled: false
+    wait: true
+    timeout: "5m"
+    atomic: true
+
+- name: "Wait for MetalLB controller"
+  ansible.builtin.shell: |
+    kubectl -n metallb-system rollout status deployment/metallb-controller --timeout=120s
+  changed_when: false
+  failed_when: false
+
+- name: "Deploy IPPool"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: IPPool
+      metadata:
+        name: production-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+        - "{{ lb_ip_range }}"
+        autoAssign: true
+        avoidBuggyIPs: true
+
+- name: "Deploy L2 Advertisement"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: l2-advertisement
+        namespace: metallb-system
+      spec:
+        ipAddressPools:
+        - production-pool
+
+- name: "Wait for MetalLB to assign IP to Ingress"
+  ansible.builtin.shell: |
+    kubectl -n ingress-nginx get svc ingress-nginx-controller \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  changed_when: false
+  register: lb_ip
+  retries: 10
+  delay: 6
+  until: lb_ip.stdout != "" and lb_ip.stdout != "null"
+
+- name: "Show Ingress LoadBalancer IP"
+  ansible.builtin.debug:
+    msg: "Ingress-Nginx LoadBalancer IP: {{ lb_ip.stdout }}"

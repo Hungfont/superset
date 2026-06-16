@@ -1,0 +1,122 @@
+---
+# ===================================================================
+# Ingress-Nginx Controller Deployment via Helm
+# ===================================================================
+
+- name: "Create ingress-nginx namespace"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: ingress-nginx
+
+- name: "Generate default SSL certificate"
+  ansible.builtin.shell: |
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+      -keyout /tmp/default-ingress-key.pem \
+      -out /tmp/default-ingress-cert.pem \
+      -subj "/CN=cluster.local/O=Kubernetes" \
+      -addext "subjectAltName=DNS:*.cluster.local,DNS:*.local,DNS:localhost" 2>/dev/null
+  args:
+    creates: /tmp/default-ingress-cert.pem
+
+- name: "Create default SSL secret"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: default-ssl-cert
+        namespace: ingress-nginx
+      type: kubernetes.io/tls
+      data:
+        tls.crt: "{{ lookup('file', '/tmp/default-ingress-cert.pem') | b64encode }}"
+        tls.key: "{{ lookup('file', '/tmp/default-ingress-key.pem') | b64encode }}"
+
+- name: "Deploy Ingress-Nginx via Helm"
+  kubernetes.core.helm:
+    name: ingress-nginx
+    chart_ref: ingress-nginx/ingress-nginx
+    release_namespace: ingress-nginx
+    create_namespace: false
+    values:
+      controller:
+        kind: Deployment
+        replicaCount: "{{ ingress_replicas }}"
+        minAvailable: 1
+        updateStrategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 1
+            maxSurge: 25%
+        autoscaling:
+          enabled: true
+          minReplicas: "{{ ingress_replicas }}"
+          maxReplicas: 10
+          targetCPUUtilizationPercentage: 70
+          targetMemoryUtilizationPercentage: 80
+        service:
+          type: LoadBalancer
+          externalTrafficPolicy: Local
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        config:
+          worker-processes: "auto"
+          worker-rlimit-nofile: "65536"
+          max-worker-connections: "16384"
+          keep-alive: "65s"
+          ssl-protocols: "TLSv1.2 TLSv1.3"
+          ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+          ssl-session-cache: "true"
+          ssl-session-cache-size: "10m"
+          server-tokens: "false"
+          hsts: "true"
+          hsts-max-age: "31536000"
+          proxy-body-size: "10m"
+          proxy-buffer-size: "16k"
+          proxy-buffers: "8 32k"
+          proxy-connect-timeout: "15s"
+          proxy-read-timeout: "60s"
+          use-forwarded-headers: "true"
+          log-format-escape-json: "true"
+        extraArgs:
+          default-ssl-certificate: "ingress-nginx/default-ssl-cert"
+        nodeSelector:
+          topology.kubernetes.io/node-type: worker
+        tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+          operator: Exists
+        ingressClassResource:
+          name: nginx
+          enabled: true
+          default: true
+        ingressClass: nginx
+        metrics:
+          enabled: true
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+      defaultBackend:
+        enabled: true
+    wait: true
+    timeout: "10m"
+    atomic: true
+
+- name: "Show Ingress-Nginx service"
+  ansible.builtin.shell: |
+    kubectl -n ingress-nginx get svc ingress-nginx-controller
+  changed_when: false
+  register: ingress_svc
+
+- name: "Display ingress service"
+  ansible.builtin.debug:
+    var: ingress_svc.stdout_lines

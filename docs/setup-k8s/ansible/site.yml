@@ -1,0 +1,74 @@
+---
+# ===================================================================
+# Kubernetes Cluster Setup — Production Playbook
+#
+# Usage:
+#   ansible-playbook site.yml                        # Full setup
+#   ansible-playbook site.yml --tags bootstrap       # Only bootstrap
+#   ansible-playbook site.yml --tags addons          # Only Calico+Ingress+MetalLB
+#   ansible-playbook site.yml --limit workers        # Only workers
+#   ansible-playbook site.yml --check                # Dry-run
+#
+# Order:
+#   1. common       — hosts, base packages, firewall
+#   2. bootstrap    — kernel, containerd, kube*
+#   3. reboot       — required after kernel changes
+#   4. control-plane — kubeadm init (master only)
+#   5. worker       — kubeadm join (workers only)
+#   6. addons       — Calico, Helm, Ingress-Nginx, MetalLB (master only)
+# ===================================================================
+
+- name: "PHASE 1: Common — base packages, /etc/hosts"
+  hosts: k8s_cluster
+  gather_facts: true
+  roles:
+    - common
+  tags:
+    - common
+    - phase1
+
+- name: "PHASE 2: Bootstrap — kernel, containerd, kube packages"
+  hosts: k8s_cluster
+  roles:
+    - bootstrap
+  tags:
+    - bootstrap
+    - phase2
+
+- name: "PHASE 3: Reboot all nodes"
+  hosts: k8s_cluster
+  gather_facts: false
+  tasks:
+    - name: "Reboot nodes (one at a time)"
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        pre_reboot_delay: 5
+        post_reboot_delay: 30
+      throttle: 1
+  tags:
+    - reboot
+    - phase3
+
+- name: "PHASE 4: Control-Plane — kubeadm init (master only)"
+  hosts: control_plane
+  roles:
+    - control-plane
+  tags:
+    - control-plane
+    - phase4
+
+- name: "PHASE 5: Workers — kubeadm join"
+  hosts: workers
+  roles:
+    - worker
+  tags:
+    - worker
+    - phase5
+
+- name: "PHASE 6: Addons — Calico, Helm, Ingress-Nginx, MetalLB"
+  hosts: control_plane
+  roles:
+    - addons
+  tags:
+    - addons
+    - phase6

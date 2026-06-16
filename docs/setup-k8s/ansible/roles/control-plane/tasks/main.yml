@@ -1,0 +1,17 @@
+---
+# ===================================================================
+# Control-Plane Role — kubeadm init, audit, etcd backup
+#
+# Áp dụng: control_plane (chỉ master)
+# Chạy SAU KHI bootstrap role hoàn tất và reboot
+# ===================================================================
+
+- name: "Include tasks"
+  ansible.builtin.include_tasks: "{{ item }}"
+  loop:
+    - audit.yml
+    - kubeadm-config.yml
+    - init.yml
+    - kubeconfig.yml
+    - etcd-backup.yml
+    - labels.yml

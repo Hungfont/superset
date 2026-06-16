@@ -1,0 +1,44 @@
+---
+# ===================================================================
+# Worker Role — Join node to cluster
+#
+# Áp dụng: workers
+# Phụ thuộc: control-plane init đã hoàn tất
+# ===================================================================
+
+- name: "Check if node already joined"
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+- name: "Read join command from master"
+  ansible.builtin.slurp:
+    src: /tmp/k8s-join-command.txt
+  register: join_cmd_file
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  run_once: true
+
+- name: "Set join command fact"
+  ansible.builtin.set_fact:
+    k8s_join_cmd: "{{ join_cmd_file['content'] | b64decode | trim }}"
+  when: not kubelet_conf.stat.exists
+
+- name: "Display join command (without running)"
+  ansible.builtin.debug:
+    msg: "Join command: {{ k8s_join_cmd }}"
+  when: k8s_join_cmd is defined
+
+- name: "Join node to cluster"
+  ansible.builtin.command:
+    cmd: "{{ k8s_join_cmd }} --node-name {{ node_name }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+  when:
+    - k8s_join_cmd is defined
+    - not kubelet_conf.stat.exists
+
+- name: "Ensure kubelet is running"
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+    enabled: true

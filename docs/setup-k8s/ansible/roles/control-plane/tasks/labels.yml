@@ -1,0 +1,38 @@
+---
+# ===================================================================
+# Post-init: labels, topology, verify cluster
+# ===================================================================
+
+- name: "Label control-plane node"
+  kubernetes.core.k8s:
+    state: patched
+    kind: Node
+    name: "{{ node_name }}"
+    definition:
+      metadata:
+        labels:
+          node-role.kubernetes.io/control-plane: ""
+          topology.kubernetes.io/region: "asia-southeast1"
+          topology.kubernetes.io/zone: "asia-southeast1-a"
+          topology.kubernetes.io/node-type: "control-plane"
+
+- name: "Set region/zone labels on all nodes"
+  kubernetes.core.k8s:
+    state: patched
+    kind: Node
+    name: "{{ item }}"
+    definition:
+      metadata:
+        labels:
+          topology.kubernetes.io/node-type: "worker"
+  loop: "{{ groups['workers'] }}"
+
+- name: "Display cluster status"
+  ansible.builtin.shell: |
+    kubectl get nodes -o wide
+  changed_when: false
+  register: node_status
+
+- name: "Show nodes"
+  ansible.builtin.debug:
+    var: node_status.stdout_lines

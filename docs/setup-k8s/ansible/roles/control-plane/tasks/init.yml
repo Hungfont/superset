@@ -1,0 +1,55 @@
+---
+# ===================================================================
+# kubeadm init — chỉ chạy 1 lần (creates guard file)
+# ===================================================================
+
+- name: "Check if cluster already initialized"
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: cluster_initialized
+
+- name: "Run kubeadm init"
+  ansible.builtin.command:
+    cmd: >
+      kubeadm init
+      --config /etc/kubernetes/kubeadm-config.yaml
+      --upload-certs
+      --v=5
+  args:
+    creates: /etc/kubernetes/admin.conf
+  register: kubeadm_init_result
+  when: not cluster_initialized.stat.exists
+  retries: 1
+  delay: 10
+
+- name: "Display kubeadm init result"
+  ansible.builtin.debug:
+    var: kubeadm_init_result.stdout_lines
+  when: kubeadm_init_result.changed
+
+- name: "Extract join token and CA hash to Ansible facts"
+  ansible.builtin.set_fact:
+    k8s_join_command: "{{ kubeadm_init_result.stdout_lines | select('match', '^kubeadm join') | first | trim }}"
+  when:
+    - kubeadm_init_result.changed
+    - kubeadm_init_result.stdout_lines is defined
+
+- name: "Create token for join (if init already ran)"
+  ansible.builtin.command:
+    cmd: kubeadm token create --print-join-command
+  register: join_cmd_fallback
+  changed_when: false
+  when: cluster_initialized.stat.exists
+
+- name: "Store join command as fact (fallback)"
+  ansible.builtin.set_fact:
+    k8s_join_command: "{{ join_cmd_fallback.stdout }}"
+  when: cluster_initialized.stat.exists
+
+- name: "Create token file for worker nodes"
+  ansible.builtin.copy:
+    dest: /tmp/k8s-join-command.txt
+    content: "{{ k8s_join_command }}"
+    mode: '0600'
+  delegate_to: localhost
+  run_once: true

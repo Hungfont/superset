@@ -1,0 +1,87 @@
+---
+# ===================================================================
+# Calico CNI Installation
+# ===================================================================
+
+- name: "Check if Calico CRDs already exist"
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: installations.operator.tigera.io
+  register: calico_crd
+  ignore_errors: true
+
+- name: "Download Tigera Operator manifest"
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+    dest: /tmp/tigera-operator.yaml
+    mode: '0644'
+  when: calico_crd is failed or calico_crd.resources | length == 0
+
+- name: "Apply Tigera Operator"
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/tigera-operator.yaml
+  when: calico_crd is failed or calico_crd.resources | length == 0
+
+- name: "Wait for Tigera Operator"
+  ansible.builtin.pause:
+    seconds: 20
+  when: calico_crd is failed or calico_crd.resources | length == 0
+
+- name: "Deploy Calico Installation CR"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operator.tigera.io/v1
+      kind: Installation
+      metadata:
+        name: default
+      spec:
+        calicoNode:
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+        calicoNetwork:
+          bgp: "{{ calico_network_mode }}"
+          ipPools:
+          - cidr: "{{ pod_network_cidr }}"
+            encapsulation: "{{ 'VXLANCrossSubnet' if calico_network_mode == 'vxlan' else 'IPIPCrossSubnet' }}"
+            natOutgoing: true
+            nodeSelector: all()
+            blockSize: 26
+          nodeAddressAutodetectionV4:
+            kubernetes: {}
+          mtu: 1450
+        cni:
+          type: Calico
+        registry: quay.io
+
+- name: "Deploy Felix Configuration"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operator.tigera.io/v1
+      kind: FelixConfiguration
+      metadata:
+        name: default
+      spec:
+        logSeverityScreen: Warning
+        prometheusMetricsEnabled: false
+        iptablesRefreshInterval: 60s
+        routeRefreshInterval: 60s
+
+- name: "Wait for Calico DaemonSet"
+  ansible.builtin.shell: |
+    kubectl -n calico-system rollout status daemonset/calico-node --timeout=180s
+  changed_when: false
+  failed_when: false
+  register: calico_ready
+
+- name: "Show Calico status"
+  ansible.builtin.debug:
+    msg: "{{ calico_ready.stdout_lines | default(['Calico deploying...']) }}"

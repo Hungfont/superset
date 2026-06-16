@@ -1,0 +1,27 @@
+---
+# ===================================================================
+# Generate kubeadm configuration file from Jinja2 template
+# ===================================================================
+
+- name: "Create /etc/kubernetes directory"
+  ansible.builtin.file:
+    path: /etc/kubernetes
+    state: directory
+    mode: '0755'
+
+- name: "Generate kubeadm-config.yaml from template"
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /etc/kubernetes/kubeadm-config.yaml
+    mode: '0644'
+
+- name: "Pre-pull Kubernetes images"
+  ansible.builtin.command:
+    cmd: kubeadm config images pull --config /etc/kubernetes/kubeadm-config.yaml --v=4
+  changed_when: false
+  failed_when: false
+  register: pull_result
+
+- name: "Display image pull result"
+  ansible.builtin.debug:
+    msg: "{{ pull_result.stdout_lines | default(['Images pulled or already present']) }}"

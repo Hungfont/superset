@@ -1,0 +1,56 @@
+---
+# ===================================================================
+# Common Role — APT update, base packages, /etc/hosts, firewall
+#
+# Chạy trên tất cả nodes trước bootstrap
+# ===================================================================
+
+- name: "Update APT cache"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time }}"
+
+- name: "Install base packages"
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - python3
+      - python3-pip
+      - python3-setuptools
+      - openssl
+      - jq
+      - net-tools
+      - dnsutils
+      - iptables
+      - ethtool
+      - tcpdump
+      - vim
+      - htop
+      - iotop
+      - sysstat
+      - tree
+    state: present
+
+- name: "Update /etc/hosts with cluster entries"
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['node_ip'] }}  {{ item }}"
+    regexp: ".*{{ item }}$"
+    state: present
+  loop: "{{ groups['k8s_cluster'] }}"
+
+- name: "Disable unattended upgrades (avoid accidental kubelet restart)"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - unattended-upgrades
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  failed_when: false
